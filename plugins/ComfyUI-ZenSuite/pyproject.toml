@@ -9,13 +9,13 @@ description = "ZenSuite — the ZenKit core panel pack (Timer, Media Viewer, Ass
 license = { text = "MIT" }
 
 [project.urls]
-Repository = "https://github.com/Nynxz/ZenKit"
+Repository = "https://github.com/Nynxz/ZenKit/tree/main/plugins/ComfyUI-ZenSuite"
 
 [tool.comfy]
 PublisherId = "nynxz"
 DisplayName = "ComfyUI-ZenSuite"
-# The built frontend must ship — users install by clone / ComfyUI Manager and
-# never run a build.
+# The built frontend must ship in the registry package. It is gitignored, so CI
+# builds and stages it — see .github/workflows/publish-registry.yml.
 includes = ["js"]
 
 [tool.setuptools.package-data]

@@ -9,13 +9,13 @@ description = "Zen Inspector — install-wide ComfyUI debug panel: every nodepac
 license = { text = "MIT" }
 
 [project.urls]
-Repository = "https://github.com/Nynxz/ZenKit"
+Repository = "https://github.com/Nynxz/ZenKit/tree/main/plugins/ComfyUI-ZenInspector"
 
 [tool.comfy]
 PublisherId = "nynxz"
 DisplayName = "ComfyUI-ZenInspector"
-# The built frontend must ship — users install by clone / ComfyUI Manager and
-# never run a build.
+# The built frontend must ship in the registry package. It is gitignored, so CI
+# builds and stages it — see .github/workflows/publish-registry.yml.
 includes = ["js"]
 
 # The single source of plugin identity (read natively by the Python ZenPlugin helper and at

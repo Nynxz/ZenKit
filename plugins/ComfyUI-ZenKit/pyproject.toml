@@ -14,8 +14,8 @@ Repository = "https://github.com/Nynxz/ZenKit"
 [tool.comfy]
 PublisherId = "nynxz"
 DisplayName = "ComfyUI-ZenKit"
-# The built frontend must ship — users install by clone / ComfyUI Manager and
-# never run a build.
+# The built frontend must ship in the registry package. It is gitignored, so CI
+# builds and stages it — see .github/workflows/publish-registry.yml.
 includes = ["js"]
 
 [tool.setuptools.package-data]
