@@ -1,6 +1,6 @@
 name: publish-registry
 
-# Build each plugin and publish to the ComfyUI registry. The bundle is gitignored and picked
+# Build a plugin and publish it to the ComfyUI registry. The bundle is gitignored and picked
 # up via `[tool.comfy] includes = ["js"]`.
 on:
   workflow_dispatch:
@@ -12,12 +12,33 @@ on:
         default: all
 
 jobs:
+  # The matrix follows the input, so publishing one plugin runs one job rather than three
+  # with two of them building bundles nobody uses.
+  select:
+    runs-on: ubuntu-latest
+    outputs:
+      plugins: ${{ steps.pick.outputs.plugins }}
+    steps:
+      - id: pick
+        env:
+          PLUGIN: ${{ inputs.plugin }}
+        run: |
+          if [ "$PLUGIN" = all ]; then
+            echo 'plugins=["ComfyUI-ZenKit","ComfyUI-ZenSuite","ComfyUI-ZenInspector"]' >> "$GITHUB_OUTPUT"
+          else
+            echo "plugins=[\"$PLUGIN\"]" >> "$GITHUB_OUTPUT"
+          fi
+
   publish:
+    needs: select
     runs-on: ubuntu-latest
     strategy:
-      fail-fast: true
+      # One plugin's failure should not cancel the others' publishes.
+      fail-fast: false
       matrix:
-        plugin: [ComfyUI-ZenKit, ComfyUI-ZenSuite, ComfyUI-ZenInspector]
+        plugin: ${{ fromJSON(needs.select.outputs.plugins) }}
+    env:
+      PLUGIN: ${{ matrix.plugin }}
     steps:
       - uses: actions/checkout@v4
       - uses: pnpm/action-setup@v4
@@ -33,21 +54,23 @@ jobs:
 
       - run: pnpm install --frozen-lockfile
 
-      # All of them: they share the workspace packages.
-      - run: pnpm build
+      # This plugin and the workspace packages it depends on, nothing else.
+      - name: Build
+        run: |
+          pkg=$(node -p "require('./plugins/$PLUGIN/package.json').name")
+          pnpm --filter "$pkg..." build
 
       - name: Fail if this plugin produced no bundle
-        run: test -f "plugins/${{ matrix.plugin }}/js/main.js"
+        run: test -f "plugins/$PLUGIN/js/main.js"
 
       # comfy-cli archives git-TRACKED files only, and js/ is gitignored. Staging is enough —
       # `git ls-files` lists the index, so nothing is committed or pushed.
       - name: Stage the built bundle so the archive includes it
-        run: git add -f "plugins/${{ matrix.plugin }}/js"
+        run: git add -f "plugins/$PLUGIN/js"
 
       - run: pip install comfy-cli
 
       - name: Publish to the ComfyUI registry
-        if: inputs.plugin == 'all' || inputs.plugin == matrix.plugin
         working-directory: plugins/${{ matrix.plugin }}
         run: comfy node publish --token "$REGISTRY_TOKEN"
         env:
