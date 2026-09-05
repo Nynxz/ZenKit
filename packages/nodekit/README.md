@@ -69,7 +69,7 @@ The component receives `{ widget, node }`. `widget.value` is what serializes int
 <script setup lang="ts">
 import type { DOMWidget } from '@nynxz/zenkit-nodekit'
 const props = defineProps<{ widget: DOMWidget; node: unknown }>()
-const { widget } = props // not through `props` — see below
+const { widget } = props // destructure before writing; see the constraints below
 </script>
 ```
 
@@ -106,7 +106,7 @@ export const nodeDef = {
 To declare nodes explicitly instead of by convention, `defineNode` + `discoverNodes` take a
 glob of `node.ts` files. Both paths end in `registerNodes`.
 
-## What else is in here
+## Also exported
 
 |                                 |                                                                            |
 | ------------------------------- | -------------------------------------------------------------------------- |
