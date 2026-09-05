@@ -1,0 +1,41 @@
+{
+  "id": "frappe",
+  "name": "Frappé",
+  "tokens": {
+    "dark": {
+      "--radius": "0.5rem",
+      "--background": "#303446",
+      "--foreground": "#c6d0f5",
+      "--card": "#303446",
+      "--card-foreground": "#c6d0f5",
+      "--popover": "#303446",
+      "--popover-foreground": "#c6d0f5",
+      "--primary": "#f4b8e4",
+      "--primary-foreground": "#232634",
+      "--secondary": "#414559",
+      "--secondary-foreground": "#c6d0f5",
+      "--muted": "#414559",
+      "--muted-foreground": "#737994",
+      "--accent": "#51576d",
+      "--accent-foreground": "#c6d0f5",
+      "--destructive": "#e78284",
+      "--destructive-foreground": "#232634",
+      "--border": "#51576d",
+      "--input": "#51576d",
+      "--ring": "#f4b8e4",
+      "--chart-1": "#e78284",
+      "--chart-2": "#ef9f76",
+      "--chart-3": "#e5c890",
+      "--chart-4": "#a6d189",
+      "--chart-5": "#85c1dc",
+      "--sidebar": "#292c3c",
+      "--sidebar-foreground": "#c6d0f5",
+      "--sidebar-primary": "#f4b8e4",
+      "--sidebar-primary-foreground": "#303446",
+      "--sidebar-accent": "#303446",
+      "--sidebar-accent-foreground": "#c6d0f5",
+      "--sidebar-border": "#414559",
+      "--sidebar-ring": "#f2d5cf"
+    }
+  }
+}

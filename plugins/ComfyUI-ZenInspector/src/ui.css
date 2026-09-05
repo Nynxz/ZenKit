@@ -1,0 +1,225 @@
+/* Shared Inspector styling. Global (not scoped) because five components render the same
+   chips, rows and code spans, and duplicating that per-SFC drifts immediately. Everything
+   is `zi-` prefixed and only ever used inside the panel root, so nothing leaks outward.
+   Colours come from ZenKit theme tokens; only the four status hues are literal, since the
+   token set has no semantic success/warning colours. */
+
+.zi {
+  --zi-err: #ef4444;
+  --zi-warn: #eab308;
+  --zi-ok: #22c55e;
+  --zi-info: #60a5fa;
+  --zi-line: color-mix(in srgb, var(--zen-text, #fff) 10%, transparent);
+  --zi-fill: color-mix(in srgb, var(--zen-text, #fff) 6%, transparent);
+  --zi-fill-2: color-mix(in srgb, var(--zen-text, #fff) 12%, transparent);
+  height: 100%;
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+  background: var(--zen-bg, #1a1a1f);
+  color: var(--zen-text, #e6e6ea);
+  font: 12px/1.45 var(--p-font-family, system-ui, sans-serif);
+}
+
+/* ── text bits ─────────────────────────────────────────────────────────────────────── */
+.zi code,
+.zi-code {
+  font-family: var(--zen-mono, ui-monospace, SFMono-Regular, Menlo, monospace);
+  font-size: 11px;
+  background: var(--zi-fill);
+  padding: 1px 5px;
+  border-radius: 4px;
+  white-space: nowrap;
+}
+.zi-mut {
+  color: var(--zen-muted, #9aa0aa);
+}
+.zi-num {
+  font-variant-numeric: tabular-nums;
+}
+.zi-ell {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  min-width: 0;
+}
+
+/* ── chips ─────────────────────────────────────────────────────────────────────────── */
+.zi-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 1px 7px;
+  border-radius: 999px;
+  background: var(--zi-fill);
+  color: var(--zen-muted, #9aa0aa);
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+}
+.zi-chip.on {
+  background: color-mix(in srgb, var(--zen-accent, #3b82f6) 22%, transparent);
+  color: var(--zen-text, #fff);
+}
+.zi-chip.err {
+  color: var(--zi-err);
+  background: color-mix(in srgb, var(--zi-err) 16%, transparent);
+}
+.zi-chip.warn {
+  color: var(--zi-warn);
+  background: color-mix(in srgb, var(--zi-warn) 16%, transparent);
+}
+.zi-chip.ok {
+  color: var(--zi-ok);
+  background: color-mix(in srgb, var(--zi-ok) 16%, transparent);
+}
+.zi-chip.info {
+  color: var(--zi-info);
+  background: color-mix(in srgb, var(--zi-info) 16%, transparent);
+}
+
+/* ── status dot ────────────────────────────────────────────────────────────────────── */
+.zi-dot {
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  flex: 0 0 auto;
+  background: var(--zen-muted, #888);
+}
+.zi-dot.ok {
+  background: var(--zi-ok);
+}
+.zi-dot.info {
+  background: var(--zi-info);
+}
+.zi-dot.warn {
+  background: var(--zi-warn);
+}
+.zi-dot.err {
+  background: var(--zi-err);
+}
+
+.zi-fg-err {
+  color: var(--zi-err);
+}
+.zi-fg-warn {
+  color: var(--zi-warn);
+}
+.zi-fg-ok {
+  color: var(--zi-ok);
+}
+.zi-fg-info {
+  color: var(--zi-info);
+}
+
+/* ── controls ──────────────────────────────────────────────────────────────────────── */
+.zi-search {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  flex: 1;
+  min-width: 90px;
+  background: var(--zi-fill);
+  border: 1px solid var(--zi-line);
+  border-radius: var(--zen-radius, 6px);
+  padding: 0 7px;
+}
+.zi-search:focus-within {
+  border-color: var(--zen-accent, #3b82f6);
+}
+.zi-search i {
+  color: var(--zen-muted, #9aa0aa);
+  font-size: 13px;
+}
+.zi-search input {
+  flex: 1;
+  min-width: 0;
+  background: none;
+  border: none;
+  outline: none;
+  color: inherit;
+  font: inherit;
+  padding: 4px 0;
+}
+.zi-seg {
+  display: flex;
+  gap: 2px;
+  background: var(--zi-fill);
+  border-radius: var(--zen-radius, 6px);
+  padding: 2px;
+}
+.zi-seg button {
+  background: none;
+  border: none;
+  color: var(--zen-muted, #9aa0aa);
+  font: inherit;
+  padding: 2px 8px;
+  border-radius: calc(var(--zen-radius, 6px) - 2px);
+  cursor: pointer;
+  white-space: nowrap;
+}
+.zi-seg button:hover {
+  color: var(--zen-text, #fff);
+}
+.zi-seg button.on {
+  background: var(--zi-fill-2);
+  color: var(--zen-text, #fff);
+}
+
+/* ── sections ──────────────────────────────────────────────────────────────────────── */
+.zi-sect {
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+}
+.zi-sect-h {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-weight: 600;
+  color: var(--zen-muted, #9aa0aa);
+  text-transform: uppercase;
+  font-size: 10px;
+  letter-spacing: 0.05em;
+  margin-bottom: 2px;
+}
+.zi-sect-h .zi-chip {
+  text-transform: none;
+  letter-spacing: 0;
+}
+
+.zi-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 2px 0;
+  min-width: 0;
+}
+
+.zi-empty {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  align-items: center;
+  justify-content: center;
+  color: var(--zen-muted, #9aa0aa);
+  padding: 24px;
+  text-align: center;
+}
+.zi-empty i {
+  font-size: 26px;
+  opacity: 0.5;
+}
+
+/* ── scrolling ─────────────────────────────────────────────────────────────────────── */
+/* The whole point of the rewrite: every scroll region is an explicit flex child with
+   min-height:0, so content can never push the panel taller than it is. */
+.zi-scroll {
+  flex: 1 1 0;
+  min-height: 0;
+  overflow-y: auto;
+  overflow-x: hidden;
+}
+.zi-xscroll {
+  overflow-x: auto;
+}

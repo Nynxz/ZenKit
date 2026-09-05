@@ -1,0 +1,33 @@
+{
+  "name": "@nynxz/zenkit-client",
+  "version": "0.2.0",
+  "type": "module",
+  "description": "Typed consumer SDK — graceful degradation when ZenKit is absent.",
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "import": "./dist/index.js"
+    }
+  },
+  "scripts": {
+    "build": "vite build && tsc -p tsconfig.build.json",
+    "typecheck": "tsc --noEmit",
+    "prepublishOnly": "pnpm build"
+  },
+  "dependencies": {
+    "@nynxz/zenkit-types": "workspace:*"
+  },
+  "publishConfig": {
+    "access": "public"
+  },
+  "license": "MIT",
+  "files": [
+    "dist"
+  ],
+  "main": "./dist/index.js",
+  "module": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "devDependencies": {
+    "vite": "^6.4.3"
+  }
+}

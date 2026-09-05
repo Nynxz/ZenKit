@@ -1,0 +1,9 @@
+# Without this file pnpm cannot resolve the `workspace:*` specifiers the packages
+# use, and a fresh clone + install leaves dangling symlinks.
+packages:
+  - 'packages/*'
+  - 'plugins/*'
+
+# pnpm requires build scripts to be opted into explicitly.
+allowBuilds:
+  esbuild: true

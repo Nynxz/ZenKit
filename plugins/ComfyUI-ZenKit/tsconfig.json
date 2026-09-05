@@ -1,0 +1,7 @@
+{
+  "extends": "../../tsconfig.plugin.json",
+  "compilerOptions": {
+    "types": ["node"]
+  },
+  "include": ["src", "vite.config.mts", "../../packages/types/src/comfy.d.ts"]
+}

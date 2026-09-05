@@ -1,0 +1,21 @@
+{
+  "name": "@nynxz/zenkit-core",
+  "version": "0.2.0",
+  "private": true,
+  "type": "module",
+  "description": "The ZenKit runtime \u2014 implements the window.ZenKit contract.",
+  "exports": {
+    ".": "./src/index.ts"
+  },
+  "scripts": {
+    "typecheck": "vue-tsc --noEmit"
+  },
+  "dependencies": {
+    "@nynxz/zenkit-types": "workspace:*",
+    "@nynxz/zenkit-theme": "workspace:*",
+    "@nynxz/zenkit-ui": "workspace:*"
+  },
+  "peerDependencies": {
+    "vue": "^3.5.0"
+  }
+}

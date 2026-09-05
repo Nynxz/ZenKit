@@ -1,0 +1,16 @@
+{
+  "name": "@nynxz/zenkit-theme",
+  "version": "0.2.0",
+  "private": true,
+  "type": "module",
+  "description": "ZenKit token system \u2014 semantic token packs and the applier.",
+  "exports": {
+    ".": "./src/index.ts"
+  },
+  "scripts": {
+    "typecheck": "tsc --noEmit"
+  },
+  "dependencies": {
+    "@nynxz/zenkit-types": "workspace:*"
+  }
+}

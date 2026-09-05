@@ -1,0 +1,43 @@
+{
+  "id": "maroon-volt",
+  "name": "Maroon Volt",
+  "tokens": {
+    "dark": {
+      "--radius": "0.6rem",
+      "--background": "#211927",
+      "--foreground": "#f4eef7",
+      "--card": "#291f31",
+      "--card-foreground": "#f4eef7",
+      "--popover": "#291f31",
+      "--popover-foreground": "#f4eef7",
+      "--primary": "#f0ff41",
+      "--primary-foreground": "#1a1320",
+      "--secondary": "#352942",
+      "--secondary-foreground": "#f4eef7",
+      "--muted": "#2e2338",
+      "--muted-foreground": "#bcaecb",
+      "--accent": "#3f2f4d",
+      "--accent-foreground": "#f0ff41",
+      "--destructive": "#ff5d6c",
+      "--destructive-foreground": "#1a1320",
+      "--border": "#473655",
+      "--input": "#473655",
+      "--ring": "#f0ff41",
+      "--chart-1": "#f0ff41",
+      "--chart-2": "#ff9de2",
+      "--chart-3": "#a98bff",
+      "--chart-4": "#7fd8c0",
+      "--chart-5": "#ffb86c",
+      "--sidebar": "#1c1522",
+      "--sidebar-foreground": "#f4eef7",
+      "--sidebar-primary": "#f0ff41",
+      "--sidebar-primary-foreground": "#1a1320",
+      "--sidebar-accent": "#352942",
+      "--sidebar-accent-foreground": "#f4eef7",
+      "--sidebar-border": "#473655",
+      "--sidebar-ring": "#f0ff41",
+      "--maroon-ink": "#211927",
+      "--maroon-volt": "#f0ff41"
+    }
+  }
+}

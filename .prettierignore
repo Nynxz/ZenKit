@@ -1,0 +1,12 @@
+# Not ours to format
+node_modules
+dist
+web
+js
+.vite
+pnpm-lock.yaml
+*.tsbuildinfo
+
+# Theme JSON is generated, not hand-written
+themes
+plugins/*/themes

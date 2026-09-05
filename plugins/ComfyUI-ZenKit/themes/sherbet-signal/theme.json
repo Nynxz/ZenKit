@@ -1,0 +1,41 @@
+{
+  "id": "sherbet-signal",
+  "name": "Sherbet Signal",
+  "tokens": {
+    "dark": {
+      "--radius": "0.85rem",
+      "--background": "oklch(0.2 0.04 258)",
+      "--foreground": "oklch(0.95 0.02 290)",
+      "--card": "oklch(0.27 0.05 270)",
+      "--card-foreground": "oklch(0.95 0.02 290)",
+      "--popover": "oklch(0.27 0.05 270)",
+      "--popover-foreground": "oklch(0.95 0.02 290)",
+      "--primary": "oklch(0.73 0.18 234)",
+      "--primary-foreground": "oklch(0.16 0.03 260)",
+      "--secondary": "oklch(0.34 0.08 292)",
+      "--secondary-foreground": "oklch(0.95 0.02 290)",
+      "--muted": "oklch(0.3 0.06 282)",
+      "--muted-foreground": "oklch(0.8 0.05 286)",
+      "--accent": "oklch(0.42 0.1 306)",
+      "--accent-foreground": "oklch(0.95 0.02 290)",
+      "--destructive": "oklch(0.62 0.22 24)",
+      "--border": "oklch(0.5 0.08 282)",
+      "--input": "oklch(0.5 0.08 282)",
+      "--ring": "oklch(0.73 0.18 234)",
+      "--sidebar": "oklch(0.24 0.05 264)",
+      "--sidebar-foreground": "oklch(0.95 0.02 290)",
+      "--sidebar-primary": "oklch(0.73 0.18 234)",
+      "--sidebar-primary-foreground": "oklch(0.2 0.04 262)",
+      "--sidebar-accent": "oklch(0.32 0.06 282)",
+      "--sidebar-accent-foreground": "oklch(0.95 0.02 290)",
+      "--sidebar-border": "oklch(0.5 0.08 282)",
+      "--sidebar-ring": "oklch(0.73 0.18 234)",
+      "--embeddr-panel-radius": "16px",
+      "--sherbet-blue": "#56c9ff",
+      "--sherbet-pink": "#ff6adf",
+      "--sherbet-violet": "#9d7bff",
+      "--sherbet-spark": "#bff0ff",
+      "--sherbet-ink": "#101a35"
+    }
+  }
+}

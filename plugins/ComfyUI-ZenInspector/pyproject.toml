@@ -1,0 +1,27 @@
+[build-system]
+requires = ["setuptools>=70.0"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "comfyui-zeninspector"
+version = "0.2.0"
+description = "Zen Inspector — install-wide ComfyUI debug panel: every nodepack and frontend extension, what each actually registered, and where the sources disagree. Requires ComfyUI-ZenKit."
+license = { text = "MIT" }
+
+[project.urls]
+Repository = "https://github.com/Nynxz/ZenKit"
+
+[tool.comfy]
+PublisherId = "nynxz"
+DisplayName = "ComfyUI-ZenInspector"
+# The built frontend must ship — users install by clone / ComfyUI Manager and
+# never run a build.
+includes = ["js"]
+
+# The single source of plugin identity (read natively by the Python ZenPlugin helper and at
+# build time by the JS side). `id` derives the namespace + the `<id>:` panel-id prefix.
+[tool.zenkit]
+id = "zeninspector"
+
+[tool.setuptools.package-data]
+"*" = ["*.*"]

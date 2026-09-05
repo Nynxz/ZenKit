@@ -1,0 +1,40 @@
+{
+  "id": "ghost-circuit",
+  "name": "Ghost Circuit",
+  "tokens": {
+    "dark": {
+      "--radius": "0.75rem",
+      "--background": "oklch(0.11 0.012 255)",
+      "--foreground": "oklch(0.95 0.01 240)",
+      "--card": "oklch(0.155 0.014 252)",
+      "--card-foreground": "oklch(0.95 0.01 240)",
+      "--popover": "oklch(0.155 0.014 252)",
+      "--popover-foreground": "oklch(0.95 0.01 240)",
+      "--primary": "oklch(0.72 0.14 220)",
+      "--primary-foreground": "oklch(0.13 0.015 252)",
+      "--secondary": "oklch(0.22 0.015 250)",
+      "--secondary-foreground": "oklch(0.95 0.01 240)",
+      "--muted": "oklch(0.2 0.015 250)",
+      "--muted-foreground": "oklch(0.72 0.015 240)",
+      "--accent": "oklch(0.28 0.03 235)",
+      "--accent-foreground": "oklch(0.95 0.01 240)",
+      "--destructive": "oklch(0.63 0.23 24)",
+      "--border": "oklch(0.33 0.017 244)",
+      "--input": "oklch(0.33 0.017 244)",
+      "--ring": "oklch(0.72 0.14 220)",
+      "--sidebar": "oklch(0.13 0.013 252)",
+      "--sidebar-foreground": "oklch(0.95 0.01 240)",
+      "--sidebar-primary": "oklch(0.72 0.14 220)",
+      "--sidebar-primary-foreground": "oklch(0.13 0.015 252)",
+      "--sidebar-accent": "oklch(0.2 0.015 250)",
+      "--sidebar-accent-foreground": "oklch(0.95 0.01 240)",
+      "--sidebar-border": "oklch(0.33 0.017 244)",
+      "--sidebar-ring": "oklch(0.72 0.14 220)",
+      "--embeddr-panel-radius": "14px",
+      "--ghost-line": "#90abc9",
+      "--ghost-cyan": "#54d6ff",
+      "--ghost-teal": "#38b7c9",
+      "--ghost-spark": "#9ce7ff"
+    }
+  }
+}

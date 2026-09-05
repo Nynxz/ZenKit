@@ -1,0 +1,41 @@
+{
+  "id": "e2078",
+  "name": "E2078",
+  "tokens": {
+    "dark": {
+      "--radius": "0.45rem",
+      "--background": "#000000",
+      "--foreground": "oklch(0.96 0.01 95)",
+      "--card": "oklch(0.18 0.01 250)",
+      "--card-foreground": "oklch(0.96 0.01 95)",
+      "--popover": "oklch(0.18 0.01 250)",
+      "--popover-foreground": "oklch(0.96 0.01 95)",
+      "--primary": "#FCEE0C",
+      "--primary-foreground": "oklch(0.13 0.01 95)",
+      "--secondary": "oklch(0.24 0.03 230)",
+      "--secondary-foreground": "oklch(0.96 0.01 95)",
+      "--muted": "oklch(0.21 0.02 235)",
+      "--muted-foreground": "oklch(0.72 0.015 95)",
+      "--accent": "#03D8F3",
+      "--accent-foreground": "oklch(0.96 0.01 95)",
+      "--destructive": "oklch(0.62 0.22 24)",
+      "--border": "oklch(0.42 0.04 230)",
+      "--input": "oklch(0.42 0.04 230)",
+      "--ring": "#03D8F3",
+      "--sidebar": "#000000",
+      "--sidebar-foreground": "oklch(0.96 0.01 95)",
+      "--sidebar-primary": "#FCEE0C",
+      "--sidebar-primary-foreground": "oklch(0.13 0.012 95)",
+      "--sidebar-accent": "oklch(0.21 0.02 235)",
+      "--sidebar-accent-foreground": "oklch(0.96 0.01 95)",
+      "--sidebar-border": "oklch(0.42 0.04 230)",
+      "--sidebar-ring": "#03D8F3",
+      "--embeddr-panel-radius": "8px",
+      "--e2078-yellow": "#FCEE0C",
+      "--e2078-yellow-hot": "#FCEE0C",
+      "--e2078-cyan": "#03D8F3",
+      "--e2078-ink": "#000000",
+      "--e2078-hazard": "#000000"
+    }
+  }
+}

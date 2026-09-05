@@ -1,0 +1,21 @@
+{
+  "name": "comfyui-zenkit",
+  "version": "0.2.0",
+  "private": true,
+  "type": "module",
+  "description": "ComfyUI plugin that serves the ZenKit runtime (window.ZenKit + taskbar).",
+  "scripts": {
+    "build": "vite build",
+    "dev": "vite build --watch",
+    "typecheck": "vue-tsc --noEmit"
+  },
+  "dependencies": {
+    "@nynxz/zenkit-core": "workspace:*",
+    "vue": "^3.5.0"
+  },
+  "devDependencies": {
+    "@vitejs/plugin-vue": "^5.2.3",
+    "vite": "^6.3.5",
+    "@nynxz/zenkit-nodekit": "workspace:*"
+  }
+}

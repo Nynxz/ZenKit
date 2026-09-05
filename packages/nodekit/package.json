@@ -1,0 +1,54 @@
+{
+  "name": "@nynxz/zenkit-nodekit",
+  "version": "0.2.0",
+  "type": "module",
+  "description": "Everything a ComfyUI node pack's frontend needs: node declaration, widget mounting, the Vite build preset, and the ambient @comfy/* types.",
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "import": "./dist/index.js"
+    },
+    "./vite": {
+      "types": "./dist/vite.d.ts",
+      "import": "./dist/vite.js"
+    },
+    "./comfy.d.ts": "./comfy.d.ts",
+    "./tsconfig.pack.json": "./tsconfig.pack.json"
+  },
+  "scripts": {
+    "build": "vite build && vue-tsc -p tsconfig.build.json",
+    "typecheck": "vue-tsc --noEmit",
+    "prepublishOnly": "pnpm build"
+  },
+  "peerDependencies": {
+    "vue": "^3.5.0",
+    "vite": "^6.0.0 || ^7.0.0 || ^8.0.0",
+    "@vitejs/plugin-vue": ">=5"
+  },
+  "devDependencies": {
+    "@vitejs/plugin-vue": "^5.2.4",
+    "vite": "^6.4.3",
+    "@nynxz/zenkit-types": "workspace:*"
+  },
+  "license": "MIT",
+  "files": [
+    "dist",
+    "comfy.d.ts",
+    "tsconfig.pack.json",
+    "README.md"
+  ],
+  "main": "./dist/index.js",
+  "module": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "publishConfig": {
+    "access": "public"
+  },
+  "peerDependenciesMeta": {
+    "vite": {
+      "optional": true
+    },
+    "@vitejs/plugin-vue": {
+      "optional": true
+    }
+  }
+}

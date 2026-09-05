@@ -1,0 +1,40 @@
+/* Reusable themed scrollbar. Add class="zen-scroll" to ANY scroll container — including
+ * teleported popovers/menus that live outside #zenkit-host — for a consistent, slim
+ * scrollbar: neutral at rest (blends into the surface), accent/primary on hover.
+ *
+ * IMPORTANT: only the ::-webkit-scrollbar pseudo-elements are used for the look, because
+ * Chromium DISABLES them the moment `scrollbar-color`/`scrollbar-width` is set (it then
+ * draws the standard scrollbar, whose default hover lightens the thumb ~white). So the
+ * standard props are gated to non-webkit engines (Firefox) via @supports.
+ * Override --zen-scrollbar (rest) / --zen-scrollbar-hover (hover) to retint. */
+.zen-scroll::-webkit-scrollbar {
+  width: 10px;
+  height: 10px;
+}
+.zen-scroll::-webkit-scrollbar-track {
+  background: transparent;
+}
+.zen-scroll::-webkit-scrollbar-thumb {
+  background: var(--zen-scrollbar, color-mix(in srgb, var(--zen-text, #9aa0aa) 22%, transparent));
+  border: 2px solid transparent;
+  border-radius: var(--zen-radius, 8px);
+  background-clip: padding-box;
+}
+.zen-scroll::-webkit-scrollbar-thumb:hover {
+  background: var(--zen-scrollbar-hover, var(--zen-accent, #6366f1));
+  background-clip: padding-box;
+}
+.zen-scroll::-webkit-scrollbar-corner {
+  background: transparent;
+}
+
+@supports not selector(::-webkit-scrollbar) {
+  .zen-scroll {
+    scrollbar-width: thin;
+    scrollbar-color: var(
+        --zen-scrollbar,
+        color-mix(in srgb, var(--zen-text, #9aa0aa) 26%, transparent)
+      )
+      transparent;
+  }
+}

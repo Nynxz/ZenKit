@@ -1,0 +1,54 @@
+name: publish-registry
+
+# Build each plugin and publish to the ComfyUI registry. The bundle is gitignored and picked
+# up via `[tool.comfy] includes = ["js"]`.
+on:
+  workflow_dispatch:
+    inputs:
+      plugin:
+        description: Which plugin to publish
+        type: choice
+        options: [all, ComfyUI-ZenKit, ComfyUI-ZenSuite, ComfyUI-ZenInspector]
+        default: all
+
+jobs:
+  publish:
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: true
+      matrix:
+        plugin: [ComfyUI-ZenKit, ComfyUI-ZenSuite, ComfyUI-ZenInspector]
+    steps:
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 11
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: pnpm
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+
+      - run: pnpm install --frozen-lockfile
+
+      # All of them: they share the workspace packages.
+      - run: pnpm build
+
+      - name: Fail if this plugin produced no bundle
+        run: test -f "plugins/${{ matrix.plugin }}/js/main.js"
+
+      # comfy-cli archives git-TRACKED files only, and js/ is gitignored. Staging is enough —
+      # `git ls-files` lists the index, so nothing is committed or pushed.
+      - name: Stage the built bundle so the archive includes it
+        run: git add -f "plugins/${{ matrix.plugin }}/js"
+
+      - run: pip install comfy-cli
+
+      - name: Publish to the ComfyUI registry
+        if: inputs.plugin == 'all' || inputs.plugin == matrix.plugin
+        working-directory: plugins/${{ matrix.plugin }}
+        run: comfy node publish --token "$REGISTRY_TOKEN"
+        env:
+          REGISTRY_TOKEN: ${{ secrets.REGISTRY_ACCESS_TOKEN }}

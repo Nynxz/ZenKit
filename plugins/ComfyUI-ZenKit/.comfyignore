@@ -1,0 +1,13 @@
+# Excluded from the published registry package (`comfy node pack`).
+# Only runtime files ship: __init__.py, the python modules, js/, pyproject.toml, LICENSE.
+
+src/
+node_modules
+package.json
+tsconfig.json
+vite.config.mts
+
+# local caches
+.ruff_cache
+__pycache__
+.venv

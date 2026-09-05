@@ -1,0 +1,13 @@
+{
+  "extends": "./tsconfig.base.json",
+  "compilerOptions": {
+    "paths": {
+      "@nynxz/zenkit-types": ["./packages/types/src/index.ts"],
+      "@nynxz/zenkit-theme": ["./packages/theme/src/index.ts"],
+      "@nynxz/zenkit-ui": ["./packages/ui/src/index.ts"],
+      "@nynxz/zenkit-core": ["./packages/core/src/index.ts"],
+      "@nynxz/zenkit-client": ["./packages/client/src/index.ts"],
+      "@nynxz/zenkit-nodekit": ["./packages/nodekit/src/index.ts"]
+    }
+  }
+}

@@ -1,0 +1,35 @@
+{
+  "id": "forest",
+  "name": "Forest",
+  "tokens": {
+    "dark": {
+      "--radius": "0",
+      "--background": "oklch(0.12 0.04 145)",
+      "--foreground": "oklch(0.85 0.05 140)",
+      "--card": "oklch(0.15 0.04 145)",
+      "--card-foreground": "oklch(0.85 0.05 140)",
+      "--popover": "oklch(0.15 0.04 145)",
+      "--popover-foreground": "oklch(0.85 0.05 140)",
+      "--primary": "oklch(0.65 0.15 140)",
+      "--primary-foreground": "oklch(0.1 0.05 140)",
+      "--secondary": "oklch(0.2 0.05 140)",
+      "--secondary-foreground": "oklch(0.85 0.05 140)",
+      "--muted": "oklch(0.2 0.05 140)",
+      "--muted-foreground": "oklch(0.6 0.05 140)",
+      "--accent": "oklch(0.25 0.05 140)",
+      "--accent-foreground": "oklch(0.85 0.05 140)",
+      "--destructive": "oklch(0.5 0.15 20)",
+      "--border": "oklch(0.3 0.05 140)",
+      "--input": "oklch(0.3 0.05 140)",
+      "--ring": "oklch(0.65 0.15 140)",
+      "--sidebar": "oklch(0.12 0.04 145)",
+      "--sidebar-foreground": "oklch(0.85 0.05 140)",
+      "--sidebar-primary": "oklch(0.65 0.15 140)",
+      "--sidebar-primary-foreground": "oklch(0.1 0.05 140)",
+      "--sidebar-accent": "oklch(0.2 0.05 140)",
+      "--sidebar-accent-foreground": "oklch(0.85 0.05 140)",
+      "--sidebar-border": "oklch(0.3 0.05 140)",
+      "--sidebar-ring": "oklch(0.65 0.15 140)"
+    }
+  }
+}

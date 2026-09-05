@@ -1,0 +1,27 @@
+[build-system]
+requires = ["setuptools>=70.0"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "comfyui-zensuite"
+version = "0.2.0"
+description = "ZenSuite — the ZenKit core panel pack (Timer, Media Viewer, Asset Browser)."
+license = { text = "MIT" }
+
+[project.urls]
+Repository = "https://github.com/Nynxz/ZenKit"
+
+[tool.comfy]
+PublisherId = "nynxz"
+DisplayName = "ComfyUI-ZenSuite"
+# The built frontend must ship — users install by clone / ComfyUI Manager and
+# never run a build.
+includes = ["js"]
+
+[tool.setuptools.package-data]
+"*" = ["*.*"]
+
+# Plugin identity the Zen Inspector reads back to name this pack; matches the
+# `id` passed to registerZenPlugin on the frontend.
+[tool.zenkit]
+id = "zensuite"

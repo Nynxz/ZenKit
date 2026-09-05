@@ -1,0 +1,29 @@
+/* ZenKit ↔ ComfyUI theme bridge — the runtime-free way to theme @nynxz/zenkit-ui.
+ *
+ * @nynxz/zenkit-ui components read --zen-* tokens. WITH the ZenKit runtime installed,
+ * @nynxz/zenkit-core sets those from the active theme pack (the derivation in @nynxz/zenkit-theme's
+ * zen.ts → zenAliases). Consumers that use @nynxz/zenkit-ui WITHOUT the runtime import this file
+ * instead: it maps the same --zen-* set straight onto ComfyUI's native theme variables, so
+ * the components follow the user's selected ComfyUI theme with zero JS.
+ *
+ * Declared at :root so teleported overlays (ZenPopover / ZenCombo menus, ZenModal) — which
+ * mount outside any component subtree — pick the tokens up too. The right-hand fallbacks keep
+ * every token sane if ComfyUI renames or drops a variable. Kept in lockstep with zen.ts: the
+ * same 10 tokens, sourced from the host instead of a pack. (The other --zen-* tokens the
+ * components use — glass, mono, scrollbar, switch-radius — resolve through inline fallbacks
+ * that chain back to these, so this set is sufficient on its own.)
+ *
+ * Import once, near your extension entry:  import '@nynxz/zenkit-ui/comfy-bridge.css'
+ */
+:root {
+  --zen-bg: var(--comfy-menu-bg, #1a1a1f);
+  --zen-surface: var(--comfy-menu-secondary-bg, #202026);
+  --zen-surface-2: var(--comfy-menu-secondary-bg, #26262d);
+  --zen-input: var(--comfy-input-bg, #1b1b20);
+  --zen-border: var(--border-color, #34343c);
+  --zen-text: var(--input-text, var(--fg-color, #e5e5ea));
+  --zen-muted: var(--descrip-text, #9aa0aa);
+  --zen-accent: var(--p-primary-color, #6366f1);
+  --zen-accent-text: var(--p-button-text-primary-color, #fff);
+  --zen-radius: var(--border-radius-base, 7px);
+}

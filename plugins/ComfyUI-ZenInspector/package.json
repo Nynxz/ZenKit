@@ -1,0 +1,22 @@
+{
+  "name": "comfyui-zeninspector",
+  "version": "0.2.0",
+  "private": true,
+  "type": "module",
+  "description": "Zen Inspector \u2014 install-wide ComfyUI debug panel: every nodepack and frontend extension, what each actually registered, and where the sources disagree.",
+  "scripts": {
+    "build": "vite build",
+    "dev": "vite build --watch",
+    "typecheck": "vue-tsc --noEmit"
+  },
+  "dependencies": {
+    "@nynxz/zenkit-client": "workspace:*",
+    "@nynxz/zenkit-ui": "workspace:*",
+    "vue": "^3.5.0"
+  },
+  "devDependencies": {
+    "@vitejs/plugin-vue": "^5.2.3",
+    "vite": "^6.3.5",
+    "@nynxz/zenkit-nodekit": "workspace:*"
+  }
+}

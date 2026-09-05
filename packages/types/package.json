@@ -1,0 +1,22 @@
+{
+  "name": "@nynxz/zenkit-types",
+  "version": "0.2.0",
+  "type": "module",
+  "description": "The ZenKit public contract \u2014 types only, no runtime, no build.",
+  "types": "./src/index.ts",
+  "exports": {
+    ".": {
+      "types": "./src/index.ts"
+    }
+  },
+  "scripts": {
+    "typecheck": "tsc --noEmit"
+  },
+  "publishConfig": {
+    "access": "public"
+  },
+  "license": "MIT",
+  "files": [
+    "src"
+  ]
+}

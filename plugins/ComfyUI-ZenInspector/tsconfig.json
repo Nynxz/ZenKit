@@ -1,0 +1,9 @@
+{
+  "extends": "../../tsconfig.plugin.json",
+  "compilerOptions": {
+    "paths": {
+      "@/*": ["./src/*"]
+    }
+  },
+  "include": ["src", "../../packages/types/src/comfy.d.ts"]
+}

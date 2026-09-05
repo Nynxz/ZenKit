@@ -1,0 +1,26 @@
+{
+  "id": "aurora",
+  "name": "Aurora",
+  "tokens": {
+    "light": {
+      "--background": "oklch(0.99 0 0)",
+      "--foreground": "oklch(0.18 0.02 270)",
+      "--primary": "oklch(0.68 0.21 280)",
+      "--primary-foreground": "oklch(0.99 0 0)",
+      "--accent": "oklch(0.92 0.08 200)",
+      "--accent-foreground": "oklch(0.2 0.02 250)",
+      "--ring": "oklch(0.68 0.21 280)",
+      "--font-sans": "'Inter', 'JetBrains Mono Variable', system-ui, sans-serif"
+    },
+    "dark": {
+      "--background": "oklch(0.16 0.02 270)",
+      "--foreground": "oklch(0.96 0.01 280)",
+      "--primary": "oklch(0.72 0.21 280)",
+      "--primary-foreground": "oklch(0.18 0.02 270)",
+      "--accent": "oklch(0.3 0.08 220)",
+      "--accent-foreground": "oklch(0.96 0.01 280)",
+      "--ring": "oklch(0.72 0.21 280)",
+      "--font-sans": "'Inter', 'JetBrains Mono Variable', system-ui, sans-serif"
+    }
+  }
+}

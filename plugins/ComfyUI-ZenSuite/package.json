@@ -1,0 +1,22 @@
+{
+  "name": "comfyui-zensuite",
+  "version": "0.2.0",
+  "private": true,
+  "type": "module",
+  "description": "ZenSuite \u2014 the ZenKit core panel pack (Timer, Media Viewer, Asset Browser).",
+  "scripts": {
+    "build": "vite build",
+    "dev": "vite build --watch",
+    "typecheck": "vue-tsc --noEmit"
+  },
+  "dependencies": {
+    "@nynxz/zenkit-client": "workspace:*",
+    "@nynxz/zenkit-ui": "workspace:*",
+    "vue": "^3.5.0"
+  },
+  "devDependencies": {
+    "@vitejs/plugin-vue": "^5.2.3",
+    "vite": "^6.3.5",
+    "@nynxz/zenkit-nodekit": "workspace:*"
+  }
+}
