@@ -31,6 +31,23 @@ export interface PanelContext {
   id: string
   state: unknown
   setState: (state: unknown) => void
+  /** Let others (another plugin, an agent) read this panel's state and drive it while it is
+   *  mounted. Call it on mount; the returned function withdraws it (call it on unmount). */
+  expose: (api: PanelApi) => () => void
+}
+
+/** A command a panel accepts through `PanelHandle.run`. */
+export interface PanelCommand {
+  /** One line for whoever calls it, including what `args` it takes. */
+  description?: string
+  run: (args: Record<string, unknown>) => unknown
+}
+
+/** What a mounted panel exposes about itself (see `PanelContext.expose`). */
+export interface PanelApi {
+  /** A small, JSON-able summary of what the panel is showing. */
+  describe?: () => unknown
+  commands?: Record<string, PanelCommand>
 }
 
 /** What a plugin passes to open a panel. `render` fills the body and returns an
@@ -75,6 +92,12 @@ export interface PanelHandle {
   setSize(size: { w?: number; h?: number; x?: number; y?: number }, persist?: boolean): void
   /** Current rect in px, or null if not open. */
   getRect(): Rect | null
+  /** The panel's own summary of its state, if it exposes one and is mounted. */
+  describe(): unknown
+  /** The commands the panel accepts right now (empty when it exposes none or isn't mounted). */
+  commands(): { name: string; description?: string }[]
+  /** Run one of the panel's commands; rejects if the panel doesn't offer it. */
+  run(command: string, args?: Record<string, unknown>): Promise<unknown>
   on(event: PanelEvent, cb: () => void): () => void
 }
 
@@ -99,6 +122,8 @@ export interface PanelRegistration {
 }
 
 /** A unit of backend work reported over the `zenkit.job` websocket; mirrored on the bus. */
+/** A long-running task reporting progress: from Python over the `zenkit.job` websocket event,
+ *  or from the frontend through `jobs.start`. `total` 0 means indeterminate. */
 export interface Job {
   id: string
   name: string
@@ -108,12 +133,38 @@ export interface Job {
   message: string
   startedAt: number
   updatedAt: number
+  /** Who is doing the work (a plugin name), shown beside the job. */
+  source?: string
+}
+
+export interface JobStartOptions {
+  /** Defaults to a fresh id. Starting with an id already in progress continues that job. */
+  id?: string
+  total?: number
+  message?: string
+  source?: string
+}
+
+export interface JobUpdate {
+  current?: number
+  total?: number
+  message?: string
+}
+
+/** A frontend job, returned by `jobs.start`. Finish it with `done` or `fail`. */
+export interface JobHandle {
+  readonly id: string
+  update(progress: JobUpdate): void
+  done(message?: string): void
+  fail(message?: string): void
 }
 
 /** An image (or video / audio) published to a channel (the named media bus). */
 export interface ChannelImage {
   channel: string
   url: string
+  /** Its media ref when known (see `ZenMedia`), so it can be handed on to other capabilities. */
+  ref?: string
   filename?: string
   label?: string
   /** Media kind so consumers (Media Viewer) can render a <video>/<audio> instead of <img>.
@@ -174,6 +225,18 @@ export interface ThemePack {
    *  only (a `<style>` can't run script, but `url()` can fetch) — same
    *  single-user/localhost trust model as `ZenStorage`. */
   css?: string
+  /** The startup sequence ComfyUI shows while loading, from the next load on.
+   *  `preset` names a built-in one (`hearts`); `html` + `css` supply your own,
+   *  written into `#splash-loader` (scope the CSS under that id). Without it the
+   *  pack still gets ComfyUI's logo, drawn in its colours. */
+  splash?: ThemeSplash
+}
+
+/** See {@link ThemePack.splash}. */
+export interface ThemeSplash {
+  preset?: string
+  html?: string
+  css?: string
 }
 
 /** A namespaced key→value store. Values are JSON-serializable. */
@@ -232,6 +295,50 @@ export interface ZenBackground {
   dispose?(state: unknown): void
 }
 
+/** How a background image is scaled into the viewport. Mirrors CSS `background-size`
+ *  plus `tile` (repeat at natural size). */
+export type BackgroundFit = 'cover' | 'contain' | 'stretch' | 'center' | 'tile'
+
+/** The image background's settings. Every field is optional: a call patches only the keys it
+ *  passes, so a fit change never has to restate the url.
+ *
+ *  `url` is anything the browser can load — an http(s) URL, a `data:` URI, or a same-origin
+ *  path such as ComfyUI's `/api/view?filename=…`. */
+export interface BackgroundImageOptions {
+  url?: string
+  fit?: BackgroundFit
+  /** 0–1. Below 1 the theme background shows through — a cheap wash without a finish. */
+  opacity?: number
+}
+
+/** The finish drawn OVER the background and UNDER the nodes: a themed dim plus an optional
+ *  frost. It is a CSS layer (`backdrop-filter`), so it costs nothing per frame and composites
+ *  over ANY background — the shader grid as readily as an image. */
+export interface BackgroundFinish {
+  /** 0–100. Veils the background in the theme's own `--zen-bg`, so it tints with the theme
+   *  rather than muddying toward black. */
+  dim?: number
+  /** Frost radius in CSS px (0 = off). Blurs whatever the background layer painted. */
+  blur?: number
+  /** Saturation of the backdrop, 1 = untouched. < 1 desaturates, > 1 punches. */
+  saturate?: number
+  /** 0–100. Darkens the edges toward `--zen-bg` so the middle of the graph reads first. */
+  vignette?: number
+}
+
+/** An overlay pass drawn above the background + finish and below the nodes — grid lines,
+ *  scanlines, vignette, whatever. Same contract as a background, but several can be active at
+ *  once and each gets its own canvas, so a WebGL background and a 2D effect coexist happily. */
+export interface ZenBackgroundEffect {
+  id: string
+  label: string
+  /** Paint order, low → high (default 0). Ties break on registration order. */
+  order?: number
+  init?(ctx: BackgroundContext): unknown
+  frame(ctx: BackgroundContext, state: unknown): void
+  dispose?(state: unknown): void
+}
+
 export interface ZenBackgrounds {
   /** Register a background (then activate it with `set`). */
   register(bg: ZenBackground): void
@@ -241,6 +348,23 @@ export interface ZenBackgrounds {
   current(): string | null
   /** All registered backgrounds. */
   list(): { id: string; label: string }[]
+  /** Point the built-in `image` background at a picture. Applies live when it is active. */
+  setImage(opts: BackgroundImageOptions): void
+  /** The dim / frost layer over the background. Merges with what is already set. */
+  setFinish(finish: BackgroundFinish): void
+  /** Overlay passes. Register your own, then switch them on by id. */
+  effects: {
+    register(fx: ZenBackgroundEffect): void
+    /** Enable exactly this set of effects (order is resolved from each effect's `order`). */
+    set(ids: string[]): void
+    /** Currently enabled effect ids. */
+    active(): string[]
+    /** All registered effects. */
+    list(): { id: string; label: string }[]
+    /** 0–100 — how strongly the effect layers read. Applied as layer opacity, so it scales
+     *  any effect uniformly, including ones registered by other plugins. */
+    setIntensity(pct: number): void
+  }
 }
 
 /* ───────────────────────────────── graph ────────────────────────────────── */
@@ -307,11 +431,20 @@ export interface ViewerHandle {
   setIndex(index: number): void
 }
 
+export interface ViewerOpenOptions {
+  /** Which item to show first. */
+  index?: number
+  /** Called whenever the shown item changes (arrows, thumbnails, slideshow). */
+  onIndex?(index: number): void
+  /** Called once when this viewer closes — by the user, `close()`, or another `open()`. */
+  onClose?(): void
+}
+
 /** Shared, host-owned image/video viewer. The lightbox lives once in the host; plugins just
  *  open it (graceful: `@nynxz/zenkit-client`'s openViewer falls back to a new tab when absent). */
 export interface ZenViewer {
   /** Open a fullscreen lightbox over `items` at `index`, replacing any open viewer. */
-  open(items: ViewerItem[], opts?: { index?: number }): ViewerHandle
+  open(items: ViewerItem[], opts?: ViewerOpenOptions): ViewerHandle
   /** Close the current viewer, if any. */
   close(): void
 }
@@ -408,6 +541,84 @@ export interface AppHandle {
   close(): void
 }
 
+/* ───────────────────────────── capabilities ───────────────────────────── */
+
+/** A JSON Schema for a capability's arguments (an object schema; a subset is enough). */
+export interface CapabilitySchema {
+  type: 'object'
+  properties?: Record<string, Record<string, unknown>>
+  required?: string[]
+}
+
+/** What a running capability gets besides its arguments. */
+export interface CapabilityContext {
+  /** Aborted when the caller gives up (e.g. the user stops an agent turn). */
+  signal: AbortSignal
+}
+
+/** A named action a plugin offers to the rest of ZenKit — and to agents, which see every
+ *  registered capability as a tool. Ids are `<plugin>.<action>` (e.g. `stash.search`). */
+export interface Capability {
+  id: string
+  /** What it does, written for whoever calls it (an agent reads exactly this). */
+  description: string
+  params?: CapabilitySchema
+  /** `read` only looks; `write` changes something (graph, files, panels). Default `read`. */
+  effect?: 'read' | 'write'
+  /** Owning plugin's id; `registerZenPlugin` fills it in. */
+  plugin?: string
+  /** Return something JSON-able: it is what the caller (or the model) gets back. Media in the
+   *  result should be given as media refs (see `ZenMedia`). */
+  run(args: Record<string, unknown>, ctx: CapabilityContext): unknown
+}
+
+/** A capability as listed: everything but `run`. */
+export type CapabilityInfo = Omit<Capability, 'run'>
+
+export interface ZenCapabilities {
+  /** Register (or replace) a capability; returns its unregister. */
+  register(capability: Capability): () => void
+  list(): CapabilityInfo[]
+  get(id: string): CapabilityInfo | null
+  /** Run a capability by id; rejects when it is unknown or throws. */
+  run(id: string, args?: Record<string, unknown>, opts?: { signal?: AbortSignal }): Promise<unknown>
+  /** Called whenever capabilities are registered or removed. */
+  onChange(cb: () => void): () => void
+}
+
+/* ───────────────────────────────── media ──────────────────────────────── */
+
+/** A short string naming one image / video / audio wherever it lives, so results can be
+ *  handed from one capability to the next. Built in: ComfyUI files as
+ *  `output/<subfolder/>name.png` (also `input/…`, `temp/…`); plugins add their own prefixes
+ *  (e.g. `stash:…`); any http(s) or data URL also works. */
+export type MediaRef = string
+
+export interface MediaInfo {
+  ref: MediaRef
+  url: string
+  kind: 'image' | 'video' | 'audio'
+  label?: string
+}
+
+/** Resolves the refs under one prefix (everything before the first ':' or '/'). */
+export interface MediaSource {
+  prefix: string
+  resolve(ref: MediaRef): MediaInfo | Promise<MediaInfo>
+  /** Make the media loadable by ComfyUI's loader nodes; returns the value for their file
+   *  widget (e.g. `name.png [output]`). Omit when the source can't. */
+  toInput?(ref: MediaRef): Promise<string>
+}
+
+export interface ZenMedia {
+  registerSource(source: MediaSource): () => void
+  resolve(ref: MediaRef): Promise<MediaInfo>
+  /** A ComfyUI loader widget value for the media, copying it into the input folder if needed. */
+  toInput(ref: MediaRef): Promise<string>
+  /** The ref for a ComfyUI file, as `executed` / history outputs describe them. */
+  fromComfyFile(file: { filename: string; subfolder?: string; type?: string }): MediaRef
+}
+
 /* ─────────────────────────────── plugins ────────────────────────────────── */
 
 /** A summary of everything one plugin contributes, recorded in the introspection
@@ -438,6 +649,8 @@ export interface RegisteredPlugin {
   slotLinks: { node: string; slot: string; spawn: string }[]
   /** Node-widget renderer types this plugin registers (cross-bundle widget views). */
   widgetViews: string[]
+  /** Capability ids this plugin offers. */
+  capabilities: string[]
 }
 
 /** The introspection registry: an ownership ledger of which plugin contributed what. It is
@@ -498,10 +711,13 @@ export interface ZenKitApi {
   }
 
   /** Live backend jobs (progress). Mirrored on the bus as 'job' / 'job:*'. */
+  /** Running jobs plus those that finished in the last minute. Mirrored on the bus as
+   *  'job' / 'job:<id>'. */
   jobs: {
     list(): Job[]
     get(id: string): Job | null
     on(cb: (job: Job) => void): () => void
+    start(name: string, opts?: JobStartOptions): JobHandle
   }
 
   /** Named image bus. Mirrored on the bus as 'channel' / 'channel:<name>'. */
@@ -537,6 +753,12 @@ export interface ZenKitApi {
 
   /** Shared image/video viewer — one fullscreen lightbox the host owns; any plugin opens it. */
   viewer: ZenViewer
+
+  /** Named actions plugins offer each other and agents (see `Capability`). */
+  capabilities: ZenCapabilities
+
+  /** Media refs: one string per image/video/audio, resolvable to a URL or a loader input. */
+  media: ZenMedia
 
   /** Full-screen apps + a built-in namespaced router. An app covers the graph (the
    *  "desktop"); routes inside it are addressed `<appId>/<route>` (e.g. 'datasets/item/42').
@@ -589,5 +811,8 @@ export interface ZenKitApi {
 declare global {
   interface Window {
     ZenKit?: ZenKitApi
+    /** Set by the ComfyUI-ZenKit host as soon as its script loads, before the runtime
+     *  installs, so `whenZen` knows to wait for `zen:ready` instead of timing out. */
+    ZenKitPending?: boolean
   }
 }

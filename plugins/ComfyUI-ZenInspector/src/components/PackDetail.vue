@@ -345,6 +345,16 @@ const raw = computed(() => ({
           <code v-for="w in pack.zen.widgetViews" :key="w">{{ w }}</code>
         </div>
       </section>
+
+      <section v-if="pack.zen.capabilities?.length" class="zi-sect">
+        <div class="zi-sect-h">
+          <i class="mdi mdi-lightning-bolt-outline" />
+          Capabilities
+        </div>
+        <div class="zi-row zi-wrap">
+          <code v-for="c in pack.zen.capabilities" :key="c">{{ c }}</code>
+        </div>
+      </section>
     </div>
 
     <!-- ── raw ──────────────────────────────────────────────────────────────────── -->

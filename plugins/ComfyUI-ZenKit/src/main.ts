@@ -1,5 +1,7 @@
 import { app } from '@comfy/app'
 import { registerBackgroundSettings } from './backgroundSettings'
+import { registerAppearanceSettings } from './appearanceSettings'
+import { registerLayoutSettings } from './layoutSettings'
 import {
   fetchThemes,
   installZenKit,
@@ -14,6 +16,10 @@ import {
 // rebuild. We fetch before installZenKit so the taskbar/settings theme lists (read once
 // at mount) are already populated. An offline/missing route resolves to [] → just the
 // built-in 'comfy' pack.
+
+// Announce the runtime before it installs (setup awaits the theme fetch first), so a plugin
+// calling whenZen in its own setup waits for zen:ready rather than timing out into fallback.
+window.ZenKitPending = true
 
 // Detached-panel window (?zen-panel=…, see detach.ts): drop a full-screen cover the
 // instant our script loads so the host ComfyUI's boot is hidden behind a loading screen
@@ -34,17 +40,23 @@ if (detachedPanel) {
 // BEFORE the runtime install) so ComfyUI has them in hand when it replays stored values on load —
 // including in detached-panel mode, where the runtime install is skipped entirely.
 registerBackgroundSettings()
+registerLayoutSettings()
+registerAppearanceSettings()
 
 app.registerExtension({
   name: 'nynxz.zenkit',
   async setup() {
-    const themes = await fetchThemes() // runtime theme discovery (GET /zenkit/themes)
-    // Detached-panel mode: mount just that one panel fullscreen, no taskbar/host/background.
-    if (detachedPanel) {
-      installZenKitSecondary(detachedPanel, { themes })
-      return
+    try {
+      const themes = await fetchThemes() // runtime theme discovery (GET /zenkit/themes)
+      // Detached-panel mode: mount just that one panel fullscreen, no taskbar/host/background.
+      if (detachedPanel) installZenKitSecondary(detachedPanel, { themes })
+      else installZenKit({ themes })
+    } catch (e) {
+      // Release plugins waiting on the announced runtime into their fallback.
+      window.ZenKitPending = false
+      window.dispatchEvent(new CustomEvent('zen:ready'))
+      throw e
     }
-    installZenKit({ themes })
   },
   // Topbar button → Zen Settings (the Start menu is the launcher/theme hub).
   actionBarButtons: [

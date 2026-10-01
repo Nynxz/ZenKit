@@ -62,6 +62,9 @@ export function orderedWidgets(): TaskbarWidget[] {
 export function activeWidgets(): TaskbarWidget[] {
   return orderedWidgets().filter((w) => prefs.on[w.id] !== false)
 }
+/** The built-in widget that moves ComfyUI's canvas controls into the taskbar. */
+export const CANVAS_CONTROLS_WIDGET = 'zenkit:canvas-controls'
+
 export const isWidgetOn = (id: string) => prefs.on[id] !== false
 export function setWidgetOn(id: string, on: boolean) {
   prefs.on[id] = on

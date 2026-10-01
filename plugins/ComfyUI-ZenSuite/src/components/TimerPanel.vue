@@ -281,12 +281,12 @@ onBeforeUnmount(() => {
   transform-origin: 50% 50%;
 }
 .zt-status.done {
-  color: #34d399;
-  background: color-mix(in srgb, #34d399 14%, transparent);
+  color: var(--zen-ok);
+  background: color-mix(in srgb, var(--zen-ok) 14%, transparent);
 }
 .zt-status.error {
-  color: #f87171;
-  background: color-mix(in srgb, #f87171 14%, transparent);
+  color: var(--zen-danger);
+  background: color-mix(in srgb, var(--zen-danger) 14%, transparent);
 }
 @keyframes zt-spin {
   to {
@@ -468,7 +468,7 @@ onBeforeUnmount(() => {
   font-style: italic;
 }
 .zt-row.error .zt-bar {
-  background: #f87171;
+  background: var(--zen-danger);
 }
 .zt-row.slowest .zt-bar {
   background: #f59e0b;

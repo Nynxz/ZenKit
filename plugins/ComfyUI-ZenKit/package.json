@@ -5,7 +5,7 @@
   "type": "module",
   "description": "ComfyUI plugin that serves the ZenKit runtime (window.ZenKit + taskbar).",
   "scripts": {
-    "build": "vite build",
+    "build": "vite build && vite build -c vite.runtime.config.mts",
     "dev": "vite build --watch",
     "typecheck": "vue-tsc --noEmit"
   },

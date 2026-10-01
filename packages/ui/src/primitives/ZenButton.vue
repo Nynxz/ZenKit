@@ -31,8 +31,8 @@ withDefaults(
   font-weight: 600;
   padding: 7px 12px;
   border-radius: var(--zen-radius, 8px);
-  border: 1px solid var(--zen-border, #3a3a44);
-  background: var(--zen-surface, #202026);
+  border: 1px solid var(--zen-control-border, var(--zen-border, #3a3a44));
+  background: var(--zen-control-bg, var(--zen-surface, #202026));
   color: var(--zen-text, #e5e5ea);
   transition:
     border-color 0.12s ease,
@@ -41,7 +41,8 @@ withDefaults(
     filter 0.12s ease;
 }
 .zen-btn:hover:not(:disabled) {
-  border-color: var(--zen-accent, #3b82f6);
+  border-color: var(--zen-control-hover-border, var(--zen-accent, #3b82f6));
+  background: var(--zen-control-hover-bg, var(--zen-control-bg));
 }
 .zen-btn:disabled {
   opacity: 0.5;

@@ -20,7 +20,7 @@ GET /zensuite/outputs               back-compat alias for ?root=output
 from __future__ import annotations
 
 import asyncio
-import io as _io
+import hashlib
 import json
 import math
 import os
@@ -224,6 +224,59 @@ def _safe_under(base: str, rel: str) -> str | None:
 
 
 # --- persistent index -------------------------------------------------------
+# --- thumbnails ------------------------------------------------------------------------
+#
+# A thumbnail is made once and kept on disk, keyed by the file's path, mtime and the size asked
+# for. Making one means decoding the whole original (a 2048px PNG is ~115 ms), and it used to run
+# on every request, on ComfyUI's event loop: a screenful of tiles stalled the whole server for
+# seconds while scrolling. Now it runs in a worker thread, a few at a time, and only on a miss.
+_THUMB_WORKERS = asyncio.Semaphore(4)
+
+
+def _thumb_path(path: str, size: int) -> str:
+    stat = os.stat(path)
+    key = hashlib.sha1(f"{path}|{stat.st_mtime_ns}|{stat.st_size}|{size}".encode()).hexdigest()
+    d = os.path.join(_cache_dir(), "thumbs", key[:2])
+    os.makedirs(d, exist_ok=True)
+    return os.path.join(d, key + ".jpg")
+
+
+def _first_frame(path: str) -> "PILImage.Image":
+    import av  # ComfyUI's own dependency; only needed for video posters
+
+    with av.open(path) as container:
+        stream = container.streams.video[0]
+        for frame in container.decode(stream):
+            return frame.to_image()
+    raise ValueError("no video frames")
+
+
+def _make_thumb(path: str, size: int, out: str) -> None:
+    ext = os.path.splitext(path)[1].lower()
+    if ext in _VIDEO_EXTS:
+        img = _first_frame(path)
+    else:
+        img = PILImage.open(path)
+        img.draft("RGB", (size, size))  # JPEG: decode at a reduced scale instead of full size
+        img.seek(0)  # first frame for animated formats
+    img = img.convert("RGB")
+    # reducing_gap downsamples by whole factors first, then resamples the small remainder.
+    img.thumbnail((size, size), PILImage.BICUBIC, reducing_gap=2.0)
+    tmp = out + ".tmp"
+    img.save(tmp, format="JPEG", quality=82)
+    os.replace(tmp, out)
+
+
+async def _thumbnail(path: str, size: int) -> str:
+    out = _thumb_path(path, size)
+    if os.path.isfile(out):
+        return out
+    async with _THUMB_WORKERS:
+        if not os.path.isfile(out):  # made by another request while this one waited
+            await asyncio.to_thread(_make_thumb, path, size, out)
+    return out
+
+
 def _cache_dir() -> str:
     base = None
     if folder_paths is not None:
@@ -390,28 +443,21 @@ if _routes is not None:
         root = (q.get("root", "output") or "output").strip()
         rel = q.get("rel", "").strip()
         try:
-            size = int(q.get("size", "256"))
+            size = max(16, min(1024, int(q.get("size", "256"))))
         except ValueError:
             size = 256
         base = _root_dir(root)
         path = _safe_under(base, rel) if base else None
         if not path or not os.path.isfile(path):
             return web.Response(status=404, text="not found")
-        if os.path.splitext(path)[1].lower() not in _IMAGE_EXTS:
-            return web.Response(status=415, text="not an image")
+        ext = os.path.splitext(path)[1].lower()
+        if ext not in _IMAGE_EXTS and ext not in _VIDEO_EXTS:
+            return web.Response(status=415, text="no thumbnail for this type")
         try:
-            img = PILImage.open(path)
-            img.seek(0)  # first frame for animated formats
-            img = img.convert("RGB")
-            w, h = img.size
-            longest = max(w, h)
-            if longest > size:
-                scale = size / longest
-                img = img.resize((max(1, int(w * scale)), max(1, int(h * scale))), PILImage.LANCZOS)
-            buf = _io.BytesIO()
-            img.save(buf, format="JPEG", quality=82)
-            return web.Response(body=buf.getvalue(), content_type="image/jpeg", headers={"Cache-Control": "max-age=3600"})
+            thumb = await _thumbnail(path, size)
         except Exception as e:
             return web.Response(status=500, text=str(e))
+        # The client versions the URL with the file's mtime, so a response never goes stale.
+        return web.FileResponse(thumb, headers={"Cache-Control": "public, max-age=31536000, immutable"})
 
     print("[ZenSuite] asset browser routes registered under /zensuite/")

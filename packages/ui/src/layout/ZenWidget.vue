@@ -43,7 +43,7 @@ defineExpose({ el })
   <div
     ref="el"
     class="zen-widget"
-    :class="{ fill, 'drag-through': dragThrough }"
+    :class="{ fill, 'drag-through': dragThrough, 'has-footer': !!$slots.footer }"
     :style="{
       gap: `${gap}px`,
       ...(pad === false
@@ -56,6 +56,13 @@ defineExpose({ el })
     }"
   >
     <slot />
+    <!-- A footer sits at the bottom of the node body, however tall the node is made. The spacer
+         takes the slack; its negative margin cancels the gap it would otherwise add, and
+         mountWidget excludes it (data-zen-spacer) when measuring what the content needs. -->
+    <template v-if="$slots.footer">
+      <div class="zen-widget-spacer" data-zen-spacer :style="{ marginTop: `${-gap}px` }" />
+      <slot name="footer" />
+    </template>
   </div>
 </template>
 
@@ -80,6 +87,15 @@ defineExpose({ el })
    fitting. */
 .zen-widget.fill {
   height: 100%;
+  min-height: 0;
+}
+
+/* Only a body with a footer stretches to a taller node — the spacer takes the slack. */
+.zen-widget.has-footer {
+  flex: 1 0 auto;
+}
+.zen-widget-spacer {
+  flex: 1 1 0;
   min-height: 0;
 }
 

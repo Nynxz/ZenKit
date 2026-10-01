@@ -14,12 +14,26 @@ export {
 export {
   backgrounds,
   backgroundEnabled,
+  backgroundEffectList,
+  backgroundEffectIntensity,
+  backgroundEffects,
+  backgroundFinish,
+  backgroundImage,
+  backgroundKind,
   setBackgroundEnabled,
+  setBackgroundEffectIntensity,
+  setBackgroundEffects,
+  setBackgroundFinish,
   setBackgroundFollow,
   setBackgroundFollowSpeed,
   setBackgroundBlobFlow,
+  setBackgroundImage,
+  setBackgroundKind,
   startBackground,
 } from './background'
+// Hold ComfyUI's sidebar at an exact px width so a ZenKit dock (or a window resize) can't
+// shrink it — ComfyUI sizes it as a percentage of the graph area. See sidebarPin.ts.
+export { startSidebarPin, setSidebarPin, sidebarPinEnabled, resetSidebarPin } from './sidebarPin'
 export { theme, themePackIds, ZEN_TOKENS } from './theme'
 export { fetchThemes, DEFAULT_THEMES_URL } from './themeLoader'
 export type { ThemeMode } from './theme'

@@ -84,6 +84,7 @@ export function registerNodes(defs: NodeDef[], name: string, identity: Identity)
             widgetType: w.type,
             component: w.component,
             minHeight: w.minHeight,
+            minWidth: w.minWidth,
             fill: w.fill,
             dragThrough: w.dragThrough,
             serialize: w.serialize,

@@ -191,9 +191,9 @@ function onUp(e: PointerEvent) {
   align-items: stretch;
   height: 28px;
   box-sizing: border-box;
-  border: 1px solid var(--zen-border, #34343c);
+  border: 1px solid var(--zen-control-border, var(--zen-border, #34343c));
   border-radius: var(--zen-radius, 6px);
-  background: var(--zen-input, #1b1b20);
+  background: var(--zen-field-bg, var(--zen-input, #1b1b20));
   overflow: hidden;
   user-select: none;
   /* `ch` is the advance of "0", and tabular figures make every digit that same advance — so a

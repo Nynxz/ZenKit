@@ -1,0 +1,24 @@
+{
+  "name": "comfyui-zenagent",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "description": "Zen Agent — the ComfyUI agent panel as a ZenKit panel, backed by a local OpenAI-compatible model.",
+  "scripts": {
+    "build": "vite build",
+    "dev": "vite build --watch",
+    "typecheck": "vue-tsc --noEmit"
+  },
+  "dependencies": {
+    "@nynxz/zenkit-client": "workspace:*",
+    "@nynxz/zenkit-ui": "workspace:*",
+    "dompurify": "^3.4.16",
+    "marked": "^18.0.14",
+    "vue": "^3.5.0"
+  },
+  "devDependencies": {
+    "@nynxz/zenkit-nodekit": "workspace:*",
+    "@vitejs/plugin-vue": "^5.2.3",
+    "vite": "^6.3.5"
+  }
+}

@@ -1,24 +1,14 @@
 import { app } from '@comfy/app'
-import { createApp, type Component } from 'vue'
 // The pack version, read from package.json so it cannot drift from what ships.
 import { version } from '../package.json'
-import { registerZenPlugin, type ZenPanelDef, type PanelContext } from '@nynxz/zenkit-client'
+import { getZenKit, mountVue, registerZenPlugin, type ZenPanelDef } from '@nynxz/zenkit-client'
+import { viewerCapabilities } from '@/lib/viewerCapabilities'
 import MediaViewer from '@/components/MediaViewer.vue'
 import AssetBrowser from '@/components/AssetBrowser.vue'
 import TimerPanel from '@/components/TimerPanel.vue'
 import SyncControls from '@/components/SyncControls.vue'
 import ChannelPreview from '@/components/ChannelPreview.vue'
 import { mountNodeControls } from '@/lib/mountControls'
-
-// Mount a Vue component into a panel body; `withCtx` forwards the panel's persisted
-// PanelContext as a `ctx` prop (multi-instance panels use it for per-instance state).
-function mounter(component: Component, withCtx = false) {
-  return (el: HTMLElement, ctx?: PanelContext) => {
-    const a = createApp(component, withCtx ? { ctx } : undefined)
-    a.mount(el)
-    return () => a.unmount()
-  }
-}
 
 // ZenSuite — the ZenKit core panel pack. Panels are registered (discoverable in the
 // Start menu) but none auto-open; users launch what they want.
@@ -27,7 +17,7 @@ const PANELS: ZenPanelDef[] = [
     id: 'zensuite:viewer',
     title: 'Media Viewer',
     icon: 'mdi mdi-image-multiple-outline',
-    render: mounter(MediaViewer, true),
+    render: mountVue(MediaViewer),
     width: 560,
     height: 600,
     minWidth: 320,
@@ -38,7 +28,7 @@ const PANELS: ZenPanelDef[] = [
     id: 'zensuite:assets',
     title: 'Asset Browser',
     icon: 'mdi mdi-folder-multiple-image',
-    render: mounter(AssetBrowser),
+    render: mountVue(AssetBrowser),
     width: 980,
     height: 660,
     minWidth: 460,
@@ -48,7 +38,7 @@ const PANELS: ZenPanelDef[] = [
     id: 'zensuite:timer',
     title: 'Timer',
     icon: 'mdi mdi-timer-outline',
-    render: mounter(TimerPanel),
+    render: mountVue(TimerPanel),
     width: 360,
     height: 640,
     minWidth: 260,
@@ -73,6 +63,7 @@ app.registerExtension({
       plugin: 'ZenSuite',
       version,
       panels: PANELS,
+      capabilities: viewerCapabilities(() => getZenKit()!),
     })
   },
   // Replace a node's raw widgets with a cog-toggled ZenKit control mounted on the node

@@ -7,4 +7,5 @@ export default zenPluginConfig({
   name: 'comfyui-zenkit',
   configUrl: import.meta.url,
   alias: workspaceAliases,
+  sharedRuntime: true,
 })

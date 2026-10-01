@@ -44,8 +44,11 @@ export async function listAssets(root: AssetRoot): Promise<AssetList> {
   return r.json()
 }
 
-export function thumbUrl(root: AssetRoot, rel: string, size = 256): string {
-  return `/zensuite/thumb?root=${root}&rel=${encodeURIComponent(rel)}&size=${size}`
+/** A small JPEG of an image, or a video's first frame. `version` (the file's mtime) goes in the
+ *  URL so the server can let the browser cache it indefinitely: a changed file is a new URL. */
+export function thumbUrl(root: AssetRoot, rel: string, size = 256, version?: number): string {
+  const v = version ? `&v=${Math.round(version)}` : ''
+  return `/zensuite/thumb?root=${root}&rel=${encodeURIComponent(rel)}&size=${size}${v}`
 }
 
 /** Full-resolution / video URL via ComfyUI's own view route (output/input/temp). */

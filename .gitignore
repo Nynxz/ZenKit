@@ -10,4 +10,5 @@ __pycache__/
 # Built frontends are release artifacts, not source: CI builds and publishes them. A plain
 # `git clone` into custom_nodes therefore has no frontend until `pnpm build` runs.
 plugins/*/js/
+plugins/ComfyUI-ZenKit/runtime/
 

@@ -20,8 +20,8 @@ defineProps<{ title?: string; icon?: string }>()
   align-items: center;
   gap: 8px;
   padding: 7px 9px;
-  border-bottom: 1px solid var(--zen-border, #3a3a44);
-  background: var(--zen-surface, #202026);
+  border-bottom: 1px solid var(--zen-surface-border, var(--zen-border, #3a3a44));
+  background: var(--zen-chrome-bg, var(--zen-surface, #202026));
 }
 .tb-icon {
   font-size: 15px;

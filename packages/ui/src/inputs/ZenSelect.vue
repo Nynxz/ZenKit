@@ -3,6 +3,7 @@
 // popup can't be styled) and the menu is teleported to <body> with fixed coords so
 // it escapes the panel's overflow:hidden. options: strings or {value,label,icon}.
 import { computed, onBeforeUnmount, ref } from 'vue'
+import { inOtherLayer, openLayer } from '../overlays/layers'
 type Val = string
 type Opt = Val | { value: Val; label?: string; icon?: string }
 const props = defineProps<{ modelValue: Val; options: Opt[]; placeholder?: string }>()
@@ -17,11 +18,12 @@ const current = computed(() => props.options.map(norm).find((o) => o.value === p
 
 function onDoc(e: PointerEvent) {
   const t = e.target as Node
-  if (root.value?.contains(t) || menuRef.value?.contains(t)) return
+  if (root.value?.contains(t) || menuRef.value?.contains(t) || inOtherLayer(e.target, menuRef.value)) return
   close()
 }
+let layer: ReturnType<typeof openLayer> | null = null
 function onKey(e: KeyboardEvent) {
-  if (e.key === 'Escape') close()
+  if (e.key === 'Escape' && layer?.isTop()) close()
 }
 // Close on scroll/resize so the fixed-position menu never detaches from its
 // trigger — but ignore scrolling *inside* the menu itself.
@@ -46,6 +48,7 @@ function openMenu() {
       : { top: r.bottom + 4 + 'px', left: r.left + 'px', minWidth: r.width + 'px' }
   }
   open.value = true
+  layer ??= openLayer()
   setTimeout(() => {
     window.addEventListener('pointerdown', onDoc, true)
     window.addEventListener('keydown', onKey, true)
@@ -56,6 +59,8 @@ function openMenu() {
 function close() {
   if (!open.value) return
   open.value = false
+  layer?.release()
+  layer = null
   window.removeEventListener('pointerdown', onDoc, true)
   window.removeEventListener('keydown', onKey, true)
   window.removeEventListener('scroll', onScroll, true)
@@ -76,7 +81,7 @@ onBeforeUnmount(close)
       <i class="mdi mdi-menu-down zs-caret" />
     </button>
     <Teleport to="body">
-      <div v-if="open" ref="menuRef" class="zs-menu zen-scroll" :style="menuStyle" role="listbox">
+      <div v-if="open" ref="menuRef" data-zen-layer class="zs-menu zen-scroll" :style="menuStyle" role="listbox">
         <button
           v-for="o in options"
           :key="String(norm(o).value)"
@@ -116,15 +121,16 @@ onBeforeUnmount(close)
   font-size: 12px;
   font-family: inherit;
   cursor: pointer;
-  background: var(--zen-surface, #202026);
+  background: var(--zen-control-bg, var(--zen-surface, #202026));
   color: var(--zen-text, #e5e5ea);
-  border: 1px solid var(--zen-border, #3a3a44);
+  border: 1px solid var(--zen-control-border, var(--zen-border, #3a3a44));
   border-radius: var(--zen-radius, 7px);
   transition: border-color 0.12s ease;
 }
 .zs-trigger:hover,
 .zen-select.open .zs-trigger {
-  border-color: var(--zen-accent, #3b82f6);
+  border-color: var(--zen-control-hover-border, var(--zen-accent, #3b82f6));
+  background: var(--zen-control-hover-bg, var(--zen-control-bg));
 }
 .zs-label {
   flex: 1;
@@ -152,9 +158,9 @@ onBeforeUnmount(close)
   display: flex;
   flex-direction: column;
   gap: 1px;
-  background: var(--zen-surface, #202026);
-  border: 1px solid var(--zen-border, #3a3a44);
-  border-radius: var(--zen-radius, 8px);
+  background: var(--zen-chrome-bg, var(--zen-surface, #202026));
+  border: 1px solid var(--zen-surface-border, var(--zen-border, #3a3a44));
+  border-radius: var(--zen-radius-surface, var(--zen-radius, 8px));
   box-shadow: 0 10px 30px rgba(0, 0, 0, 0.5);
   font-family: var(--p-font-family, system-ui, sans-serif);
 }

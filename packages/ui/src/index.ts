@@ -69,6 +69,23 @@ export { default as ZenWindow } from './overlays/ZenWindow.vue'
 // feature
 export { default as ZenLightbox } from './feature/ZenLightbox.vue'
 
+// LoRA picker — the UI only. A host pack owns its own routes and registers them once with
+// `setLoraSource(...)`; the components never reference a pack's endpoints.
+export { default as LoraPicker } from './feature/lora/LoraPicker.vue'
+export { default as LoraBrowser } from './feature/lora/LoraBrowser.vue'
+export { default as LoraThumb } from './feature/lora/LoraThumb.vue'
+export { default as LoraDetail } from './feature/lora/LoraDetail.vue'
+export { setLoraSource } from './feature/lora/loraLibrary'
+export { openLoraDetail, setLoraDetailOpener } from './feature/lora/loraOverlays'
+export * as loraLibrary from './feature/lora/loraLibrary'
+export type {
+  LoraExample,
+  LoraInfo,
+  LoraItem,
+  LoraPreviewKind,
+  LoraSource,
+} from './feature/lora/types'
+
 // data
 export { default as JsonTree } from './data/JsonTree.vue'
 

@@ -62,5 +62,8 @@
       "--sidebar-ring": "oklch(0.76 0.22 350)",
       "--cute-heart": "#ff6fb5"
     }
+  },
+  "splash": {
+    "preset": "hearts"
   }
 }

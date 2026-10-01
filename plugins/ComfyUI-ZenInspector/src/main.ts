@@ -1,8 +1,7 @@
 import { app } from '@comfy/app'
-import { createApp } from 'vue'
 // The pack version, read from package.json so it cannot drift from what ships.
 import { version } from '../package.json'
-import { registerZenPlugin, type ZenPanelDef } from '@nynxz/zenkit-client'
+import { mountVue, registerZenPlugin, type ZenPanelDef } from '@nynxz/zenkit-client'
 import Inspector from '@/Inspector.vue'
 
 // Zen Inspector — the debug panel for the whole install: every nodepack and frontend
@@ -19,11 +18,7 @@ const PANEL: ZenPanelDef = {
   height: 680,
   minWidth: 560,
   minHeight: 380,
-  render(el) {
-    const a = createApp(Inspector)
-    a.mount(el)
-    return () => a.unmount()
-  },
+  render: mountVue(Inspector),
 }
 
 app.registerExtension({

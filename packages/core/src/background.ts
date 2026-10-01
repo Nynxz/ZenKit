@@ -8,7 +8,16 @@
 // ComfyUI-NynxzExperimental, which had forked this module to add them. Its copy is gone; this is
 // the one implementation again.
 import { app } from '@comfy/app'
-import type { BackgroundContext, ZenBackground, ZenBackgrounds } from '@nynxz/zenkit-types'
+import type {
+  BackgroundContext,
+  BackgroundFinish,
+  BackgroundImageOptions,
+  ZenBackground,
+  ZenBackgroundEffect,
+  ZenBackgrounds,
+} from '@nynxz/zenkit-types'
+import { imageBackground, imageOptions, setImageOptions } from './backgroundImage'
+import { listEffects, registerEffect, resolveEffects } from './backgroundEffects'
 
 // The LiteGraph canvas bits this touches. `app.canvas` is strictly typed as LGraphCanvas, but we
 // reach a couple of internal fields (_pattern/_bg_img) too, so go through this loose view.
@@ -23,6 +32,47 @@ interface LGCanvas {
 }
 function lgCanvas(): LGCanvas | null {
   return (app.canvas as unknown as LGCanvas | null) ?? null
+}
+
+// Where the background paints: behind the graph canvas, or — while app mode hides the graph —
+// behind app mode's whole workspace row, at a fixed view since there is no graph to pan.
+interface Surface {
+  el: HTMLElement
+  width: number
+  height: number
+  ds?: { scale?: number; offset?: number[] }
+}
+const APP_HOST_ATTR = 'data-zen-app-bg'
+// App mode's side panels are opaque cards; over the background they become frosted glass so the
+// background reads as one surface behind the whole view rather than a hole in the middle.
+const APP_HOST_CSS = `
+[${APP_HOST_ATTR}] { background-color: transparent; }
+[${APP_HOST_ATTR}] #linearCenterPanel { background-image: none; }
+[${APP_HOST_ATTR}] .p-splitter,
+[${APP_HOST_ATTR}] .p-splitterpanel:not(.arrange-panel) { background: transparent; }
+[${APP_HOST_ATTR}] .arrange-panel {
+  background-color: color-mix(in srgb, var(--comfy-menu-bg) 78%, transparent);
+  backdrop-filter: blur(14px);
+}
+[${APP_HOST_ATTR}] .arrange-panel .bg-comfy-menu-bg { background-color: transparent; }
+`
+function appHost(): HTMLElement | null {
+  const el = document.querySelector('[data-testid="linear-workspace-column"]')?.parentElement
+  return el instanceof HTMLElement && el.getBoundingClientRect().width > 0 ? el : null
+}
+function ensureAppHostCss() {
+  if (document.getElementById('zenkit-app-bg')) return
+  const style = document.createElement('style')
+  style.id = 'zenkit-app-bg'
+  style.textContent = APP_HOST_CSS
+  document.head.append(style)
+}
+function surfaceFor(lg: LGCanvas): Surface {
+  const panel = appHost()
+  if (!panel) return { el: lg.canvas, width: lg.canvas.width, height: lg.canvas.height, ds: lg.ds }
+  const r = panel.getBoundingClientRect()
+  const dpr = window.devicePixelRatio || 1
+  return { el: panel, width: Math.round(r.width * dpr), height: Math.round(r.height * dpr) }
 }
 
 /* ── color resolution (packs emit oklch, which canvas can't parse) ──────────── */
@@ -458,10 +508,31 @@ const grid: ZenBackground = {
 /* ── registry + host ───────────────────────────────────────────────────────── */
 const registry = new Map<string, ZenBackground>()
 registry.set(grid.id, grid)
+registry.set(imageBackground.id, imageBackground)
 let desiredId: string | null = 'grid'
 
+const clamp = (v: number, lo: number, hi: number) => Math.min(hi, Math.max(lo, v))
+
+/** The finish's resting state: entirely off, so the layer stays `display:none` until asked for. */
+const FINISH_OFF: Required<BackgroundFinish> = { dim: 0, blur: 0, saturate: 1, vignette: 0 }
+
+interface FxLayer {
+  def: ZenBackgroundEffect
+  state: unknown
+  canvas: HTMLCanvasElement
+}
+
 class Host {
+  /** All Zen layers live in one absolutely-positioned container inserted before LiteGraph's
+   *  canvas. Owning the container (rather than inserting siblings) is what keeps paint order
+   *  honest: background → finish → effects, however many times any one of them is rebuilt. */
+  private stack: HTMLDivElement | null = null
   private layer: HTMLCanvasElement | null = null
+  private finishEl: HTMLDivElement | null = null
+  private fx: FxLayer[] = []
+  private fxIds: string[] = []
+  private finish: Required<BackgroundFinish> = { ...FINISH_OFF }
+  private fxOpacity = 1 // effect-layer strength, 0–1 (see setEffectIntensity)
   private raf = 0
   private last = 0
   private active: ZenBackground | null = null
@@ -512,30 +583,185 @@ class Host {
     requestAnimationFrame(() => this.whenReady(tries + 1))
   }
 
-  private makeLayer(lg: { canvas: HTMLCanvasElement }) {
-    const el = lg.canvas
-    const c = document.createElement('canvas')
-    c.setAttribute('aria-hidden', 'true')
-    c.dataset.zenkitBg = ''
-    Object.assign(c.style, {
+  private static fill(el: HTMLElement) {
+    el.setAttribute('aria-hidden', 'true')
+    Object.assign(el.style, {
       position: 'absolute',
       inset: '0',
       width: '100%',
       height: '100%',
       pointerEvents: 'none',
     })
-    el.parentElement?.insertBefore(c, el)
-    this.layer = c
+  }
+
+  private makeCanvas(tag: string): HTMLCanvasElement {
+    const c = document.createElement('canvas')
+    c.dataset.zenkitLayer = tag
+    Host.fill(c)
+    return c
+  }
+
+  /** Build the whole layer stack in paint order. The container carries no z-index, opacity or
+   *  filter of its own — those would make it a backdrop root and stop the finish's
+   *  `backdrop-filter` from seeing the background painted beneath it. */
+  private buildStack(lg: { canvas: HTMLCanvasElement }) {
+    this.teardownStack()
+    const el = lg.canvas
+    const box = document.createElement('div')
+    box.dataset.zenkitBg = ''
+    Host.fill(box)
+    box.style.overflow = 'hidden'
+
+    this.layer = this.makeCanvas('background')
+    box.appendChild(this.layer)
+
+    this.finishEl = document.createElement('div')
+    this.finishEl.dataset.zenkitLayer = 'finish'
+    Host.fill(this.finishEl)
+    box.appendChild(this.finishEl)
+    this.applyFinish()
+
+    for (const def of resolveEffects(this.fxIds)) {
+      const canvas = this.makeCanvas(`fx:${def.id}`)
+      canvas.style.opacity = String(this.fxOpacity)
+      box.appendChild(canvas)
+      this.fx.push({ def, state: null, canvas })
+    }
+
+    el.parentElement?.insertBefore(box, el)
+    this.stack = box
     this.resize()
   }
 
-  private resize() {
-    const el = lgCanvas()?.canvas
-    const c = this.layer
-    if (!el || !c) return
-    if (c.width !== el.width || c.height !== el.height) {
-      c.width = el.width
-      c.height = el.height
+  private teardownStack() {
+    for (const f of this.fx) {
+      try {
+        f.def.dispose?.(f.state)
+      } catch (e) {
+        console.error('[ZenKit] background effect dispose failed', f.def.id, e)
+      }
+    }
+    this.fx = []
+    this.stack?.parentElement?.removeAttribute(APP_HOST_ATTR)
+    this.stack?.remove()
+    this.stack = null
+    this.layer = null
+    this.finishEl = null
+  }
+
+  private initEffects(ctx: BackgroundContext) {
+    for (const f of this.fx) {
+      try {
+        f.state = f.def.init?.({ ...ctx, layer: f.canvas }) ?? {}
+      } catch (e) {
+        console.error('[ZenKit] background effect init failed', f.def.id, e)
+        f.state = {}
+      }
+    }
+  }
+
+  /** Push the finish onto its layer. Pure CSS — no per-frame cost, and it composites over
+   *  whatever the background layer painted, shader or picture alike. */
+  private applyFinish() {
+    const el = this.finishEl
+    if (!el) return
+    const f = this.finish
+    const on = f.dim > 0 || f.blur > 0 || f.saturate !== 1 || f.vignette > 0
+    el.style.display = on ? '' : 'none'
+    if (!on) return
+    const filters: string[] = []
+    if (f.blur > 0) filters.push(`blur(${f.blur}px)`)
+    if (f.saturate !== 1) filters.push(`saturate(${f.saturate})`)
+    const filter = filters.join(' ')
+    el.style.backdropFilter = filter
+    // Safari still wants the prefix; `style` has no typed slot for it.
+    ;(el.style as unknown as Record<string, string>).webkitBackdropFilter = filter
+    // Dim in the THEME's background colour, not black — a veil that tints with the theme
+    // instead of draining toward grey.
+    el.style.backgroundColor =
+      f.dim > 0
+        ? `color-mix(in srgb, var(--zen-bg, #121212) ${f.dim}%, transparent)`
+        : 'transparent'
+    el.style.backgroundImage =
+      f.vignette > 0
+        ? `radial-gradient(ellipse at 50% 45%, transparent 40%, color-mix(in srgb, var(--zen-bg, #121212) ${f.vignette}%, transparent) 100%)`
+        : 'none'
+  }
+
+  setFinish(next: BackgroundFinish) {
+    this.finish = {
+      dim: clamp(next.dim ?? this.finish.dim, 0, 100),
+      blur: Math.max(0, next.blur ?? this.finish.blur),
+      saturate: Math.max(0, next.saturate ?? this.finish.saturate),
+      vignette: clamp(next.vignette ?? this.finish.vignette, 0, 100),
+    }
+    this.applyFinish()
+  }
+
+  finishState(): Required<BackgroundFinish> {
+    return { ...this.finish }
+  }
+
+  setEffects(ids: string[]) {
+    const next = resolveEffects(ids).map((f) => f.id)
+    if (next.length === this.fxIds.length && next.every((id, i) => id === this.fxIds[i])) return
+    this.fxIds = next
+    // Rebuilding the stack is the honest way to re-order layers; it only happens on a settings
+    // change. Cycling through `setActive(null)` rather than poking `this.active` keeps the
+    // background's own dispose → init running exactly as a background switch would, so a WebGL
+    // context is never orphaned.
+    const id = this.active?.id
+    if (id && lgCanvas()?.canvas) {
+      this.setActive(null)
+      this.setActive(id)
+    }
+  }
+
+  effectIds(): string[] {
+    return [...this.fxIds]
+  }
+
+  /** Scale every effect layer at once. Layer opacity rather than a per-effect parameter, so it
+   *  works uniformly on effects this module has never heard of. */
+  setEffectIntensity(pct: number) {
+    this.fxOpacity = clamp(pct, 0, 100) / 100
+    for (const f of this.fx) f.canvas.style.opacity = String(this.fxOpacity)
+  }
+
+  effectIntensity(): number {
+    return Math.round(this.fxOpacity * 100)
+  }
+
+  private resize(surface?: Surface) {
+    const lg = lgCanvas()
+    const s = surface ?? (lg?.canvas ? surfaceFor(lg) : null)
+    if (!s) return
+    for (const c of [this.layer, ...this.fx.map((f) => f.canvas)]) {
+      if (!c) continue
+      if (c.width !== s.width || c.height !== s.height) {
+        c.width = s.width
+        c.height = s.height
+      }
+    }
+  }
+
+  /** Keep the stack behind whichever surface is showing. App mode's row is isolated so the
+   *  stack can sit under its content without dropping behind the row's own ancestors. */
+  private place(surface: Surface, lg: LGCanvas) {
+    const box = this.stack
+    if (!box) return
+    if (surface.el === lg.canvas) {
+      if (box.nextSibling === lg.canvas) return
+      box.parentElement?.removeAttribute(APP_HOST_ATTR)
+      box.style.zIndex = ''
+      lg.canvas.parentElement?.insertBefore(box, lg.canvas)
+    } else if (box.parentElement !== surface.el) {
+      ensureAppHostCss()
+      surface.el.style.isolation = 'isolate'
+      surface.el.style.position ||= 'relative'
+      surface.el.setAttribute(APP_HOST_ATTR, '')
+      box.style.zIndex = '-1'
+      surface.el.prepend(box)
     }
   }
 
@@ -559,14 +785,11 @@ class Host {
     this.saved = {}
   }
 
-  private buildCtx(
-    lg: { canvas: HTMLCanvasElement; ds?: { scale?: number; offset?: number[] } },
-    now: number,
-  ): BackgroundContext {
+  private buildCtx(surface: Surface, now: number): BackgroundContext {
     const c = this.layer!
-    const off = lg.ds?.offset || [0, 0]
-    const scale = lg.ds?.scale ?? 1
-    const r = lg.canvas.getBoundingClientRect()
+    const off = surface.ds?.offset || [0, 0]
+    const scale = surface.ds?.scale ?? 1
+    const r = surface.el.getBoundingClientRect()
     // Device pixels per CSS pixel for the graph canvas. We derive this from the canvas itself
     // (backing-store width ÷ CSS width) rather than reading window.devicePixelRatio, because
     // browser page zoom shifts devicePixelRatio independently of LiteGraph's backing store — so
@@ -671,8 +894,7 @@ class Host {
     }
     this.active = null
     this.state = null
-    this.layer?.remove()
-    this.layer = null
+    this.teardownStack()
 
     const def = targetId ? registry.get(targetId) : undefined
     if (!def) {
@@ -681,14 +903,19 @@ class Host {
       return
     }
     this.active = def
-    this.makeLayer(lg)
+    this.buildStack(lg)
     this.suppress(lg)
+    const surface = surfaceFor(lg)
+    this.place(surface, lg)
+    this.resize(surface)
+    const ctx0 = this.buildCtx(surface, performance.now())
     try {
-      this.state = def.init?.(this.buildCtx(lg, performance.now())) ?? {}
+      this.state = def.init?.(ctx0) ?? {}
     } catch (e) {
       console.error('[ZenKit] background init failed', e)
       this.state = {}
     }
+    this.initEffects(ctx0)
     lg.setDirty?.(true, true)
     const loop = (now: number) => {
       this.raf = requestAnimationFrame(loop)
@@ -700,7 +927,9 @@ class Host {
   private tick(now: number) {
     const lg = lgCanvas()
     if (!this.active || !this.layer || !lg) return
-    this.resize()
+    const surface = surfaceFor(lg)
+    this.place(surface, lg)
+    this.resize(surface)
     if (lg.clear_background_color || lg.background_image) {
       lg.background_image = ''
       lg.clear_background_color = ''
@@ -708,13 +937,24 @@ class Host {
       lg._bg_img = undefined
       lg.setDirty?.(false, true)
     }
-    const c = this.buildCtx(lg, now)
+    const c = this.buildCtx(surface, now)
     this.last = now
     try {
       this.active.frame(c, this.state)
     } catch (e) {
       console.error('[ZenKit] background frame failed; disabling', e)
       this.setActive(null)
+      return // the stack is gone; the effect passes below would draw into detached canvases
+    }
+    // Each effect draws into its own canvas — same context, different layer.
+    for (const f of this.fx) {
+      try {
+        f.def.frame({ ...c, layer: f.canvas }, f.state)
+      } catch (e) {
+        console.error('[ZenKit] background effect failed; dropping it', f.def.id, e)
+        this.setEffects(this.fxIds.filter((id) => id !== f.def.id))
+        return
+      }
     }
   }
 }
@@ -723,6 +963,37 @@ const host = new Host()
 
 /* ── public surface ─────────────────────────────────────────────────────────── */
 const BG_LS = 'zenkit.bg.v1'
+const KIND_LS = 'zenkit.bg.kind.v1'
+
+/** Which background the enable toggle turns ON (persisted; default the shader grid). Kept apart
+ *  from the enabled flag so flipping the toggle off and on again returns you to YOUR background
+ *  rather than snapping back to the grid. */
+function storedKind(): string {
+  try {
+    return localStorage.getItem(KIND_LS) || grid.id
+  } catch {
+    return grid.id
+  }
+}
+let desiredKind = storedKind()
+
+/** The background chosen in settings — what `setBackgroundEnabled(true)` will activate. */
+export function backgroundKind(): string {
+  return desiredKind
+}
+
+/** Choose the background ('grid', 'image', or any registered id). Applies immediately when the
+ *  background is enabled; otherwise it is remembered for the next time it is switched on. */
+export function setBackgroundKind(id: string): void {
+  const next = id && id !== 'none' && registry.has(id) ? id : grid.id
+  desiredKind = next
+  try {
+    localStorage.setItem(KIND_LS, next)
+  } catch {
+    /* ignore */
+  }
+  if (backgroundEnabled()) host.setActive(next)
+}
 
 /** Whether the background is enabled (persisted; default on). */
 export function backgroundEnabled(): boolean {
@@ -740,12 +1011,62 @@ export function setBackgroundEnabled(on: boolean) {
   } catch {
     /* ignore */
   }
-  host.setActive(on ? 'grid' : null)
+  host.setActive(on ? desiredKind : null)
 }
 
-export function startBackground(id: string | null = 'grid') {
-  desiredId = backgroundEnabled() ? id : null
+export function startBackground(id: string | null = null) {
+  desiredId = backgroundEnabled() ? (id ?? desiredKind) : null
   host.mount()
+}
+
+/** Point the `image` background at a picture. `url` takes an http(s) URL, a `data:` URI, or a
+ *  same-origin path — ComfyUI's `/view?filename=…&type=output` is the useful one. This does not
+ *  switch the background; pair it with `setBackgroundKind('image')`. */
+export function setBackgroundImage(opts: BackgroundImageOptions): void {
+  setImageOptions(opts)
+}
+
+/** The image background's current settings. */
+export function backgroundImage(): Required<BackgroundImageOptions> {
+  return imageOptions()
+}
+
+/** The dim / frost / vignette layer over the background. Merges with what is already set, so
+ *  `setBackgroundFinish({ blur: 12 })` leaves the dim alone. */
+export function setBackgroundFinish(finish: BackgroundFinish): void {
+  host.setFinish(finish)
+}
+
+/** The finish as it currently stands. */
+export function backgroundFinish(): Required<BackgroundFinish> {
+  return host.finishState()
+}
+
+/** Enable exactly this set of overlay effects (unknown ids are ignored). Effects paint above the
+ *  background and finish, so they are only visible while a ZenKit background is on. */
+export function setBackgroundEffects(ids: string[]): void {
+  host.setEffects(ids)
+}
+
+/** Currently enabled effect ids. */
+export function backgroundEffects(): string[] {
+  return host.effectIds()
+}
+
+/** 0–100 — how strongly the overlay effects read. Applied as layer opacity, so one knob
+ *  scales every active effect, including ones another plugin registered. */
+export function setBackgroundEffectIntensity(pct: number): void {
+  host.setEffectIntensity(pct)
+}
+
+/** The current effect intensity, 0–100. */
+export function backgroundEffectIntensity(): number {
+  return host.effectIntensity()
+}
+
+/** Every registered overlay effect — what a settings UI lists. */
+export function backgroundEffectList(): { id: string; label: string }[] {
+  return listEffects()
 }
 
 export const backgrounds: ZenBackgrounds = {
@@ -755,6 +1076,15 @@ export const backgrounds: ZenBackgrounds = {
   set: (id) => host.setActive(id),
   current: () => host.activeBackgroundId(),
   list: () => [...registry.values()].map((b) => ({ id: b.id, label: b.label })),
+  setImage: (opts) => setImageOptions(opts),
+  setFinish: (finish) => host.setFinish(finish),
+  effects: {
+    register: (fx) => registerEffect(fx),
+    set: (ids) => host.setEffects(ids),
+    active: () => host.effectIds(),
+    list: () => listEffects(),
+    setIntensity: (pct) => host.setEffectIntensity(pct),
+  },
 }
 
 /** Cursor-follow behaviour for the grid: 'snap' (1:1, the classic look), 'follow' (the influence

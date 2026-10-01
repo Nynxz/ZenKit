@@ -3,6 +3,7 @@
 // import every ZenKit type from @nynxz/zenkit-client.
 export * from '@nynxz/zenkit-types'
 import type {
+  Capability,
   AppHandle,
   AppLocation,
   AppRegistration,
@@ -10,6 +11,8 @@ import type {
   ChannelImage,
   ChannelInput,
   Job,
+  JobHandle,
+  JobStartOptions,
   PanelHandle,
   PanelRegistration,
   PanelSpec,
@@ -20,6 +23,7 @@ import type {
   ThemePack,
   ViewerHandle,
   ViewerItem,
+  ViewerOpenOptions,
   ZenBackground,
   ZenKitApi,
 } from '@nynxz/zenkit-types'
@@ -60,14 +64,20 @@ export function hasZenKit(): boolean {
   return getZenKit() != null
 }
 
-/** ms to wait for ZenKit before deciding it's absent (load order is handled by whenZen). */
+/** ms to wait for ZenKit before deciding it's absent, when the host never announced itself. */
 export const ZEN_CONNECT_TIMEOUT = 6000
 
-/** Resolve ZenKit when ready, or null after `timeout` ms if it never loads (either load order). */
+/** Resolve ZenKit when ready. When the host has announced itself (`window.ZenKitPending`)
+ *  this waits as long as installing takes; otherwise it gives up with null after `timeout`. */
 export function whenZen(timeout = ZEN_CONNECT_TIMEOUT): Promise<ZenKitApi | null> {
   const now = getZenKit()
   if (now) return now.ready ?? Promise.resolve(now)
   if (typeof window === 'undefined') return Promise.resolve(null)
+  if (window.ZenKitPending) {
+    return new Promise((resolve) =>
+      window.addEventListener('zen:ready', () => resolve(getZenKit()), { once: true }),
+    )
+  }
   return new Promise((resolve) => {
     let done = false
     const finish = (v: ZenKitApi | null) => {
@@ -172,6 +182,9 @@ export interface ZenPluginDef {
   /** Node-widget renderers, keyed by widget `type` — registered cross-bundle so any node's
    *  matching widget renders through it. */
   widgetViews?: Record<string, WidgetView>
+  /** Actions this plugin offers other plugins and agents (agents see each one as a tool). A
+   *  short id ('search') becomes '<id>.search'; an id with a '.' is kept as given. */
+  capabilities?: Capability[]
   /** Imperative escape hatch for anything the declarative surfaces don't cover. Runs once
    *  ZenKit is ready, with the live API + this plugin's resolved identity; return a cleanup. */
   setup?: (zen: ZenKitApi, plugin: { id: string; namespace: string }) => void | (() => void)
@@ -217,6 +230,8 @@ function prefixId(pluginId: string, id: string): string {
 
 /** Build the flat introspection record reported to `zen.plugins.register` (the Inspector's
  *  client-side half; Python nodes/routes are merged in by the Inspector via /zenkit/manifest). */
+const capabilityId = (plugin: string, id: string) => (id.includes('.') ? id : `${plugin}.${id}`)
+
 function buildRecord(def: ZenPluginDef, id: string, namespace: string): RegisteredPlugin {
   return {
     id,
@@ -247,6 +262,7 @@ function buildRecord(def: ZenPluginDef, id: string, namespace: string): Register
       spawn: s.spawn,
     })),
     widgetViews: Object.keys(def.widgetViews ?? {}),
+    capabilities: (def.capabilities ?? []).map((c) => capabilityId(id, c.id)),
   }
 }
 
@@ -334,6 +350,8 @@ export async function registerZenPlugin(def: ZenPluginDef): Promise<ZenPluginHan
     }
     // Canvas slot-links.
     for (const s of def.slotLinks ?? []) offs.push(zen.graph.slotLink(s))
+    for (const c of def.capabilities ?? [])
+      offs.push(zen.capabilities.register({ ...c, id: capabilityId(id, c.id), plugin: id }))
 
     // Imperative escape hatch.
     let setupCleanup: void | (() => void)
@@ -357,6 +375,7 @@ export async function registerZenPlugin(def: ZenPluginDef): Promise<ZenPluginHan
       [def.backgrounds?.length ?? 0, 'background'],
       [def.channels?.length ?? 0, 'channel'],
       [def.slotLinks?.length ?? 0, 'slot-link'],
+      [def.capabilities?.length ?? 0, 'capability'],
     ]
     const parts = counts.filter(([n]) => n > 0).map(([n, w]) => `${n} ${w}${n === 1 ? '' : 's'}`)
     zlog(`${def.plugin} → connected (${parts.join(', ') || 'no surfaces'})`)
@@ -437,11 +456,22 @@ export async function onJob(cb: (job: Job) => void): Promise<() => void> {
   return zen ? zen.jobs.on(cb) : () => {}
 }
 
+const NO_JOB: JobHandle = { id: '', update: () => {}, done: () => {}, fail: () => {} }
+
+/** Report progress for frontend work; it shows in the taskbar's Jobs widget. Resolves to a
+ *  handle that does nothing when ZenKit isn't installed, so callers never need to check. */
+export async function startJob(name: string, opts?: JobStartOptions): Promise<JobHandle> {
+  const zen = await whenZen()
+  return zen ? zen.jobs.start(name, opts) : NO_JOB
+}
+
+export { useJob } from './useJob'
+
 /** Open the shared ZenKit viewer (fullscreen lightbox) over `items`. Falls back to opening
  *  the current item in a new browser tab when ZenKit isn't installed. */
 export async function openViewer(
   items: ViewerItem[],
-  opts: { index?: number } = {},
+  opts: ViewerOpenOptions = {},
 ): Promise<ViewerHandle | null> {
   const zen = await whenZen()
   if (zen) return zen.viewer.open(items, opts)
@@ -449,6 +479,10 @@ export async function openViewer(
   if (item && typeof window !== 'undefined') window.open(item.src, '_blank', 'noopener')
   return null
 }
+
+export { mountVue } from './mountVue'
+export { useLightbox } from './useLightbox'
+export type { Lightbox } from './useLightbox'
 
 /** Launch a full-screen app (optionally at a route) if ZenKit is present, else null. */
 export async function openApp(
@@ -510,11 +544,22 @@ export const COMFY_ASSET_MIME = 'application/x-comfy-asset-info'
 /** Where a file already lives in ComfyUI (matches its ResultItem `type`). */
 export type ComfyAssetType = 'input' | 'output' | 'temp'
 
+/** Resolve a possibly-relative asset URL against the current page. Returns the input
+ *  unchanged if it cannot be parsed (nothing sensible to fall back to). */
+function absoluteUrl(url: string): string {
+  try {
+    return new URL(url, window.location.href).toString()
+  } catch {
+    return url
+  }
+}
+
 /** Populate a drag event's dataTransfer so dropping the image on the ComfyUI graph
  *  imports it (sets the image widget of the node under the cursor, or loads the file
  *  when dropped on empty canvas). Call from an element's `dragstart`:
  *    <img draggable @dragstart="e => setImageDragData(e, { url, filename })">
- *  `url` should be the full-resolution image URL (e.g. ComfyUI's /view route).
+ *  `url` should be the full-resolution image URL (e.g. ComfyUI's /view route); relative
+ *  paths are resolved against the page before they go on the clipboard.
  *
  *  Pass `type` (+ `filename`/`subfolder`) whenever the file is ALREADY in ComfyUI's
  *  input/output/temp folders — that advertises it as a native Comfy asset, so dropping it
@@ -530,12 +575,21 @@ export function setImageDragData(
     subfolder?: string
     type?: ComfyAssetType
     hasWorkflow?: boolean
+    /** Its media ref (see `ZenMedia`); derived for ComfyUI files when omitted. */
+    ref?: string
   },
   dragImage?: HTMLImageElement | null,
 ): void {
   const dt = e.dataTransfer
   if (!dt) return
-  dt.setData(ZEN_IMAGE_MIME, JSON.stringify(img))
+  // `text/uri-list` MUST be absolute. Chromium validates that type and silently DROPS the
+  // entry when the value is a relative path — and ComfyUI gates every drop path on the type
+  // being present (`onDragOver` won't even mark the node droppable without it), so a
+  // relative '/view?…' makes the whole drag a no-op with no error anywhere. Resolve it
+  // against the page, exactly as ComfyUI's own asset cards do.
+  const url = absoluteUrl(img.url)
+  const ref = img.ref ?? (img.filename && img.type ? comfyRef(img.type, img.subfolder, img.filename) : refFromUrl(url))
+  dt.setData(ZEN_IMAGE_MIME, JSON.stringify({ ...img, url, ref }))
   // Native Comfy asset → let loader nodes reuse the server-side file as-is.
   if (img.filename && img.type) {
     dt.setData(
@@ -550,8 +604,8 @@ export function setImageDragData(
   }
   // Fallback for drops that can't use the asset path (empty canvas, older frontends):
   // ComfyUI fetches this URL and treats the bytes as a dropped file.
-  dt.setData('text/uri-list', img.url)
-  dt.setData('text/plain', img.url)
+  dt.setData('text/uri-list', url)
+  dt.setData('text/plain', url)
   dt.effectAllowed = 'copy'
   if (dragImage) {
     try {
@@ -559,6 +613,195 @@ export function setImageDragData(
     } catch {
       /* ignore */
     }
+  }
+}
+
+/** One media item recovered from a drop. */
+export interface DroppedImage {
+  url: string
+  /** Its media ref (see `ZenMedia`) when the drag named one or it is a ComfyUI file. */
+  ref?: string
+  filename?: string
+  kind?: 'image' | 'video' | 'audio'
+  /** True when `url` is an object URL this call minted from a local File. The caller owns it and
+   *  must `URL.revokeObjectURL` when done, or the blob is pinned for the life of the document. */
+  objectUrl?: boolean
+}
+
+const VIDEO_EXT = /\.(mp4|webm|mov|mkv|avi|m4v)(\?|#|$)/i
+const AUDIO_EXT = /\.(mp3|wav|flac|ogg|oga|m4a|aac)(\?|#|$)/i
+
+/** Guess the media kind from a filename or url. A `data:` URI is read from its media type,
+ *  since it has no extension to go on. Defaults to 'image', matching ChannelImage. */
+export function mediaKindOf(nameOrUrl: string): 'image' | 'video' | 'audio' {
+  const s = nameOrUrl || ''
+  const data = /^data:(image|video|audio)\//i.exec(s)
+  if (data) return data[1]!.toLowerCase() as 'image' | 'video' | 'audio'
+  if (VIDEO_EXT.test(s)) return 'video'
+  if (AUDIO_EXT.test(s)) return 'audio'
+  return 'image'
+}
+
+function fileNameFromUrl(url: string): string | undefined {
+  try {
+    const u = new URL(url, window.location.href)
+    // `data:`/`blob:` have no meaningful path — deriving a name yields the whole payload,
+    // which then shows up as the caption. Better to have none.
+    if (u.protocol === 'data:' || u.protocol === 'blob:') return undefined
+    return u.searchParams.get('filename') || u.pathname.split('/').pop() || undefined
+  } catch {
+    return undefined
+  }
+}
+
+/** The media ref of a ComfyUI file: `output/sub/name.png`. */
+function comfyRef(type: string, subfolder: string | undefined, filename: string): string {
+  return [type, subfolder, filename].filter(Boolean).join('/')
+}
+
+/** A ComfyUI `/view?filename=…` URL as a media ref; undefined for any other URL. */
+function refFromUrl(url: string): string | undefined {
+  try {
+    const u = new URL(url, window.location.href)
+    const filename = u.searchParams.get('filename')
+    if (!u.pathname.endsWith('/view') || !filename) return undefined
+    return comfyRef(u.searchParams.get('type') || 'output', u.searchParams.get('subfolder') ?? '', filename)
+  } catch {
+    return undefined
+  }
+}
+
+/** The inverse of `setImageDragData`: recover the media a drop is carrying.
+ *
+ *  Handles, in order of how much they tell us: ZenKit's own drag payload, ComfyUI's asset-info
+ *  (so drags from ITS asset browser work too), a plain URL, and finally local files off the
+ *  desktop. Returns [] when the drop carries nothing usable, so a caller can decline it and let
+ *  the event fall through to ComfyUI.
+ *
+ *  Call `e.preventDefault()` yourself when you accept a drop — ComfyUI's document-level handler
+ *  bails on `defaultPrevented`, which is what stops a drop on your panel from ALSO importing the
+ *  file into the graph. */
+export function readImageDragData(e: DragEvent): DroppedImage[] {
+  const dt = e.dataTransfer
+  if (!dt) return []
+
+  // 1. ZenKit's own payload — the richest: it already carries a resolved absolute url.
+  const zen = safeJson(dt.getData(ZEN_IMAGE_MIME))
+  if (zen && typeof zen.url === 'string' && zen.url) {
+    const filename = typeof zen.filename === 'string' ? zen.filename : fileNameFromUrl(zen.url)
+    const ref = typeof zen.ref === 'string' ? zen.ref : refFromUrl(zen.url)
+    return [{ url: zen.url, ref, filename, kind: mediaKindOf(filename || zen.url) }]
+  }
+
+  // 2. ComfyUI's asset-info — a ResultItem naming a file the server already hosts.
+  const asset = safeJson(dt.getData(COMFY_ASSET_MIME))
+  if (asset && typeof asset.filename === 'string' && asset.filename) {
+    const q = new URLSearchParams({
+      filename: String(asset.filename),
+      subfolder: String(asset.subfolder || ''),
+      type: String(asset.type || 'output'),
+    })
+    const name = String(asset.display_name || asset.filename)
+    const ref = comfyRef(String(asset.type || 'output'), String(asset.subfolder || ''), String(asset.filename))
+    return [{ url: absoluteUrl(`/api/view?${q}`), ref, filename: name, kind: mediaKindOf(name) }]
+  }
+
+  // 3. A plain URL. `file:` is unusable from an http document — fall through to the File below,
+  //    which is how a drag from the desktop actually arrives.
+  const uri = (dt.getData('text/uri-list') || dt.getData('text/plain') || '').split('\n')[0]?.trim()
+  if (uri && /^(https?|data|blob):/i.test(uri)) {
+    const filename = fileNameFromUrl(uri)
+    return [{ url: uri, ref: refFromUrl(uri), filename, kind: mediaKindOf(filename || uri) }]
+  }
+
+  // 4. Local files off the desktop. Object URLs render immediately with no upload round trip;
+  //    the caller revokes them.
+  const files = Array.from(dt.files ?? []).filter((f) => /^(image|video|audio)\//.test(f.type))
+  if (files.length) {
+    return files.map((f) => ({
+      url: URL.createObjectURL(f),
+      filename: f.name,
+      kind: (f.type.split('/')[0] as 'image' | 'video' | 'audio') ?? 'image',
+      objectUrl: true,
+    }))
+  }
+  return []
+}
+
+/** A whole collection in one drag — a gallery, an album, a folder. Dragging only lets a source
+ *  attach data synchronously, so the items travel as a same-origin URL that returns them
+ *  (`MediaList`), fetched by whoever accepts the drop. Set it alongside `setImageDragData` for a
+ *  single representative picture, so targets that only take one image (a loader node) still get
+ *  something sensible. */
+export const ZEN_MEDIA_LIST_MIME = 'application/x-zenkit-media-list'
+
+export interface MediaListRef {
+  /** Returns a `MediaList` as JSON. */
+  url: string
+  title?: string
+  count?: number
+}
+
+export interface MediaList {
+  title?: string
+  items: { url: string; filename?: string; kind?: 'image' | 'video' | 'audio'; label?: string }[]
+}
+
+export function setMediaListDragData(e: DragEvent, list: MediaListRef): void {
+  e.dataTransfer?.setData(
+    ZEN_MEDIA_LIST_MIME,
+    JSON.stringify({ ...list, url: absoluteUrl(list.url) }),
+  )
+}
+
+/** Everything a drop carries, with a dropped media list fetched and expanded; otherwise the same
+ *  as `readImageDragData`. The drop's data is read before anything is awaited — a DataTransfer
+ *  goes blank once its event returns — so call this from the drop handler itself. If the list
+ *  can't be fetched, the drop's single picture (if any) is returned instead. */
+export async function readMediaDrop(
+  e: DragEvent,
+): Promise<{ title?: string; items: DroppedImage[] }> {
+  const single = readImageDragData(e)
+  const ref = safeJson(e.dataTransfer?.getData(ZEN_MEDIA_LIST_MIME) ?? '')
+  if (!ref || typeof ref.url !== 'string') return { items: single }
+  try {
+    const response = await fetch(ref.url, { credentials: 'include' })
+    if (!response.ok) throw new Error(String(response.status))
+    const list = (await response.json()) as MediaList
+    return {
+      title: list.title ?? (typeof ref.title === 'string' ? ref.title : undefined),
+      items: list.items.map((it) => {
+        const url = absoluteUrl(it.url)
+        const filename = it.filename ?? fileNameFromUrl(url)
+        return { url, filename, kind: it.kind ?? mediaKindOf(filename || url) }
+      }),
+    }
+  } catch {
+    return { items: single }
+  }
+}
+
+/** True when a dragover is carrying something `readImageDragData` could use. `dataTransfer` is in
+ *  protected mode during dragover — `getData` returns '' — so this can only look at `types`. */
+export function hasImageDragData(e: DragEvent): boolean {
+  const t = e.dataTransfer?.types
+  if (!t) return false
+  return (
+    t.includes(ZEN_MEDIA_LIST_MIME) ||
+    t.includes(ZEN_IMAGE_MIME) ||
+    t.includes(COMFY_ASSET_MIME) ||
+    t.includes('text/uri-list') ||
+    t.includes('Files')
+  )
+}
+
+function safeJson(raw: string): Record<string, unknown> | null {
+  if (!raw) return null
+  try {
+    const v = JSON.parse(raw)
+    return v && typeof v === 'object' ? (v as Record<string, unknown>) : null
+  } catch {
+    return null
   }
 }
 

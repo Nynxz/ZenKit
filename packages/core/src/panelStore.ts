@@ -2,11 +2,14 @@
 
 import { markRaw, reactive, type InjectionKey } from 'vue'
 import type { ZenBus } from './bus'
+import { setSidebarAutohide as applySidebarAutohide } from './sidebarAutohide'
+import type { DockDrop } from './dockDrop'
 import { ensureStyle, removeStyle } from './dom'
 import { zdebug, zlog } from './log'
 import { focusTiles, isTiled } from './tileStore'
 import type {
   DockSide,
+  PanelApi,
   PanelContext,
   PanelHandle,
   PanelRegistration,
@@ -26,7 +29,12 @@ export interface Panel extends Rect {
   minWidth: number
   minHeight: number
   dockSide: DockSide
-  restoreRect: Rect | null
+  /** Where the panel lives when it is free-floating. Every other layout — maximized, snapped,
+   *  docked, pinned in the sidebar — is somewhere it is *shown*, and leaving it comes back here.
+   *  Only a move or resize of the free panel itself changes it. */
+  floatRect: Rect | null
+  /** Filling a snap zone (half the screen, a quarter…). */
+  snapped: boolean
   ctx: PanelContext
   headerHidden: boolean // header collapsed to a thin draggable sliver
   headerPos: 'top' | 'bottom' // header/sliver at the top or bottom (footer)
@@ -34,9 +42,9 @@ export interface Panel extends Rect {
   instanceOf: string | null // registration id when this is one instance of a multi panel
   persist: boolean // save/restore geometry + ctx state across reloads
   inSidebar: boolean // hosted in ComfyUI's native sidebar (hidden from the host overlay)
-  maximized: boolean // transient maximize state (not persisted)
-  preMax: Rect | null // saved float geom to restore from maximize
+  maximized: boolean // maximize pin; persisted, re-derived against the current viewport
   frame: 'default' | 'none' // 'none' = bare/transparent/click-through, consumer-rendered chrome
+  customTitle: string | null // set through setTitle; persisted over the registered title
 }
 
 // Per-zone tab-group state; tab membership lives on the panels (`dockSide`).
@@ -52,6 +60,7 @@ const DOCK_DEFAULT_SIZE: Record<DockSidePos, number> = { left: 320, right: 320, 
 const LS = 'zenkit.panels.v1'
 const DOCKS_LS = 'zenkit.docks.v1'
 const BRAND_LS = 'zenkit.branding.v1'
+const TASK_ORDER_LS = 'zenkit.taskorder.v1'
 let zTop = 20
 
 // Start-button branding. Two settable layers over COMFY_BRAND, resolved into `state.branding`
@@ -96,7 +105,18 @@ function safeBand(): { top: number; bottom: number } {
   } catch {
     /* ignore */
   }
+  bottom = Math.min(bottom, vh() - floatingBarInset)
   return { top, bottom: Math.max(top + 1, bottom) }
+}
+
+// A floating taskbar reserves no cell (it sits over the canvas), so the band can't measure it;
+// tiling reports how far up it reaches instead.
+let floatingBarInset = 0
+/** Returns whether the inset changed, so the caller can re-fit what depends on the band. */
+export function setFloatingBarInset(px: number): boolean {
+  if (px === floatingBarInset) return false
+  floatingBarInset = px
+  return true
 }
 
 // Viewport metrics used by section-anchoring: full width + the safe band's top/bottom.
@@ -118,6 +138,25 @@ export function clampRect(r: Rect, minW: number, minH: number): Rect {
   const x = Math.max(0, Math.min(r.x, Math.max(0, vw() - w)))
   const y = Math.max(top, Math.min(r.y, Math.max(top, bottom - h)))
   return { x, y, w, h }
+}
+
+//: Inset from the safe band, so a maximized panel still reads as a window rather than a
+//: chromeless takeover.
+const MAX_GAP = 6
+
+// The rect a maximized panel fills, from the LIVE safe band.
+//
+// Derived rather than stored, because "maximized" is a relationship to the viewport and not a
+// size. It used to be computed once, at the moment of maximizing, and then carried like any
+// other float geometry: the resize handler reanchored it with `w`/`h` held fixed, so a panel
+// maximized on a wide screen was clamped smaller when the viewport shrank and never grew back
+// when it returned. Recomputing means the panel tracks the screen in both directions, and it
+// also re-fills when the band itself moves — the taskbar changing edge, a dock opening, or
+// ComfyUI's top menu resizing all reach us as the synthetic resize `tiling.nudgeCanvas` fires.
+export function maximizedRect(minW: number, minH: number): Rect {
+  const { top, bottom } = safeBand()
+  const g = MAX_GAP
+  return clampRect({ x: g, y: top + g, w: vw() - g * 2, h: bottom - top - g * 2 }, minW, minH)
 }
 
 // Centered default floating rect — used on reset and on undock when no prior float size.
@@ -196,11 +235,12 @@ export function createPanelStore(bus: ZenBus) {
     list: [] as Panel[],
     snap: null as Rect | null,
     // side a dragged floating panel would dock into (edge preview)
-    dockDrop: null as DockSidePos | null,
+    dockDrop: null as DockDrop | null,
     finderOpen: false, // the cmd+K Finder overlay
     registry: [] as PanelRegistration[],
     // true while dragging/resizing — ZenHost shields the graph beneath
     interacting: false,
+    dockEdgeLit: null as DockSidePos | null, // the dock whose resize edge is hovered or dragged
     interactCursor: '',
     // resolved branding (user over base) — read this from chrome; write via the setters
     branding: { logo: '', title: '' } as Branding,
@@ -211,21 +251,26 @@ export function createPanelStore(bus: ZenBus) {
     sidebarAvailable: false, // ComfyUI native sidebar present → "Pin to sidebar" enabled
     panelsHidden: false, // taskbar "show desktop" toggle — hide all panels without minimizing
     taskbarPos: 'bottom' as 'top' | 'bottom', // permanent taskbar edge
+    taskbarFloating: false, // bottom taskbar as an inset, rounded card over the canvas instead of an embedded strip
     topbarH: 0, // natural ComfyUI top-menu height (tiling fills this; taskbar sits below it when on top)
     absorbComfyButtons: true, // hide ComfyUI's sidebar-bottom buttons + surface them in the menu
-    absorbCanvasControls: false, // reparent ComfyUI's bottom-right canvas controls into the taskbar
     sidebarAutohide: false, // auto-hide ComfyUI's native left side-toolbar (reveal on edge hover)
     floatingSidebar: true, // restyle ComfyUI's opened sidebar content into a contained floating card (on by default; opt out via the "Restyle sidebar" toggle)
+    themedSplash: true, // draw ComfyUI's startup splash in the active ZenKit theme (from the next load)
     comfyThemeMenu: true, // EXPERIMENTAL: inject a ZenKit theme block into ComfyUI's logo→Theme menu (on by default; opt out)
     pluginsDisabled: [] as string[], // ZenKit-level disabled plugins (hidden from launcher/taskbar)
+    taskOrder: [] as string[], // user order of the taskbar's window buttons (ids; unknown ids sort last)
   })
   try {
     if (localStorage.getItem('zenkit.taskbar.v1') === 'top') state.taskbarPos = 'top'
-    if (localStorage.getItem('zenkit.absorbcomfy.v1') === '1') state.absorbComfyButtons = true
-    if (localStorage.getItem('zenkit.canvasctl.v1') === '1') state.absorbCanvasControls = true
+    if (localStorage.getItem('zenkit.taskbarfloat.v1') === '1') state.taskbarFloating = true
+    if (localStorage.getItem('zenkit.absorbcomfy.v1') === '0') state.absorbComfyButtons = false
     if (localStorage.getItem('zenkit.sidebarautohide.v1') === '1') state.sidebarAutohide = true
     if (localStorage.getItem('zenkit.floatingsidebar.v1') === '0') state.floatingSidebar = false // default on; only an explicit opt-out disables it
+    if (localStorage.getItem('zenkit.themedsplash.v1') === '0') state.themedSplash = false
     if (localStorage.getItem('zenkit.comfythememenu.v1') === '0') state.comfyThemeMenu = false // default on; only an explicit opt-out disables it
+    const to = JSON.parse(localStorage.getItem(TASK_ORDER_LS) || '[]')
+    if (Array.isArray(to)) state.taskOrder = to.map(String)
     const pd = JSON.parse(localStorage.getItem('zenkit.plugins.disabled.v1') || '[]')
     if (Array.isArray(pd)) state.pluginsDisabled = pd.map(String)
     const brand = JSON.parse(localStorage.getItem(BRAND_LS) || '{}') || {}
@@ -236,9 +281,6 @@ export function createPanelStore(bus: ZenBus) {
   }
   // Sidebar-autohide controller state (declared before the apply call below, which
   // runs during store creation — these must be initialized first).
-  let sbEdge: HTMLElement | null = null
-  let sbOver: ((e: PointerEvent) => void) | null = null
-  let sbHideTimer = 0
   resolveBranding()
   applyComfyBarHide(state.absorbComfyButtons)
   applySidebarAutohide(state.sidebarAutohide)
@@ -275,8 +317,14 @@ export function createPanelStore(bus: ZenBus) {
       headerHidden?: boolean
       headerPos?: 'top' | 'bottom'
       dockOrder?: number
-      restoreRect?: Rect | null
+      floatRect?: Rect | null
+      snapped?: boolean
       inSidebar?: boolean
+      maximized?: boolean
+      customTitle?: string | null
+      /** Older saves kept two restore rects; read once as `floatRect`. */
+      restoreRect?: Rect | null
+      preMax?: Rect | null
     }
   >
   const loadGeom = (): Geom => {
@@ -301,8 +349,14 @@ export function createPanelStore(bus: ZenBus) {
         headerHidden: p.headerHidden,
         headerPos: p.headerPos,
         dockOrder: p.dockOrder,
-        restoreRect: p.restoreRect,
+        floatRect: p.floatRect,
+        snapped: p.snapped,
         inSidebar: p.inSidebar,
+        // Persisted so a maximized panel comes back maximized instead of decaying into a float
+        // that merely happens to be the old screen's size; `floatRect` is what un-maximizing
+        // returns to (x/y/w/h above are the MAXIMIZED rect while the pin is on).
+        maximized: p.maximized,
+        customTitle: p.customTitle,
       }
     }
     try {
@@ -350,6 +404,19 @@ export function createPanelStore(bus: ZenBus) {
       )
     }
   }
+  const forgetState = (id: string) => {
+    const all = loadStates()
+    if (!(id in all)) return
+    delete all[id]
+    try {
+      localStorage.setItem(STATE_LS, JSON.stringify(all))
+    } catch {
+      /* ignore */
+    }
+  }
+  // What each mounted panel exposes about itself (PanelContext.expose); not persisted.
+  const exposed = new Map<string, PanelApi>()
+
   // last session's geometry, snapshotted before any save; drives restore in register()
   const RESTORE = loadGeom()
   if (Object.keys(RESTORE).length) zdebug('session restore candidates:', Object.keys(RESTORE))
@@ -392,6 +459,17 @@ export function createPanelStore(bus: ZenBus) {
     let changed = false
     for (const p of state.list) {
       if (p.dockSide || p.inSidebar) continue
+      // Maximized is pinned to the band, not anchored to a screen section: re-fill it. The
+      // section math below deliberately preserves `w`/`h`, which is right for a float and wrong
+      // for this — that is the whole bug, see `maximizedRect`.
+      if (p.maximized) {
+        const m = maximizedRect(p.minWidth, p.minHeight)
+        if (m.x !== p.x || m.y !== p.y || m.w !== p.w || m.h !== p.h) {
+          Object.assign(p, m)
+          changed = true
+        }
+        continue
+      }
       const sec = sectionFor(p, prevVP)
       let x = p.x
       let y = p.y
@@ -422,6 +500,34 @@ export function createPanelStore(bus: ZenBus) {
     return id
   }
 
+  // A panel's body remounts whenever it moves (docked, pinned, popped out), so `state` must
+  // read what was last set, not what was loaded when the panel opened.
+  function panelContext(id: string, persist: boolean): PanelContext {
+    let state = persist ? loadStates()[id] : undefined
+    return {
+      id,
+      get state() {
+        return state
+      },
+      setState: (s: unknown) => {
+        state = s
+        if (persist) saveState(id, s)
+      },
+      expose: (api: PanelApi) => {
+        exposed.set(id, api)
+        return () => {
+          if (exposed.get(id) === api) exposed.delete(id)
+        }
+      },
+    }
+  }
+
+  // Instances of a multi panel are told apart by number: "Media Viewer", "Media Viewer 2", …
+  function instanceTitle(spec: PanelSpec, id: string): string {
+    const n = spec.instanceOf ? Number(id.slice(id.lastIndexOf(INSTANCE_SEP) + 1)) : NaN
+    return n > 1 ? `${spec.title} ${n}` : spec.title
+  }
+
   function open(spec: PanelSpec): PanelHandle {
     const persist = spec.persist !== false
     // Resolve the id: explicit, else mint a fresh instance id for `instanceOf`.
@@ -436,10 +542,8 @@ export function createPanelStore(bus: ZenBus) {
       focusTiles()
       return makeHandle(id)
     }
-    const existing = get(id)
-    if (existing) {
-      if (existing.status === 'minimized') existing.status = 'open'
-      front(id)
+    if (get(id)) {
+      reveal(id)
       return makeHandle(id)
     }
     // Bare (chromeless) panels size to their content, so the windowed min floors
@@ -455,11 +559,16 @@ export function createPanelStore(bus: ZenBus) {
       w: spec.width ?? 900,
       h: spec.height ?? 620,
     }
-    const rect = clampRect(base, minWidth, minHeight)
+    // A restored maximized panel is re-filled from the current band, not from the saved rect —
+    // the session that saved it may have been on a different screen.
+    const rect = saved?.maximized
+      ? maximizedRect(minWidth, minHeight)
+      : clampRect(base, minWidth, minHeight)
     state.list.push({
       ...rect,
       id,
-      title: spec.title,
+      title: saved?.customTitle ?? instanceTitle(spec, id),
+      customTitle: saved?.customTitle ?? null,
       icon: spec.icon ?? 'mdi mdi-application-outline',
       render: markRaw(spec.render),
       cleanup: null,
@@ -468,22 +577,16 @@ export function createPanelStore(bus: ZenBus) {
       minWidth,
       minHeight,
       dockSide: spec.dock ?? saved?.dockSide ?? null,
-      restoreRect: saved?.restoreRect ?? null,
-      ctx: {
-        id,
-        state: persist ? loadStates()[id] : undefined,
-        setState: (s: unknown) => {
-          if (persist) saveState(id, s)
-        },
-      },
+      floatRect: saved?.floatRect ?? saved?.restoreRect ?? saved?.preMax ?? (saved ? null : rect),
+      snapped: !!saved?.snapped || (!!saved?.restoreRect && !saved?.dockSide && !saved?.inSidebar),
+      ctx: panelContext(id, persist),
       headerHidden: saved?.headerHidden ?? false,
       headerPos: saved?.headerPos === 'bottom' ? 'bottom' : 'top',
       dockOrder: saved?.dockOrder ?? 0,
       instanceOf: spec.instanceOf ?? null,
       persist,
       inSidebar: saved?.inSidebar ?? false,
-      maximized: false, // transient (not persisted)
-      preMax: null as Rect | null, // float geom to restore from maximize
+      maximized: !!saved?.maximized,
       frame: spec.frame === 'none' ? 'none' : 'default',
     })
     const opened = get(id)!
@@ -507,7 +610,10 @@ export function createPanelStore(bus: ZenBus) {
     const i = state.list.findIndex((p) => p.id === id)
     const wasDocked = i >= 0 ? state.list[i].dockSide : null
     if (i >= 0) state.list.splice(i, 1)
-    forgetGeom(id) // closing forgets the panel (so it won't restore next session)
+    // Closing forgets the panel: it won't restore next session, and opening it again starts fresh.
+    forgetGeom(id)
+    forgetState(id)
+    exposed.delete(id)
     if (wasDocked) reconcileDocks()
     emit('close', id)
   }
@@ -535,6 +641,20 @@ export function createPanelStore(bus: ZenBus) {
       emit('restore', id)
     }
   }
+  /** Bring an existing panel into view wherever it lives: un-minimise or unfold it, make it
+   *  the active tab of an expanded dock, or switch ComfyUI's sidebar to it when pinned there. */
+  function reveal(id: string) {
+    const p = get(id)
+    if (!p) return
+    if (p.status !== 'open') restore(id)
+    else if (p.dockSide) {
+      const z = state.docks[p.dockSide as DockSidePos]
+      z.active = id
+      z.collapsed = false
+      reconcileDocks()
+    } else front(id)
+    if (p.inSidebar) bus.emit('panel:reveal', { id })
+  }
   function toggleFold(id: string) {
     const p = get(id)
     if (!p) return
@@ -549,13 +669,25 @@ export function createPanelStore(bus: ZenBus) {
     if (p) p.z = ++zTop
     emit('focus', id)
   }
+  /** Is the panel free right now — so its rect IS its float rect? */
+  const isFree = (p: Panel) => !p.maximized && !p.snapped && !p.dockSide && !p.inSidebar
+  /** Before a panel goes somewhere else, remember where it was free (if it was). */
+  function rememberFloat(p: Panel) {
+    if (isFree(p)) p.floatRect = { x: p.x, y: p.y, w: p.w, h: p.h }
+  }
+  /** Where to put a panel that is becoming free again. */
+  function floatGeom(p: Panel): Rect {
+    return p.floatRect
+      ? clampRect(p.floatRect, p.minWidth, p.minHeight)
+      : centeredDefaultRect(p.minWidth, p.minHeight)
+  }
+
   function setRect(id: string, r: Partial<Rect>, persist = false) {
     const p = get(id)
     if (!p) return
-    if (p.maximized) {
-      p.maximized = false // any manual drag/resize tears it out of maximized
-      p.preMax = null
-    }
+    // Any manual drag/resize makes it free: out of maximized and out of its snap zone.
+    p.maximized = false
+    p.snapped = false
     Object.assign(
       p,
       clampRect(
@@ -564,6 +696,7 @@ export function createPanelStore(bus: ZenBus) {
         p.minHeight,
       ),
     )
+    if (isFree(p)) p.floatRect = { x: p.x, y: p.y, w: p.w, h: p.h }
     if (persist) saveGeom()
   }
   // A content-sized (bare) panel reported a new measured footprint. Resize the stored
@@ -573,6 +706,9 @@ export function createPanelStore(bus: ZenBus) {
   function setContentSize(id: string, w: number, h: number) {
     const p = get(id)
     if (!p) return
+    // While maximized the band owns the rect. Letting a content measurement through would
+    // resize the panel out from under the pin, and the next resize event would snap it back.
+    if (p.maximized) return
     if (w <= 0 || h <= 0 || (w === p.w && h === p.h)) return
     const sec = sectionFor(p, viewport())
     const dw = w - p.w
@@ -591,21 +727,12 @@ export function createPanelStore(bus: ZenBus) {
     const p = get(id)
     if (!p || p.dockSide) return // docked panels resize via the rail, not maximize
     if (p.maximized) {
-      if (p.preMax) Object.assign(p, clampRect(p.preMax, p.minWidth, p.minHeight))
-      p.preMax = null
       p.maximized = false
+      p.snapped = false
+      Object.assign(p, floatGeom(p))
     } else {
-      p.preMax = { x: p.x, y: p.y, w: p.w, h: p.h }
-      const { top, bottom } = safeBand()
-      const g = 6
-      Object.assign(
-        p,
-        clampRect(
-          { x: g, y: top + g, w: vw() - g * 2, h: bottom - top - g * 2 },
-          p.minWidth,
-          p.minHeight,
-        ),
-      )
+      rememberFloat(p)
+      Object.assign(p, maximizedRect(p.minWidth, p.minHeight))
       p.maximized = true
       if (p.status !== 'open') p.status = 'open'
       front(id)
@@ -615,19 +742,30 @@ export function createPanelStore(bus: ZenBus) {
   }
   function setTitle(id: string, title: string) {
     const p = get(id)
-    if (p) p.title = title
+    if (!p) return
+    p.title = title
+    p.customTitle = title
+    saveGeom()
   }
   function setIcon(id: string, icon: string) {
     const p = get(id)
     if (p) p.icon = icon
   }
   function setDock(id: string, side: DockSide) {
+    // The left side is ComfyUI's own sidebar now: docking there pins into it.
+    if (side === 'left') {
+      if (state.sidebarAvailable) pinSidebar(id)
+      else setDock(id, 'right')
+      return
+    }
     const p = get(id)
     if (!p) return
     if (p.dockSide === side) return
     if (side) {
       // remember the floating rect, append to the rail as active tab, expand the zone
-      if (!p.restoreRect) p.restoreRect = { x: p.x, y: p.y, w: p.w, h: p.h }
+      rememberFloat(p)
+      p.maximized = false
+      p.snapped = false
       const order = nextDockOrder(side) // compute before joining so it appends last
       p.dockSide = side
       p.dockOrder = order
@@ -639,13 +777,7 @@ export function createPanelStore(bus: ZenBus) {
       // undock: restore the saved floating rect, or a centered default if we never had one
       const from = p.dockSide as DockSidePos
       p.dockSide = null
-      Object.assign(
-        p,
-        p.restoreRect
-          ? clampRect(p.restoreRect, p.minWidth, p.minHeight)
-          : centeredDefaultRect(p.minWidth, p.minHeight),
-      )
-      p.restoreRect = null
+      Object.assign(p, floatGeom(p))
       p.status = 'open'
       // pulling the visible tab out closes the dock (collapse to rail) rather than swapping to a sibling
       if (state.docks[from].active === id) state.docks[from].collapsed = true
@@ -653,6 +785,17 @@ export function createPanelStore(bus: ZenBus) {
     }
     reconcileDocks()
     saveGeom()
+  }
+  // Finish a panel drag on a drop target.
+  function dropInto(id: string, target: DockDrop) {
+    if (target === 'sidebar') pinSidebar(id)
+    else setDock(id, target)
+  }
+  // A dock tab was clicked: show it, or tuck the zone away when it is already showing.
+  function toggleDockTab(side: DockSidePos, id: string) {
+    const z = state.docks[side]
+    if (z.active === id && !z.collapsed) toggleDockCollapsed(side)
+    else setDockActive(side, id)
   }
   // Surface a tab (make it the active, expanded one in its zone).
   function setDockActive(side: DockSidePos, id: string) {
@@ -668,9 +811,32 @@ export function createPanelStore(bus: ZenBus) {
   }
   // Resize a zone's body extent (width for sides, height for bottom). tiling.ts
   // clamps it; we just store the request.
-  function setDockSize(side: DockSidePos, px: number) {
+  function setDockSize(side: DockSidePos, px: number, persist = true) {
     state.docks[side].size = Math.max(120, Math.round(px))
-    saveDocks()
+    if (persist) saveDocks()
+  }
+  // Sort panels by the saved taskbar order; ones never placed keep their list order, after.
+  function sortByTaskOrder<T extends { id: string }>(panels: T[]): T[] {
+    const rank = (id: string) => {
+      const i = state.taskOrder.indexOf(id)
+      return i < 0 ? Number.MAX_SAFE_INTEGER : i
+    }
+    return panels
+      .map((p, i) => ({ p, i }))
+      .sort((a, b) => rank(a.p.id) - rank(b.p.id) || a.i - b.i)
+      .map(({ p }) => p)
+  }
+  // move taskbar button `id` before `beforeId` (or last) within the shown `ids`
+  function reorderTask(ids: string[], id: string, beforeId: string | null) {
+    const next = ids.filter((m) => m !== id)
+    const at = beforeId ? next.indexOf(beforeId) : next.length
+    next.splice(at < 0 ? next.length : at, 0, id)
+    state.taskOrder = next
+    try {
+      localStorage.setItem(TASK_ORDER_LS, JSON.stringify(next))
+    } catch {
+      /* ignore */
+    }
   }
   // move `id` before `beforeId` (or last); redensify dockOrder
   function reorderDock(side: DockSidePos, id: string, beforeId: string | null) {
@@ -688,14 +854,33 @@ export function createPanelStore(bus: ZenBus) {
   function applySnap(id: string, rect: Rect) {
     const p = get(id)
     if (!p) return
-    if (!p.restoreRect) p.restoreRect = { x: p.x, y: p.y, w: p.w, h: p.h }
+    rememberFloat(p)
+    p.maximized = false
+    p.snapped = true
     Object.assign(p, rect)
     p.status = 'open'
     saveGeom()
   }
-  function clearRestore(id: string) {
+  /** A panel's layout at the start of a gesture, so Escape can put it back exactly. */
+  function snapshot(id: string) {
     const p = get(id)
-    if (p) p.restoreRect = null
+    if (!p) return null
+    const { x, y, w, h, maximized, snapped, floatRect } = p
+    return { x, y, w, h, maximized, snapped, floatRect }
+  }
+  function restoreSnapshot(id: string, snap: ReturnType<typeof snapshot>) {
+    const p = get(id)
+    if (!p || !snap) return
+    Object.assign(p, snap)
+    saveGeom()
+  }
+
+  /** The size a maximized or snapped panel takes when it is pulled free; null when it is free. */
+  function tearOffSize(id: string): { w: number; h: number } | null {
+    const p = get(id)
+    if (!p || isFree(p)) return null
+    const r = floatGeom(p)
+    return { w: r.w, h: r.h }
   }
 
   // toggle the drag/resize shield; cursor stays consistent over the shield
@@ -733,6 +918,14 @@ export function createPanelStore(bus: ZenBus) {
   function setMinimizedAnchor(anchor: 'left' | 'center' | 'right') {
     state.minimizedAnchor = anchor === 'left' || anchor === 'right' ? anchor : 'center'
   }
+  function setTaskbarFloating(on: boolean) {
+    state.taskbarFloating = !!on
+    try {
+      localStorage.setItem('zenkit.taskbarfloat.v1', on ? '1' : '0')
+    } catch {
+      /* ignore */
+    }
+  }
   function setTaskbarPos(pos: 'top' | 'bottom') {
     state.taskbarPos = pos === 'top' ? 'top' : 'bottom'
     try {
@@ -757,6 +950,15 @@ export function createPanelStore(bus: ZenBus) {
     }
     applyComfyBarHide(state.absorbComfyButtons)
   }
+  // install.ts watches this and keeps the startup splash in step with the theme.
+  function setThemedSplash(on: boolean) {
+    state.themedSplash = !!on
+    try {
+      localStorage.setItem('zenkit.themedsplash.v1', on ? '1' : '0')
+    } catch {
+      /* ignore */
+    }
+  }
   // install.ts watches this and starts/stops the experimental ComfyUI theme-menu injection.
   function setComfyThemeMenu(on: boolean) {
     state.comfyThemeMenu = !!on
@@ -766,84 +968,7 @@ export function createPanelStore(bus: ZenBus) {
       /* ignore */
     }
   }
-  // The taskbar component watches this and reparents/restores the controls group.
-  function setAbsorbCanvasControls(on: boolean) {
-    state.absorbCanvasControls = !!on
-    try {
-      localStorage.setItem('zenkit.canvasctl.v1', on ? '1' : '0')
-    } catch {
-      /* ignore */
-    }
-  }
-  // Auto-hide ComfyUI's native left side-toolbar (a `floating-sidebar`, so it floats
-  // over the canvas — sliding it off the left edge frees that corner with no reflow).
-  // A thin left-edge zone reveals it on hover (slide + fade); leaving hides it again.
-  function applySidebarAutohide(on: boolean) {
-    const styleId = 'zenkit-sidebar-autohide'
-    document.body.classList.toggle('zen-sb-autohide', !!on)
-    if (on) {
-      ensureStyle(
-        styleId,
-        `
-        .zen-sb-autohide .side-tool-bar-container {
-          transform: translateX(calc(-100% - 18px)); opacity: 0; pointer-events: none !important;
-          transition: transform .26s cubic-bezier(.4, 0, .2, 1), opacity .2s ease;
-        }
-        .zen-sb-autohide.zen-sb-show .side-tool-bar-container { transform: none; opacity: 1; pointer-events: auto !important; }
-        .zen-sb-edge { position: fixed; left: 0; top: 40px; bottom: 0; width: 16px; z-index: 1400; pointer-events: auto; }
-        .zen-sb-autohide.zen-sb-show .zen-sb-edge { pointer-events: none; }
-        .zen-sb-edge::after {
-          content: ''; position: absolute; left: 3px; top: 50%; transform: translateY(-50%);
-          width: 4px; height: 44px; border-radius: 4px; background: var(--zen-border, #3a3a44);
-          opacity: .45; transition: opacity .2s ease, height .2s ease, background .2s ease;
-        }
-        .zen-sb-edge:hover::after { opacity: 1; height: 66px; background: var(--zen-accent, #3b82f6); }`,
-      )
-      if (!sbEdge) {
-        sbEdge = document.createElement('div')
-        sbEdge.className = 'zen-sb-edge'
-        sbEdge.title = 'ComfyUI sidebar (hover to reveal)'
-        document.body.appendChild(sbEdge)
-      }
-      if (!sbOver) {
-        // A sidebar TAB is open → keep the rail pinned visible; only auto-hide when
-        // nothing is open. ComfyUI renders `.sidebar-content-container` ONLY while a
-        // tab is active, so its presence is a reliable open signal.
-        const sidebarOpen = () => !!document.querySelector('.sidebar-content-container')
-        const show = () => {
-          clearTimeout(sbHideTimer)
-          document.body.classList.add('zen-sb-show')
-        }
-        const hideSoon = () => {
-          clearTimeout(sbHideTimer)
-          if (sidebarOpen()) return // a panel is open — don't tuck the rail away
-          sbHideTimer = window.setTimeout(() => document.body.classList.remove('zen-sb-show'), 260)
-        }
-        // One delegated listener: over the edge zone or the toolbar → reveal; else hide.
-        // (Survives ComfyUI re-creating the toolbar — no element refs to keep in sync.)
-        sbOver = (e: PointerEvent) => {
-          const t = e.target as Element | null
-          if ((sbEdge && t && sbEdge.contains(t)) || t?.closest?.('.side-tool-bar-container'))
-            show()
-          else hideSoon()
-        }
-        document.addEventListener('pointerover', sbOver, true)
-        // If a tab is already open at load (ComfyUI restores it), reveal once ComfyUI
-        // has rendered the toolbar.
-        window.setTimeout(() => sidebarOpen() && show(), 1500)
-      }
-    } else {
-      document.body.classList.remove('zen-sb-show')
-      removeStyle(styleId)
-      sbEdge?.remove()
-      sbEdge = null
-      if (sbOver) {
-        document.removeEventListener('pointerover', sbOver, true)
-        sbOver = null
-      }
-      clearTimeout(sbHideTimer)
-    }
-  }
+
   function setSidebarAutohide(on: boolean) {
     state.sidebarAutohide = !!on
     try {
@@ -859,6 +984,8 @@ export function createPanelStore(bus: ZenBus) {
   //    those go transparent — the canvas shows in the gaps);
   //  • the resize gutter (`.p-splitter-gutter`) blends in (still draggable).
   // The icon rail / toolbar buttons are deliberately left untouched — only the content pops.
+  // A frontend that already draws the open panel as its own card (paneled layout,
+  // `.separated-panel`) is left alone; restyling it too stacks two outlines.
   function applyFloatingSidebar(on: boolean) {
     const id = 'zenkit-inset-sidebar'
     document.body.classList.toggle('zen-inset-sb', !!on)
@@ -871,9 +998,9 @@ export function createPanelStore(bus: ZenBus) {
            adds the .side-bar-panel class on the LEFT — on the RIGHT it's just a bare
            .p-splitterpanel with bg-comfy-menu-bg, so we target it by what it CONTAINS
            (the sidebar content) with :has() to cover both sides. */
-        body.zen-inset-sb .side-bar-panel,
-        body.zen-inset-sb .p-splitterpanel:has(> .sidebar-content-container),
-        body.zen-inset-sb .p-splitterpanel:has(.sidebar-content-container),
+        body.zen-inset-sb .side-bar-panel:not(.separated-panel),
+        body.zen-inset-sb .p-splitterpanel:not(.separated-panel):has(> .sidebar-content-container),
+        body.zen-inset-sb .p-splitterpanel:not(.separated-panel):has(.sidebar-content-container),
         body.zen-inset-sb .comfyui-body-left,
         body.zen-inset-sb .p-splitter { background: transparent !important; box-shadow: none !important; }
 
@@ -881,7 +1008,7 @@ export function createPanelStore(bus: ZenBus) {
            --spacing unit (pt-1 / 4px) so the gap matches the rest of the UI and the card
            floats free of every edge. height:100% minus top+bottom inset so the bottom
            rounding doesn't overflow. overflow-y-auto kept (clips to the corners). */
-        body.zen-inset-sb .sidebar-content-container {
+        body.zen-inset-sb .p-splitterpanel:not(.separated-panel) .sidebar-content-container {
           height: calc(100% - (var(--spacing, 0.25rem) * 2)) !important;
           margin: var(--spacing, 0.25rem) !important;
           border-radius: var(--zen-radius, 12px);
@@ -910,10 +1037,10 @@ export function createPanelStore(bus: ZenBus) {
            gutter (grab sits on the card's own edge) — but KEEP the corners rounded so the card
            still reads as a rounded panel. The card keeps floating on its other three sides.
            Mirror for left/right-docked. */
-        body.zen-inset-sb .side-bar-panel:has(+ .p-splitter-gutter) .sidebar-content-container {
+        body.zen-inset-sb .side-bar-panel:not(.separated-panel):has(+ .p-splitter-gutter) .sidebar-content-container {
           margin-right: 0 !important;
         }
-        body.zen-inset-sb .p-splitter-gutter + .side-bar-panel .sidebar-content-container {
+        body.zen-inset-sb .p-splitter-gutter + .side-bar-panel:not(.separated-panel) .sidebar-content-container {
           margin-left: 0 !important;
         }
 
@@ -928,7 +1055,7 @@ export function createPanelStore(bus: ZenBus) {
            .sidebar-content-container, so they already get the glass card — blend their
            header bar (normally solid --zen-surface) so the whole thing reads as one
            cohesive floating card. */
-        body.zen-inset-sb .sidebar-content-container .zk-sb-bar {
+        body.zen-inset-sb .p-splitterpanel:not(.separated-panel) .sidebar-content-container .zk-sb-bar {
           background: color-mix(in srgb, var(--zen-surface, #202026) 40%, transparent) !important;
           border-bottom-color: color-mix(in srgb, var(--zen-border, #3a3a44) 60%, transparent) !important;
         }`,
@@ -967,10 +1094,12 @@ export function createPanelStore(bus: ZenBus) {
     if (!p) return
     const wasDocked = p.dockSide
     p.dockSide = null
-    p.restoreRect = null
+    p.maximized = false
+    p.snapped = false
     p.status = 'open'
     if (wasDocked) reconcileDocks()
     Object.assign(p, centeredDefaultRect(p.minWidth, p.minHeight))
+    p.floatRect = { x: p.x, y: p.y, w: p.w, h: p.h }
     front(id)
     saveGeom()
   }
@@ -979,7 +1108,9 @@ export function createPanelStore(bus: ZenBus) {
   function pinSidebar(id: string) {
     const p = get(id)
     if (!p || p.inSidebar) return
-    if (!p.restoreRect) p.restoreRect = { x: p.x, y: p.y, w: p.w, h: p.h }
+    rememberFloat(p)
+    p.maximized = false
+    p.snapped = false
     if (p.dockSide) {
       p.dockSide = null
       reconcileDocks()
@@ -993,13 +1124,7 @@ export function createPanelStore(bus: ZenBus) {
     const p = get(id)
     if (!p || !p.inSidebar) return
     p.inSidebar = false
-    Object.assign(
-      p,
-      p.restoreRect
-        ? clampRect(p.restoreRect, p.minWidth, p.minHeight)
-        : centeredDefaultRect(p.minWidth, p.minHeight),
-    )
-    p.restoreRect = null
+    Object.assign(p, floatGeom(p))
     front(id)
     saveGeom()
   }
@@ -1022,6 +1147,19 @@ export function createPanelStore(bus: ZenBus) {
         const p = get(id)
         return p ? { x: p.x, y: p.y, w: p.w, h: p.h } : null
       },
+      describe: () => exposed.get(id)?.describe?.() ?? null,
+      commands: () =>
+        Object.entries(exposed.get(id)?.commands ?? {}).map(([name, c]) => ({
+          name,
+          description: c.description,
+        })),
+      run: async (command: string, args: Record<string, unknown> = {}) => {
+        const api = exposed.get(id)
+        if (!api) throw new Error(`Panel "${id}" is not open or exposes no commands.`)
+        const handler = api.commands?.[command]
+        if (!handler) throw new Error(`Panel "${id}" has no command "${command}".`)
+        return handler.run(args)
+      },
       on: (event: string, cb: () => void) =>
         bus.on('panel:' + event, (p) => {
           if ((p as { id?: string } | undefined)?.id === id) cb()
@@ -1030,10 +1168,16 @@ export function createPanelStore(bus: ZenBus) {
   }
 
   function register(reg: PanelRegistration) {
-    const fresh = !state.registry.some((r) => r.id === reg.id)
-    if (fresh) state.registry.push(markRaw(reg))
-    if (fresh)
+    // Re-registering an id replaces it, like taskbar widgets and the plugin ledger; each
+    // registration's unregister only removes its own entry.
+    const entry = markRaw(reg)
+    const existing = state.registry.findIndex((r) => r.id === reg.id)
+    if (existing === -1) {
+      state.registry.push(entry)
       zlog(`registered "${reg.title}" — ${reg.id}` + (reg.plugin ? ` · ${reg.plugin}` : ''))
+    } else {
+      state.registry.splice(existing, 1, entry)
+    }
     bus.emit('registry:change')
 
     // re-open panels open last session via the consumer's open(), then replay status
@@ -1067,7 +1211,7 @@ export function createPanelStore(bus: ZenBus) {
       }
     }
     return () => {
-      const i = state.registry.findIndex((r) => r.id === reg.id)
+      const i = state.registry.indexOf(entry)
       if (i >= 0) state.registry.splice(i, 1)
       bus.emit('registry:change')
     }
@@ -1115,9 +1259,10 @@ export function createPanelStore(bus: ZenBus) {
     setBrandingOverride,
     setMinimizedAnchor,
     setTaskbarPos,
+    setTaskbarFloating,
     setAbsorbComfyButtons,
-    setAbsorbCanvasControls,
     setComfyThemeMenu,
+    setThemedSplash,
     setSidebarAutohide,
     setFloatingSidebar,
     setPluginEnabled,
@@ -1129,7 +1274,9 @@ export function createPanelStore(bus: ZenBus) {
       setRect,
       setContentSize,
       applySnap,
-      clearRestore,
+      tearOffSize,
+      snapshot,
+      restoreSnapshot,
       toggleFold,
       toggleMaximize,
       minimize,
@@ -1140,6 +1287,10 @@ export function createPanelStore(bus: ZenBus) {
       toggleDockCollapsed,
       setDockSize,
       reorderDock,
+      dropInto,
+      toggleDockTab,
+      reorderTask,
+      sortByTaskOrder,
       dockMembers,
       setInteract,
       setHeaderHidden,

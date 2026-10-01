@@ -14,7 +14,7 @@ export type WidgetOptions = Omit<NodeWidgetDef, 'component' | 'type'>
 /** What a widget's .vue file may export beyond its component. */
 export interface WidgetFileExports {
   default: NodeWidgetDef['component']
-  /** Tweaks to this widget: `minHeight`, `fill`, `dragThrough`, `serialize`, `default`, `name`. */
+  /** Tweaks to this widget: `minHeight`, `minWidth`, `fill`, `dragThrough`, `serialize`, `default`, `name`. */
   widgetOptions?: WidgetOptions
   /** Node-level behaviour for the classes using it: `is`, `minSize`, `output`, `slotLinks`, … */
   nodeDef?: Omit<NodeDef, 'widgets'>

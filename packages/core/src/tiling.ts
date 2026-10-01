@@ -1,10 +1,13 @@
-// Dock layout. Docked panels reserve width/height in ComfyUI's grid side-cells
-// (#comfyui-body-left/right/bottom) so the canvas reflows; our dock overlays the
-// reserved strip. Each side is a tab group: a rail of tabs + the active tab's body.
+// Dock layout. Docks float over the canvas as inset cards — a tab rail and the active tab's
+// body, a gutter apart, like ComfyUI's floating sidebar and its separated panel. Nothing
+// resizes the canvas: instead the row that holds ComfyUI's own chrome (sidebar, Run bar,
+// minimap, canvas controls) is padded by each dock's footprint, so that chrome moves aside
+// while the graph underneath stays put. Only the taskbar still reserves a grid cell, and it
+// never changes size.
 
-import { watch } from 'vue'
+import { ref, watch } from 'vue'
 import type { Panel, PanelStore } from './panelStore'
-import { DOCK_SIDES, type DockSidePos } from './panelStore'
+import { DOCK_SIDES, setFloatingBarInset, type DockSidePos } from './panelStore'
 import type { Rect } from './types'
 
 const DOCK = { minW: 220, maxW: 1100, minH: 160, maxH: 900 }
@@ -16,11 +19,14 @@ function bodyCell(side: DockSidePos): HTMLElement | null {
   return document.getElementById('comfyui-body-' + side) as HTMLElement | null
 }
 
-// Reserve px in a ComfyUI grid side-cell (0 clears it). The grid reflows the canvas
-// naturally — ComfyUI handles the graph/minimap/controls; we just take the space.
-function reserve(side: DockSidePos, px: number) {
+// Reserve px in a ComfyUI grid side-cell (0 clears it). Returns whether it changed, since a
+// change resizes the canvas.
+function reserve(side: DockSidePos, px: number): boolean {
   const el = bodyCell(side)
-  if (!el) return
+  if (!el) return false
+  const prop = side === 'bottom' ? 'height' : 'width'
+  const was = el.getAttribute('data-zen-dock') === '1' ? el.style[prop] : ''
+  if (was === (px > 0 ? px + 'px' : '')) return false
   if (px > 0) {
     if (side === 'bottom') {
       el.style.height = px + 'px'
@@ -37,6 +43,55 @@ function reserve(side: DockSidePos, px: number) {
     el.style.removeProperty('min-height')
     el.removeAttribute('data-zen-dock')
   }
+  return true
+}
+
+// The row holding ComfyUI's chrome in the visible mode: the graph overlay's row around the
+// sidebar and splitter, or app mode's workspace row.
+function chromeRows(): HTMLElement[] {
+  const graph = document.querySelector('.side-toolbar-container')?.parentElement?.parentElement
+  const app = document.querySelector('[data-testid="linear-workspace-column"]')?.parentElement
+  return [graph, app].filter((el): el is HTMLElement => !!el)
+}
+function visibleChromeRow(): HTMLElement | null {
+  return chromeRows().find((el) => el.getBoundingClientRect().width > 0) ?? null
+}
+
+// The canvas gutter ComfyUI insets its own floating chrome by (a custom property, so it is
+// resolved through a length property).
+export function canvasGutter(): number {
+  const probe = document.createElement('div')
+  probe.style.cssText =
+    'position:absolute;visibility:hidden;margin-left:var(--comfy-canvas-gutter, 8px)'
+  document.body.append(probe)
+  const px = parseFloat(getComputedStyle(probe).marginLeft)
+  probe.remove()
+  return Number.isFinite(px) ? px : 8
+}
+
+const PAD_ATTR = 'data-zen-dock-pad'
+let lastPad: Record<DockSidePos, number> = { left: 0, right: 0, bottom: 0 }
+// Chrome eases aside when a dock opens or closes, but tracks a resize drag exactly.
+function padChrome(pad: Record<DockSidePos, number>, animate: boolean) {
+  lastPad = pad
+  for (const row of chromeRows()) padRow(row, pad, animate && row.hasAttribute(PAD_ATTR))
+}
+function padRow(row: HTMLElement, pad: Record<DockSidePos, number>, animate: boolean) {
+  const any = pad.left || pad.right || pad.bottom
+  if (!any && !row.hasAttribute(PAD_ATTR)) return
+  row.setAttribute(PAD_ATTR, '')
+  row.style.transition = animate ? 'padding 0.2s cubic-bezier(0.4, 0, 0.2, 1)' : 'none'
+  row.style.paddingLeft = pad.left ? pad.left + 'px' : ''
+  row.style.paddingRight = pad.right ? pad.right + 'px' : ''
+  row.style.paddingBottom = pad.bottom ? pad.bottom + 'px' : ''
+  if (!any) row.removeAttribute(PAD_ATTR)
+}
+// A chrome row that has just been mounted (entering app mode builds its row fresh) takes the
+// current padding at once. Mutation callbacks run before the browser paints, so it never shows
+// a frame laid out without the docks and then slides into place.
+function padNewRows() {
+  if (!(lastPad.left || lastPad.right || lastPad.bottom)) return
+  for (const row of chromeRows()) if (!row.hasAttribute(PAD_ATTR)) padRow(row, lastPad, false)
 }
 
 function nudgeCanvas() {
@@ -86,77 +141,129 @@ export interface ZoneLayout {
   collapsed: boolean
   rail: Rect | null // the tab strip (null when the side has no tabs)
   body: Rect | null // the active tab's content area (null when empty or collapsed)
-  reserve: number // px reserved in the grid side-cell (rail + body)
+  reserve: number // px of ComfyUI's chrome row this dock covers (gutter + rail + gutter + body)
 }
 export type DockLayout = Record<DockSidePos, ZoneLayout>
 
-// Dock geometry: grid reserve + rail/body rects per side.
+// Graph stats (LiteGraph's T/I/N/V/FPS overlay) pinned to the canvas's far-left edge, clear of
+// any left or bottom dock. The frontend otherwise parks them beside its sidebar; what it had is
+// restored when unpinned.
+type StatsLocation = [number | null | undefined, number | null | undefined] | null
+type StatsCanvas = {
+  fpsInfoLocation?: StatsLocation
+  setDirty?: (fg: boolean, bg: boolean) => void
+}
+let statsPinned = false
+let statsBefore: StatsLocation | undefined
+let statsWanted: StatsLocation = null
+let relayout: (() => void) | null = null
+const STATS_LINE = 13
+function statsCanvas(): StatsCanvas | null {
+  return (window as unknown as { app?: { canvas?: StatsCanvas } }).app?.canvas ?? null
+}
+function applyStats() {
+  const c = statsCanvas()
+  if (!c || !statsPinned) return
+  const [x, y] = c.fpsInfoLocation ?? [null, null]
+  if (x === statsWanted?.[0] && y === statsWanted?.[1]) return
+  c.fpsInfoLocation = statsWanted
+  c.setDirty?.(true, false)
+}
+export function setStatsPinned(on: boolean) {
+  const c = statsCanvas()
+  if (on === statsPinned) return
+  statsPinned = on
+  if (on) {
+    statsBefore = c?.fpsInfoLocation ?? null
+    relayout?.()
+  } else if (c && statsBefore !== undefined) {
+    c.fpsInfoLocation = statsBefore
+    c.setDirty?.(true, false)
+    statsBefore = undefined
+  }
+}
+
+/** Bumped on every re-layout, so views that draw from computeDockLayout redraw with it. */
+export const dockLayoutVersion = ref(0)
+
+/** A floating taskbar is an inset card over the canvas; only the bottom one can float. */
+export function taskbarFloats(store: PanelStore): boolean {
+  return store.state.taskbarFloating && store.state.taskbarPos === 'bottom'
+}
+/** How far up from the window's bottom edge the taskbar reaches (to its top edge). */
+export function taskbarFootprint(store: PanelStore): number {
+  if (store.state.taskbarPos !== 'bottom') return 0
+  return taskbarFloats(store) ? TASKBAR_H + canvasGutter() : TASKBAR_H
+}
+
+/** The area docks lay out in: the visible chrome row, above a bottom taskbar. */
+export function dockBounds(store: PanelStore) {
+  const row = visibleChromeRow()?.getBoundingClientRect()
+  return {
+    L: row?.left ?? 0,
+    R: row?.right ?? window.innerWidth,
+    T: row?.top ?? topbarHeight(),
+    // App mode's row runs under a bottom taskbar, so the viewport bounds it too.
+    B: Math.min(row?.bottom ?? Infinity, window.innerHeight - taskbarFootprint(store)),
+    g: canvasGutter(),
+  }
+}
+
+// Dock geometry: rail/body cards per side, inset in the visible chrome row.
 export function computeDockLayout(store: PanelStore): DockLayout {
-  const W = window.innerWidth
-  const H = window.innerHeight
-  const top = topbarHeight() // already inflated by reserveTop when the taskbar is on top
-  const bot = H - (store.state.taskbarPos === 'bottom' ? TASKBAR_H : 0)
+  const { L, R, T, B, g } = dockBounds(store)
+  const W = R - L
+  const H = B - T
   const zoneFor = (side: DockSidePos): ZoneLayout => {
     const members = store._ops.dockMembers(side)
     const z = store.state.docks[side]
     const activeId = members.some((p) => p.id === z.active) ? z.active : (members[0]?.id ?? null)
-    if (!members.length)
-      return {
-        side,
-        members,
-        activeId: null,
-        collapsed: z.collapsed,
-        rail: null,
-        body: null,
-        reserve: 0,
-      }
     const collapsed = z.collapsed
+    if (!members.length)
+      return { side, members, activeId: null, collapsed, rail: null, body: null, reserve: 0 }
     if (side === 'bottom') {
+      // No rail of its own: the taskbar is the bottom dock's tab strip.
       const size = clamp(z.size, DOCK.minH, Math.min(DOCK.maxH, Math.floor(H * 0.66)))
-      const reserve = RAIL + (collapsed ? 0 : size)
       return {
         side,
         members,
         activeId,
         collapsed,
-        rail: { x: 0, y: bot - RAIL, w: W, h: RAIL },
-        body: collapsed ? null : { x: 0, y: bot - RAIL - size, w: W, h: size },
-        reserve,
+        rail: null,
+        body: collapsed ? null : { x: L, y: B - g - size, w: W, h: size },
+        reserve: collapsed ? 0 : g + size,
       }
     }
     const size = clamp(z.size, DOCK.minW, Math.min(DOCK.maxW, Math.floor(W * 0.66)))
-    const reserve = RAIL + (collapsed ? 0 : size)
-    if (side === 'left') {
+    const h = H - g * 2
+    const reserve = g + RAIL + (collapsed ? 0 : g + size)
+    if (side === 'left')
       return {
         side,
         members,
         activeId,
         collapsed,
-        rail: { x: 0, y: top, w: RAIL, h: bot - top },
-        body: collapsed ? null : { x: RAIL, y: top, w: size, h: bot - top },
+        rail: { x: L + g, y: T + g, w: RAIL, h },
+        body: collapsed ? null : { x: L + g + RAIL + g, y: T + g, w: size, h },
         reserve,
       }
-    }
-    // right
     return {
       side,
       members,
       activeId,
       collapsed,
-      rail: { x: W - RAIL, y: top, w: RAIL, h: bot - top },
-      body: collapsed ? null : { x: W - RAIL - size, y: top, w: size, h: bot - top },
+      rail: { x: R - g - RAIL, y: T + g, w: RAIL, h },
+      body: collapsed ? null : { x: R - g - RAIL - g - size, y: T + g, w: size, h },
       reserve,
     }
   }
   const left = zoneFor('left')
   const right = zoneFor('right')
   const bottom = zoneFor('bottom')
-  // bottom zone spans only between the side docks; re-inset it horizontally
-  if (bottom.rail) {
-    const bx = left.reserve
-    const w = Math.max(0, W - left.reserve - right.reserve)
-    bottom.rail = { ...bottom.rail, x: bx, w }
-    if (bottom.body) bottom.body = { ...bottom.body, x: bx, w }
+  // The bottom zone spans between the side docks, a gutter clear of each.
+  if (bottom.body) {
+    const bx = L + left.reserve + g
+    bottom.body = { ...bottom.body, x: bx, w: Math.max(0, R - right.reserve - g - bx) }
   }
   return { left, right, bottom }
 }
@@ -174,19 +281,55 @@ export function startTiling(store: PanelStore) {
     }
   }
   function doRecompute() {
+    // Panels left-docked before the left side became ComfyUI's sidebar move into it.
+    if (store.state.sidebarAvailable)
+      for (const p of store._ops.dockMembers('left')) store._ops.setDock(p.id, 'left')
     const tbTop = store.state.taskbarPos === 'top'
     reserveTop(store, tbTop ? TASKBAR_H : 0) // before measuring, so topbarHeight() is current
+    // An embedded taskbar is the only thing that takes space from the canvas, and only once.
+    // A floating one sits over the canvas; ComfyUI's chrome is padded clear of it instead.
+    const floats = taskbarFloats(store)
+    const underBar = floats ? TASKBAR_H + canvasGutter() : 0
+    let resized = setFloatingBarInset(underBar)
+    resized = reserve('bottom', tbTop || floats ? 0 : TASKBAR_H) || resized
+    resized = reserve('left', 0) || resized
+    resized = reserve('right', 0) || resized
+    if (resized) nudgeCanvas()
     const layout = computeDockLayout(store)
     for (const side of DOCK_SIDES) {
-      const zone = layout[side]
       // stack all members on the body rect; ZenPanel shows only the active tab
-      const target = zone.body
-      if (target) for (const p of zone.members) Object.assign(p, target)
-      // Reserve the dock's space in the grid cell so the canvas reflows around it
-      // (+ the bottom taskbar strip when it's at the bottom).
-      reserve(side, zone.reserve + (side === 'bottom' && !tbTop ? TASKBAR_H : 0))
+      const target = layout[side].body
+      if (target) for (const p of layout[side].members) Object.assign(p, target)
     }
-    nudgeCanvas()
+    padChrome(
+      {
+        left: layout.left.reserve,
+        right: layout.right.reserve,
+        bottom: layout.bottom.reserve + underBar,
+      },
+      !store.state.interacting,
+    )
+    dockLayoutVersion.value++
+    if (statsPinned) {
+      const g = canvasGutter()
+      const canvasH = document.getElementById('graph-canvas')?.clientHeight ?? 0
+      const clearBelow = layout.bottom.reserve + underBar
+      statsWanted = [
+        layout.left.reserve + g,
+        clearBelow && canvasH ? canvasH - clearBelow - 7 * STATS_LINE : null,
+      ]
+      applyStats()
+    }
+  }
+  relayout = recompute
+  // A resize drag changes the dock size on every pointer move; lay out once per frame.
+  let frame = 0
+  function scheduleRecompute() {
+    if (frame) return
+    frame = requestAnimationFrame(() => {
+      frame = 0
+      recompute()
+    })
   }
   watch(
     () => {
@@ -197,10 +340,30 @@ export function startTiling(store: PanelStore) {
       const p = store.state.list
         .map((x) => `${x.id}:${x.dockSide}:${x.status}:${x.dockOrder}`)
         .join(',')
-      return d + '#' + p + '#' + store.state.taskbarPos
+      return d + '#' + p + '#' + store.state.taskbarPos + ':' + store.state.taskbarFloating
     },
-    recompute,
+    scheduleRecompute,
     { immediate: true },
   )
   window.addEventListener('resize', recompute)
+  // Switching graph <-> app mode swaps which chrome row is showing; re-lay the docks into it.
+  let lastRow: HTMLElement | null = null
+  let rowFrame = 0
+  function checkRow() {
+    rowFrame = 0
+    const row = visibleChromeRow()
+    if (row !== lastRow) {
+      lastRow = row
+      recompute()
+    }
+  }
+  new MutationObserver(() => {
+    padNewRows()
+    if (!rowFrame) rowFrame = requestAnimationFrame(checkRow)
+  }).observe(document.body, { childList: true, subtree: true })
+  window.setInterval(() => {
+    checkRow()
+    // The frontend re-parks the stats when its sidebar changes size or side; take them back.
+    applyStats()
+  }, 400)
 }

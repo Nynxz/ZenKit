@@ -8,21 +8,28 @@ import { ensureStyle, removeStyle } from './dom'
 import { theme } from './theme'
 import { startComfyThemeBridge } from './comfyTheme'
 import { createComfyThemeMenu } from './comfyThemeMenu'
+import { syncThemeSplash } from './themeSplash'
 import { createPanelStore, STORE_KEY, type PanelStore } from './panelStore'
 import { createAppStore, APP_STORE_KEY, type AppStore } from './appStore'
-import { startTiling } from './tiling'
+import { setStatsPinned, startTiling } from './tiling'
 import { startSidebar } from './sidebar'
-import { registerTaskbarWidget } from './taskbarWidgets'
+import { CANVAS_CONTROLS_WIDGET, registerTaskbarWidget, setWidgetOn } from './taskbarWidgets'
 import { createStorage } from './storage'
 import { startBackground, backgrounds } from './background'
+import { startSidebarPin } from './sidebarPin'
 import { startGroups } from './groups'
 import { createChannels } from './channels'
 import { createJobs } from './jobs'
 import { createPlugins } from './pluginRegistry'
 import { createGraph } from './graph'
+import { createCapabilities } from './capabilities'
+import { registerCoreCapabilities } from './coreCapabilities'
+import { registerWorkflowCapabilities } from './workflowCapabilities'
+import { createMedia } from './media'
 import { createViewer } from './viewer'
 import { setDebug } from './log'
 import ZenHost from './components/ZenHost.vue'
+import ZenJobsWidget from './components/ZenJobsWidget.vue'
 import ZenSettings from './components/ZenSettings.vue'
 
 export const ZENKIT_VERSION = '0.2.0'
@@ -69,6 +76,20 @@ export function installZenKit(opts: InstallOptions = {}): ZenKitApi {
   startTiling(store)
   startSidebar(store, bus) // host pinned panels in ComfyUI's native sidebar (no-op if unavailable)
 
+  // Built-in widget: progress for running jobs (invisible while there are none).
+  registerTaskbarWidget({
+    id: 'zenkit:jobs',
+    label: 'Jobs',
+    icon: 'mdi mdi-progress-clock',
+    order: 90,
+    defaultOn: true,
+    render: (el) => {
+      const widget = createApp(ZenJobsWidget)
+      widget.mount(el)
+      return () => widget.unmount()
+    },
+  })
+
   // Built-in widget: the hide-all-panels toggle.
   registerTaskbarWidget({
     id: 'zenkit:hide-panels',
@@ -100,17 +121,19 @@ export function installZenKit(opts: InstallOptions = {}): ZenKitApi {
 
   // Built-in widget: ComfyUI's bottom-right canvas controls, reparented into the taskbar.
   registerTaskbarWidget({
-    id: 'zenkit:canvas-controls',
+    id: CANVAS_CONTROLS_WIDGET,
     label: 'Canvas controls',
     icon: 'mdi mdi-tune-variant',
     order: 110,
     defaultOn: true,
     render: (el) => {
-      const SEL = '.p-buttongroup.bottom-0.right-0'
+      // Found by its buttons' test ids (stable across ComfyUI layout changes), not its classes.
+      const SEL = '[role="toolbar"]:has([data-testid="zoom-controls-button"])'
       let ctl: HTMLElement | null = null
       let parent: Node | null = null
       let next: Node | null = null
       const dock = () => {
+        if (!theme.comfyRestyle()) return
         const c = document.querySelector(SEL) as HTMLElement | null
         if (!c || el.contains(c)) return
         parent = c.parentNode
@@ -126,11 +149,21 @@ export function installZenKit(opts: InstallOptions = {}): ZenKitApi {
         ctl = parent = next = null
       }
       const styleId = 'zenkit-canvasctl-style'
-      ensureStyle(
-        styleId,
-        '.minimap-main-container{bottom:2px!important;right:2px!important}.p-buttongroup.bottom-0.right-0:not(.zen-canvasctl){display:none!important}',
-      )
-      dock()
+      const applyRestyle = (on: boolean) => {
+        setStatsPinned(on)
+        if (!on) {
+          undock()
+          removeStyle(styleId)
+          return
+        }
+        ensureStyle(
+          styleId,
+          `.minimap-main-container{bottom:0!important}${SEL}:not(.zen-canvasctl){display:none!important}`,
+        )
+        dock()
+      }
+      applyRestyle(theme.comfyRestyle())
+      const offRestyle = theme.onComfyRestyleChange(applyRestyle)
       const retries = [150, 400, 900, 1800, 3000].map((t) =>
         window.setTimeout(() => {
           if (!ctl || !ctl.isConnected || !el.contains(ctl)) dock()
@@ -147,6 +180,8 @@ export function installZenKit(opts: InstallOptions = {}): ZenKitApi {
       })
       obs.observe(document.body, { childList: true, subtree: true })
       return () => {
+        setStatsPinned(false)
+        offRestyle()
         retries.forEach((t) => clearTimeout(t))
         obs.disconnect()
         undock()
@@ -173,6 +208,7 @@ export function installZenKit(opts: InstallOptions = {}): ZenKitApi {
   )
 
   startBackground() // themed canvas grid behind the node graph
+  startSidebarPin() // keep ComfyUI's sidebar at a fixed px width when docks resize the graph
   startGroups() // themed (rounded) node groups; native drag/resize left untouched
 
   // Sync ZenKit theme switches with ComfyUI + comfyui-desktop (native titlebar / .dark-theme),
@@ -180,6 +216,10 @@ export function installZenKit(opts: InstallOptions = {}): ZenKitApi {
   startComfyThemeBridge()
   // Experimental: inject a ZenKit theme block into ComfyUI's logo→Theme menu, toggleable from
   // Zen Settings (the store flag persists; start/stop tracks it, applied immediately on boot).
+  // The startup splash follows the theme (and its light/dark mode) from the next load.
+  theme.onChange(() => syncThemeSplash(store.state.themedSplash))
+  watch(() => store.state.themedSplash, (on) => syncThemeSplash(on), { immediate: true })
+
   const comfyThemeMenu = createComfyThemeMenu()
   watch(
     () => store.state.comfyThemeMenu,
@@ -236,14 +276,23 @@ function buildApi(store: PanelStore, appStore: AppStore, bus: ZenBus): ZenKitApi
       registerPack: (p) => theme.registerPack(p),
     },
     bus,
-    jobs,
-    channels,
+    jobs: { list: jobs.list, get: jobs.get, on: jobs.on, start: jobs.start },
+    channels: {
+      publish: channels.publish,
+      declare: channels.declare,
+      get: channels.get,
+      last: channels.last,
+      list: channels.list,
+      subscribe: channels.subscribe,
+    },
     plugins: createPlugins(bus),
     taskbar: { register: registerTaskbarWidget },
     storage: createStorage(),
     background: backgrounds,
     graph: createGraph(),
     viewer: createViewer(),
+    capabilities: createCapabilities(bus),
+    media: createMedia(),
     apps: {
       register: appStore.register,
       registered: appStore.registered,
@@ -264,7 +313,7 @@ function buildApi(store: PanelStore, appStore: AppStore, bus: ZenBus): ZenKitApi
     setMinimizedAnchor: (a) => store.setMinimizedAnchor(a),
     setTaskbarPos: (p) => store.setTaskbarPos(p),
     setAbsorbComfyButtons: (on) => store.setAbsorbComfyButtons(on),
-    setAbsorbCanvasControls: (on) => store.setAbsorbCanvasControls(on),
+    setAbsorbCanvasControls: (on) => setWidgetOn(CANVAS_CONTROLS_WIDGET, on),
     setAppUrlSync: (on) => appStore.setUrlSync(on),
     setSidebarAutohide: (on) => store.setSidebarAutohide(on),
     setFloatingSidebar: (on) => store.setFloatingSidebar(on),
@@ -273,6 +322,8 @@ function buildApi(store: PanelStore, appStore: AppStore, bus: ZenBus): ZenKitApi
 
   installed = api
   window.ZenKit = api
+  registerCoreCapabilities(api)
+  registerWorkflowCapabilities(api)
   resolveReady(api)
   return api
 }
@@ -327,6 +378,7 @@ export function installZenKitSecondary(panelId: string, opts: InstallOptions = {
   const ctx: PanelContext = {
     id: panelId,
     state: readStates()[panelId],
+    expose: () => () => {},
     setState: (s) => {
       try {
         const all = readStates()

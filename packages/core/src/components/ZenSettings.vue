@@ -7,7 +7,13 @@ import { COMFY_BRAND, STORE_KEY, type PanelStore } from '../panelStore'
 import { APP_STORE_KEY, type AppStore } from '../appStore'
 import { theme } from '../theme'
 import { logEntries, onLog, setDebug, type LogEntry } from '../log'
-import { orderedWidgets, isWidgetOn, setWidgetOn, moveWidget } from '../taskbarWidgets'
+import {
+  CANVAS_CONTROLS_WIDGET,
+  orderedWidgets,
+  isWidgetOn,
+  setWidgetOn,
+  moveWidget,
+} from '../taskbarWidgets'
 
 const store = inject(STORE_KEY) as PanelStore
 const appStore = inject(APP_STORE_KEY) as AppStore
@@ -193,6 +199,17 @@ onBeforeUnmount(() => offLog?.())
           @update:model-value="(v) => store.setTaskbarPos(String(v) === 'top' ? 'top' : 'bottom')"
         />
       </div>
+      <div class="zse-set">
+        <div>
+          <span class="zse-slbl">Floating taskbar</span>
+          <small>an inset, rounded card over the canvas (bottom edge)</small>
+        </div>
+        <ZenSwitch
+          :model-value="store.state.taskbarFloating"
+          :disabled="store.state.taskbarPos !== 'bottom'"
+          @update:model-value="(v) => store.setTaskbarFloating(!!v)"
+        />
+      </div>
 
       <!-- white-label the taskbar's Start button -->
       <div class="zse-brand">
@@ -239,12 +256,35 @@ onBeforeUnmount(() => offLog?.())
       </div>
       <div class="zse-set">
         <div>
-          <span class="zse-slbl">Absorb ComfyUI buttons</span>
+          <span class="zse-slbl">Absorb ComfyUI sidebar buttons</span>
           <small>settings/help/etc. into the taskbar menu</small>
         </div>
         <ZenSwitch
           :model-value="store.state.absorbComfyButtons"
           @update:model-value="(v) => store.setAbsorbComfyButtons(v)"
+        />
+      </div>
+      <div class="zse-set">
+        <div>
+          <span class="zse-slbl">Absorb canvas controls</span>
+          <small>zoom, fit, minimap and link toggles into the taskbar</small>
+        </div>
+        <ZenSwitch
+          :model-value="isWidgetOn(CANVAS_CONTROLS_WIDGET)"
+          @update:model-value="(v) => setWidgetOn(CANVAS_CONTROLS_WIDGET, v)"
+        />
+      </div>
+      <div class="zse-set">
+        <div>
+          <span class="zse-slbl">Themed startup</span>
+          <small>
+            ComfyUI's loading screen uses the active theme — its colours, and its own sequence when it
+            has one (Cute Hearts). Shows from the next load.
+          </small>
+        </div>
+        <ZenSwitch
+          :model-value="store.state.themedSplash"
+          @update:model-value="(v) => store.setThemedSplash(v)"
         />
       </div>
       <div class="zse-set">

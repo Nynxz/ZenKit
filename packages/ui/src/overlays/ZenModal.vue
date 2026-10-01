@@ -29,7 +29,7 @@ onBeforeUnmount(() => window.removeEventListener('keydown', onKey, true))
 
 <template>
   <Teleport to="body">
-    <div v-if="open" class="zen-modal-back" @pointerdown.self="close">
+    <div v-if="open" data-zen-layer class="zen-modal-back zen-scroll" @pointerdown.self="close">
       <div class="zen-modal" :style="{ width, height }">
         <div class="zm-head">
           <span v-if="title" class="zm-title">{{ title }}</span>
@@ -61,10 +61,10 @@ onBeforeUnmount(() => window.removeEventListener('keydown', onKey, true))
   max-width: 94vw;
   max-height: 90vh;
   overflow: hidden;
-  background: var(--zen-surface, #202026);
+  background: var(--zen-chrome-bg, var(--zen-surface, #202026));
   color: var(--zen-text, #e5e5ea);
-  border: 1px solid var(--zen-border, #34343c);
-  border-radius: calc(var(--zen-radius, 8px) + 2px);
+  border: 1px solid var(--zen-surface-border, var(--zen-border, #34343c));
+  border-radius: calc(var(--zen-radius-surface, var(--zen-radius, 8px)) + 2px);
   box-shadow: 0 24px 70px rgba(0, 0, 0, 0.6);
   font-family: var(--p-font-family, system-ui, sans-serif);
 }

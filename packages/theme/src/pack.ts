@@ -34,6 +34,7 @@ export function parsePack(data: unknown): ThemePack | null {
     : undefined
 
   const css = typeof d.css === 'string' && d.css.trim() ? d.css : undefined
+  const splash = parseSplash(d.splash)
 
   return {
     id: d.id,
@@ -41,5 +42,14 @@ export function parsePack(data: unknown): ThemePack | null {
     ...(modes && modes.length ? { modes } : {}),
     tokens,
     ...(css ? { css } : {}),
+    ...(splash ? { splash } : {}),
   }
+}
+
+function parseSplash(data: unknown): ThemePack['splash'] {
+  if (!data || typeof data !== 'object') return undefined
+  const d = data as Record<string, unknown>
+  const text = (v: unknown) => (typeof v === 'string' && v.trim() ? v : undefined)
+  const splash = { preset: text(d.preset), html: text(d.html), css: text(d.css) }
+  return splash.preset || splash.html ? splash : undefined
 }

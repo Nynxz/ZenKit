@@ -30,10 +30,10 @@ const emit = defineEmits<{ 'update:modelValue': [Val] }>()
 <style scoped>
 .zen-tg {
   display: inline-flex;
-  border: 1px solid var(--zen-border, #3a3a44);
+  border: 1px solid var(--zen-control-border, var(--zen-border, #3a3a44));
   border-radius: var(--zen-radius, 7px);
   overflow: hidden;
-  background: var(--zen-surface, #202026);
+  background: var(--zen-control-bg, var(--zen-surface, #202026));
 }
 .zen-tg-b {
   display: inline-flex;

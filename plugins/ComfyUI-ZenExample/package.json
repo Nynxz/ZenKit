@@ -1,0 +1,22 @@
+{
+  "name": "comfyui-zenexample",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "description": "Zen Example — a reference ZenKit plugin that exercises the toolkit's features, starting with a Job Lab for test jobs.",
+  "scripts": {
+    "build": "vite build",
+    "dev": "vite build --watch",
+    "typecheck": "vue-tsc --noEmit"
+  },
+  "dependencies": {
+    "@nynxz/zenkit-client": "workspace:*",
+    "@nynxz/zenkit-ui": "workspace:*",
+    "vue": "^3.5.0"
+  },
+  "devDependencies": {
+    "@vitejs/plugin-vue": "^5.2.3",
+    "vite": "^6.3.5",
+    "@nynxz/zenkit-nodekit": "workspace:*"
+  }
+}

@@ -5,14 +5,17 @@
 // lives in @nynxz/zenkit-client (openViewer → new tab).
 import { createApp, h, reactive, type App } from 'vue'
 import { ZenLightbox } from '@nynxz/zenkit-ui'
-import type { ViewerHandle, ViewerItem, ZenViewer } from '@nynxz/zenkit-types'
+import type { ViewerHandle, ViewerItem, ViewerOpenOptions, ZenViewer } from '@nynxz/zenkit-types'
 
 export function createViewer(): ZenViewer {
   const state = reactive<{ items: ViewerItem[]; index: number }>({ items: [], index: 0 })
   let appInst: App | null = null
   let mountEl: HTMLElement | null = null
+  let onClose: (() => void) | undefined
 
   function close(): void {
+    const notify = onClose
+    onClose = undefined
     if (appInst) {
       try {
         appInst.unmount()
@@ -25,10 +28,12 @@ export function createViewer(): ZenViewer {
       mountEl.remove()
       mountEl = null
     }
+    notify?.()
   }
 
-  function open(items: ViewerItem[], opts: { index?: number } = {}): ViewerHandle {
+  function open(items: ViewerItem[], opts: ViewerOpenOptions = {}): ViewerHandle {
     close() // single instance — replace any open viewer
+    onClose = opts.onClose
     state.items = Array.isArray(items) ? items : []
     state.index = Math.max(0, Math.min(opts.index ?? 0, state.items.length - 1))
     mountEl = document.createElement('div')
@@ -40,6 +45,7 @@ export function createViewer(): ZenViewer {
           index: state.index,
           'onUpdate:index': (i: number) => {
             state.index = i
+            opts.onIndex?.(i)
           },
           onClose: close,
         }),
@@ -49,6 +55,7 @@ export function createViewer(): ZenViewer {
       close,
       setIndex: (i: number) => {
         state.index = i
+        opts.onIndex?.(i)
       },
     }
   }

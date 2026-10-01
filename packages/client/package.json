@@ -2,7 +2,7 @@
   "name": "@nynxz/zenkit-client",
   "version": "0.2.0",
   "type": "module",
-  "description": "Typed consumer SDK — graceful degradation when ZenKit is absent.",
+  "description": "Typed consumer SDK \u2014 graceful degradation when ZenKit is absent.",
   "exports": {
     ".": {
       "types": "./dist/index.d.ts",
@@ -29,5 +29,8 @@
   "types": "./dist/index.d.ts",
   "devDependencies": {
     "vite": "^6.4.3"
+  },
+  "peerDependencies": {
+    "vue": "^3.5.0"
   }
 }

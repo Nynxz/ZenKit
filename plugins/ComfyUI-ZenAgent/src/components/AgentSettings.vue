@@ -1,0 +1,97 @@
+<script setup lang="ts">
+import { ZenButton, ZenField, ZenInput, ZenSelect } from '@nynxz/zenkit-ui'
+import { onMounted, ref } from 'vue'
+
+import { agentApi } from '../lib/api'
+
+const emit = defineEmits<{ saved: [] }>()
+
+const llmUrl = ref('')
+const model = ref('')
+const apiKey = ref('')
+const hasKey = ref(false)
+const maxTokens = ref(2048)
+const maxSteps = ref(50)
+const vision = ref<'auto' | 'on' | 'off'>('auto')
+const models = ref<string[]>([])
+const status = ref('')
+
+async function loadModels(): Promise<void> {
+  models.value = await agentApi.models().catch(() => [])
+  status.value = models.value.length ? '' : 'No models found at this endpoint.'
+}
+
+onMounted(async () => {
+  const s = await agentApi.settings()
+  llmUrl.value = s.llm_url
+  model.value = s.model ?? ''
+  hasKey.value = s.has_key
+  maxTokens.value = s.max_tokens
+  maxSteps.value = s.max_steps
+  vision.value = s.vision
+  await loadModels()
+})
+
+async function save(): Promise<void> {
+  await agentApi.saveSettings({
+    llm_url: llmUrl.value.trim(),
+    model: model.value || null,
+    max_tokens: maxTokens.value,
+    max_steps: maxSteps.value,
+    vision: vision.value,
+    ...(apiKey.value ? { api_key: apiKey.value } : {}),
+  })
+  apiKey.value = ''
+  await loadModels()
+  emit('saved')
+}
+</script>
+
+<template>
+  <div class="za-settings">
+    <ZenField label="Endpoint" stack>
+      <ZenInput v-model="llmUrl" placeholder="http://127.0.0.1:1234/v1" />
+    </ZenField>
+    <ZenField label="Model" stack>
+      <ZenSelect
+        v-model="model"
+        :options="[{ value: '', label: 'Loaded / first available' }, ...models.map((m) => ({ value: m, label: m }))]"
+      />
+    </ZenField>
+    <ZenField label="API key" stack>
+      <ZenInput v-model="apiKey" type="password" :placeholder="hasKey ? 'Saved — type to replace' : 'Optional'" />
+    </ZenField>
+    <ZenField label="Max tokens" stack>
+      <ZenInput v-model="maxTokens" type="number" :min="64" :step="256" />
+    </ZenField>
+    <ZenField label="Max steps per reply" stack>
+      <ZenInput v-model="maxSteps" type="number" :min="1" :step="5" />
+    </ZenField>
+    <ZenField label="Vision (send the model images)" stack>
+      <ZenSelect
+        v-model="vision"
+        :options="[
+          { value: 'auto', label: 'Auto — when LM Studio says the model can see' },
+          { value: 'on', label: 'On' },
+          { value: 'off', label: 'Off' },
+        ]"
+      />
+    </ZenField>
+    <div v-if="status" class="za-settings-status">{{ status }}</div>
+    <ZenButton variant="primary" @click="save">Save</ZenButton>
+  </div>
+</template>
+
+<style scoped>
+.za-settings {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  width: 300px;
+  padding: 12px;
+}
+.za-settings-status {
+  color: var(--zen-muted);
+  font-size: 11.5px;
+}
+</style>

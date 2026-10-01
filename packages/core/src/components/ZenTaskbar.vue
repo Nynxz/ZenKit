@@ -5,11 +5,13 @@ import { computed, inject, nextTick, onBeforeUnmount, onMounted, ref, watch } fr
 import { ZenSelect, ZenIcon, ZenPopover, ZenMenuItem, ZenMenuSeparator } from '@nynxz/zenkit-ui'
 import { STORE_KEY, type PanelStore } from '../panelStore'
 import { APP_STORE_KEY, type AppStore } from '../appStore'
-import { TASKBAR_H } from '../tiling'
+import { canvasGutter, TASKBAR_H, taskbarFloats, taskbarFootprint } from '../tiling'
 import { theme } from '../theme'
 import { activeWidgets } from '../taskbarWidgets'
 import { isPinned, togglePin, pinnedIds } from '../pins'
 import TaskbarWidgetMount from './TaskbarWidgetMount.vue'
+import { useTaskReorder } from '../taskReorder'
+import { startDockTabDrag } from '../dockDrag'
 
 const store = inject(STORE_KEY) as PanelStore
 const appStore = inject(APP_STORE_KEY) as AppStore
@@ -45,10 +47,22 @@ const widgets = computed(() => activeWidgets())
 // All windowed consumer panels (floating + minimized; docked/sidebar live elsewhere).
 // ambient (frame:'none') panels like the mascot aren't "windows" — keep them out of the bar.
 const tasks = computed(() =>
-  store.state.list.filter(
-    (p) => !p.id.startsWith('zenkit:') && !p.dockSide && !p.inSidebar && p.frame !== 'none',
+  ops.sortByTaskOrder(
+    store.state.list.filter(
+      (p) => !p.id.startsWith('zenkit:') && !p.dockSide && !p.inSidebar && p.frame !== 'none',
+    ),
   ),
 )
+// Bottom-docked panels: the taskbar is their tab strip. The shown one is the zone's active tab
+// (or its first, as the dock layout falls back to) unless the zone is tucked away.
+const bottomDocked = computed(() => ops.dockMembers('bottom'))
+const bottomShownId = computed(() => {
+  const z = store.state.docks.bottom
+  if (z.collapsed) return null
+  const members = bottomDocked.value
+  return members.some((p) => p.id === z.active) ? z.active : (members[0]?.id ?? null)
+})
+
 // The frontmost open panel (highest z) — shown active; null when panels are hidden.
 const focusedId = computed(() => {
   if (store.state.panelsHidden) return null
@@ -56,6 +70,7 @@ const focusedId = computed(() => {
   return open.length ? open.reduce((a, b) => (b.z > a.z ? b : a)).id : null
 })
 function taskClick(p: { id: string; status: string }) {
+  if (clickWasDrag()) return
   if (p.status === 'minimized') ops.restore(p.id)
   else if (focusedId.value === p.id)
     ops.minimize(p.id) // click the active one → minimize
@@ -66,6 +81,7 @@ function taskClick(p: { id: string; status: string }) {
 const ctxOpen = ref(false)
 const ctxAt = ref<{ x: number; y: number }>({ x: 0, y: 0 })
 const ctxPanel = ref<{ id: string; title: string; status: string } | null>(null)
+const ctxDocked = computed(() => !!(ctxPanel.value && ops.get(ctxPanel.value.id)?.dockSide))
 
 function openTaskMenu(e: MouseEvent, p: { id: string; title: string; status: string }) {
   ctxPanel.value = p
@@ -83,6 +99,12 @@ function runOnCtx(fn: (id: string) => void) {
 // "⋯N" chip that opens a list. visibleCount is measured from the laid-out button positions;
 // overflowed buttons stay in the DOM (visibility:hidden) so the geometry is stable to re-measure.
 const tasksEl = ref<HTMLElement | null>(null)
+const taskIds = () => tasks.value.map((p) => p.id)
+const { dropLine, draggingId, onPointerDown, clickWasDrag } = useTaskReorder(
+  tasksEl,
+  taskIds,
+  (id, beforeId) => ops.reorderTask(taskIds(), id, beforeId),
+)
 const visibleCount = ref(99)
 const overflowCount = computed(() => Math.max(0, tasks.value.length - visibleCount.value))
 const overflowTasks = computed(() => tasks.value.slice(visibleCount.value))
@@ -351,10 +373,10 @@ function applyAppModeFit() {
     el.id = id
     document.head.appendChild(el)
   }
-  const h = store.state.taskbarPos === 'bottom' ? TASKBAR_H : 0
+  const h = taskbarFootprint(store)
   el.textContent = `.p-splitter.p-splitter-horizontal.bg-comfy-menu-secondary-bg{height:calc(100% - var(--workflow-tabs-height, 0px) - ${h}px)!important}`
 }
-watch(() => store.state.taskbarPos, applyAppModeFit)
+watch(() => [store.state.taskbarPos, store.state.taskbarFloating], applyAppModeFit)
 onMounted(applyAppModeFit)
 onBeforeUnmount(() => document.getElementById('zenkit-appmode-fit')?.remove())
 function clickComfy(b: ComfyBtn) {
@@ -366,11 +388,14 @@ function clickComfy(b: ComfyBtn) {
   closeMenu()
 }
 
-const tbStyle = computed(() =>
-  store.state.taskbarPos === 'top'
-    ? { height: TASKBAR_H + 'px', top: store.state.topbarH + 'px', bottom: 'auto' }
-    : { height: TASKBAR_H + 'px', bottom: '0', top: 'auto' },
-)
+const floating = computed(() => taskbarFloats(store))
+const tbStyle = computed(() => {
+  if (store.state.taskbarPos === 'top')
+    return { height: TASKBAR_H + 'px', top: store.state.topbarH + 'px', bottom: 'auto' }
+  if (!floating.value) return { height: TASKBAR_H + 'px', bottom: '0', top: 'auto' }
+  const g = canvasGutter() + 'px'
+  return { height: TASKBAR_H + 'px', bottom: g, top: 'auto', left: g, right: g }
+})
 // Named rather than inlined in the template: Prettier's `semi: false` strips the separator from a
 // multi-statement inline handler, and Vue cannot parse newline-separated statements there.
 function openTaskFromOverflow(p: Parameters<typeof taskClick>[0]) {
@@ -380,7 +405,12 @@ function openTaskFromOverflow(p: Parameters<typeof taskClick>[0]) {
 </script>
 
 <template>
-  <div ref="root" class="tb" :class="'pos-' + store.state.taskbarPos" :style="tbStyle">
+  <div
+    ref="root"
+    class="tb"
+    :class="['pos-' + store.state.taskbarPos, { floating }]"
+    :style="tbStyle"
+  >
     <button
       class="tb-start"
       :class="{ on: menuOpen }"
@@ -412,15 +442,34 @@ function openTaskFromOverflow(p: Parameters<typeof taskClick>[0]) {
       />
     </button>
 
+    <div v-if="bottomDocked.length" class="tb-docked">
+      <button
+        v-for="p in bottomDocked"
+        :key="p.id"
+        class="tb-dock"
+        :class="{ active: bottomShownId === p.id }"
+        :title="(bottomShownId === p.id ? 'hide ' : 'show ') + p.title"
+        @pointerdown="
+          startDockTabDrag($event, store, p.id, () => ops.toggleDockTab('bottom', p.id))
+        "
+        @keydown.enter.space.prevent="ops.toggleDockTab('bottom', p.id)"
+        @contextmenu.prevent.stop="openTaskMenu($event, p)"
+      >
+        <ZenIcon :icon="p.icon" />
+      </button>
+    </div>
+
     <div ref="tasksEl" class="tb-tasks">
       <button
         v-for="(p, i) in tasks"
         :key="p.id"
+        :data-task-id="p.id"
         class="tb-task"
         :class="{
           min: p.status === 'minimized',
           active: focusedId === p.id,
           'tb-off': i >= visibleCount,
+          dragging: draggingId === p.id,
         }"
         :title="
           p.status === 'minimized'
@@ -429,6 +478,7 @@ function openTaskFromOverflow(p: Parameters<typeof taskClick>[0]) {
               ? 'minimize ' + p.title
               : 'focus ' + p.title
         "
+        @pointerdown="onPointerDown($event, p.id)"
         @click="taskClick(p)"
         @contextmenu.prevent.stop="openTaskMenu($event, p)"
       >
@@ -445,6 +495,7 @@ function openTaskFromOverflow(p: Parameters<typeof taskClick>[0]) {
         <i class="mdi mdi-dots-horizontal" />
         <span class="tb-task-lbl">{{ overflowCount }}</span>
       </button>
+      <div v-if="dropLine !== null" class="tb-drop-line" :style="{ left: dropLine + 'px' }" />
     </div>
 
     <!-- unified right-side strip: all widgets (canvas controls, VRAM, hide, …) share one gap -->
@@ -593,8 +644,23 @@ function openTaskFromOverflow(p: Parameters<typeof taskClick>[0]) {
     </Teleport>
 
     <ZenPopover v-model:open="ctxOpen" :anchor="ctxAt" placement="bottom-start">
+      <template v-if="ctxDocked">
+        <ZenMenuItem
+          icon="mdi mdi-window-restore"
+          @select="runOnCtx((id) => ops.setDock(id, null))"
+        >
+          Undock (float)
+        </ZenMenuItem>
+        <ZenMenuItem
+          v-if="store.state.sidebarAvailable"
+          icon="mdi mdi-dock-left"
+          @select="runOnCtx(ops.pinSidebar)"
+        >
+          Pin to sidebar
+        </ZenMenuItem>
+      </template>
       <ZenMenuItem
-        v-if="ctxPanel?.status === 'minimized'"
+        v-else-if="ctxPanel?.status === 'minimized'"
         icon="mdi mdi-window-restore"
         @select="runOnCtx(ops.restore)"
       >
@@ -610,6 +676,25 @@ function openTaskFromOverflow(p: Parameters<typeof taskClick>[0]) {
         </ZenMenuItem>
         <ZenMenuItem icon="mdi mdi-window-minimize" @select="runOnCtx(ops.minimize)">
           Minimize
+        </ZenMenuItem>
+      </template>
+      <template v-if="!ctxDocked">
+        <ZenMenuSeparator />
+        <ZenMenuItem
+          icon="mdi mdi-dock-bottom"
+          @select="runOnCtx((id) => ops.setDock(id, 'bottom'))"
+        >
+          Dock to taskbar
+        </ZenMenuItem>
+        <ZenMenuItem icon="mdi mdi-dock-right" @select="runOnCtx((id) => ops.setDock(id, 'right'))">
+          Dock right
+        </ZenMenuItem>
+        <ZenMenuItem
+          v-if="store.state.sidebarAvailable"
+          icon="mdi mdi-dock-left"
+          @select="runOnCtx(ops.pinSidebar)"
+        >
+          Pin to sidebar
         </ZenMenuItem>
       </template>
       <ZenMenuSeparator />
@@ -629,7 +714,11 @@ function openTaskFromOverflow(p: Parameters<typeof taskClick>[0]) {
   gap: 6px;
   padding: 4px 6px;
   box-sizing: border-box;
-  background: color-mix(in srgb, var(--zen-surface, #202026) 94%, transparent);
+  background: color-mix(
+    in srgb,
+    var(--zen-chrome-bg, var(--zen-surface, #202026)) 94%,
+    transparent
+  );
   border-top: 1px solid var(--zen-border, #3a3a44);
   backdrop-filter: blur(10px);
   font-family: var(--p-font-family, system-ui, sans-serif);
@@ -639,6 +728,12 @@ function openTaskFromOverflow(p: Parameters<typeof taskClick>[0]) {
 .tb.pos-top {
   border-top: none;
   border-bottom: 1px solid var(--zen-border, #3a3a44);
+}
+/* Floating: an inset card like the rest of the canvas chrome. */
+.tb.floating {
+  border: 1px solid var(--zen-surface-border, var(--zen-border, #3a3a44));
+  border-radius: var(--zen-radius-surface, var(--zen-radius, 10px));
+  box-shadow: var(--interface-floating-panel-shadow, 0 6px 18px rgba(0, 0, 0, 0.28));
 }
 .tb-start {
   display: inline-flex;
@@ -674,6 +769,46 @@ img.tb-logo {
 }
 
 /* no horizontal scroll: clip overflow, JS collapses what doesn't fit into the .tb-ovf chip */
+.tb-docked {
+  display: flex;
+  align-items: stretch;
+  gap: 2px;
+  padding-right: 6px;
+  margin-right: 2px;
+  border-right: 1px solid var(--zen-surface-border, var(--zen-border, #3a3a44));
+}
+.tb-dock {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 30px;
+  border: none;
+  border-radius: var(--zen-radius, 6px);
+  background: var(--zen-ghost-bg, transparent);
+  color: var(--zen-muted, #9aa0aa);
+  font-size: 15px;
+  cursor: pointer;
+  transition:
+    background 0.12s ease,
+    color 0.12s ease;
+}
+.tb-dock:hover {
+  background: var(--zen-control-hover-bg, var(--zen-control-bg, #202026));
+  color: var(--zen-text, #e5e5ea);
+}
+/* The shown docked panel gets the same tint + underline as the frontmost window chip, so it
+   reads as open whatever its icon is (an image icon ignores `color`); hidden image icons dim. */
+.tb-dock.active {
+  background: color-mix(in srgb, var(--zen-accent, #3b82f6) 16%, var(--zen-bg, #15151a));
+  color: var(--zen-accent, #3b82f6);
+  box-shadow: inset 0 -2px 0 var(--zen-accent, #3b82f6);
+}
+.tb-dock :deep(.zen-ico-img) {
+  transition: opacity 0.12s ease;
+}
+.tb-dock:not(.active):not(:hover) :deep(.zen-ico-img) {
+  opacity: 0.6;
+}
 .tb-tasks {
   flex: 1;
   min-width: 0;
@@ -682,6 +817,21 @@ img.tb-logo {
   align-items: stretch;
   gap: 4px;
   overflow: hidden;
+  user-select: none;
+}
+.tb-task.dragging {
+  opacity: 0.5;
+  cursor: grabbing;
+}
+.tb-drop-line {
+  position: absolute;
+  top: 50%;
+  width: 2px;
+  height: 18px;
+  border-radius: 999px;
+  background: var(--zen-accent, #3b82f6);
+  transform: translate(-50%, -50%);
+  pointer-events: none;
 }
 .tb-task.tb-off {
   visibility: hidden;
@@ -785,9 +935,9 @@ img.tb-logo {
   flex-direction: column;
   gap: 1px;
   padding: 5px;
-  background: var(--zen-surface, #202026);
-  border: 1px solid var(--zen-border, #3a3a44);
-  border-radius: var(--zen-radius, 9px);
+  background: var(--zen-chrome-bg, var(--zen-surface, #202026));
+  border: 1px solid var(--zen-surface-border, var(--zen-border, #3a3a44));
+  border-radius: var(--zen-radius-surface, var(--zen-radius, 9px));
   box-shadow: 0 6px 18px rgba(0, 0, 0, 0.28);
 }
 .tb-ovfitem {
@@ -840,9 +990,9 @@ img.tb-logo {
   height: min(480px, 78vh);
   display: flex;
   flex-direction: column;
-  background: var(--zen-surface, #202026);
-  border: 1px solid var(--zen-border, #3a3a44);
-  border-radius: var(--zen-radius, 10px);
+  background: var(--zen-chrome-bg, var(--zen-surface, #202026));
+  border: 1px solid var(--zen-surface-border, var(--zen-border, #3a3a44));
+  border-radius: var(--zen-radius-surface, var(--zen-radius, 10px));
   box-shadow: 0 6px 18px rgba(0, 0, 0, 0.28);
   overflow: hidden;
   font-family: var(--p-font-family, system-ui, sans-serif);
@@ -979,18 +1129,20 @@ img.tb-logo {
   width: 30px;
   height: 30px;
   flex: 0 0 auto;
-  border: 1px solid var(--zen-border, #3a3a44);
+  border: 1px solid var(--zen-control-border, var(--zen-border, #3a3a44));
   border-radius: var(--zen-radius, 7px);
-  background: var(--zen-bg, #15151a);
+  background: var(--zen-ghost-bg, var(--zen-bg, #15151a));
   color: var(--zen-muted, #9aa0aa);
   cursor: pointer;
   transition:
     border-color 0.12s ease,
+    background 0.12s ease,
     color 0.12s ease;
 }
 .tb-fbtn:hover {
-  border-color: var(--zen-accent, #3b82f6);
-  color: var(--zen-accent, #3b82f6);
+  border-color: var(--zen-control-hover-border, var(--zen-accent, #3b82f6));
+  background: var(--zen-control-hover-bg, var(--zen-control-bg));
+  color: var(--zen-ghost-hover-text, var(--zen-accent, #3b82f6));
 }
 /* line-height:1 so the glyph centers in the box — without it the icon inherits ComfyUI's
    small line-height and sits ~1px high (covers absorbed pi/mdi icons too). */

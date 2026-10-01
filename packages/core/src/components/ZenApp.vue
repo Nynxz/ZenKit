@@ -9,7 +9,7 @@ import { computed, inject, onBeforeUnmount, onMounted, ref, watch } from 'vue'
 import { ZenIcon, ZenIconButton } from '@nynxz/zenkit-ui'
 import { APP_STORE_KEY, matchRoute, type AppStore } from '../appStore'
 import { STORE_KEY, type PanelStore } from '../panelStore'
-import { TASKBAR_H } from '../tiling'
+import { TASKBAR_H, taskbarFootprint } from '../tiling'
 import type { RouteContext } from '../types'
 
 const store = inject(APP_STORE_KEY) as AppStore
@@ -21,7 +21,7 @@ const panels = inject(STORE_KEY) as PanelStore
 const surfaceStyle = computed(() =>
   panels.state.taskbarPos === 'top'
     ? { top: panels.state.topbarH + TASKBAR_H + 'px', bottom: '0' }
-    : { top: '0', bottom: TASKBAR_H + 'px' },
+    : { top: '0', bottom: taskbarFootprint(panels) + 'px' },
 )
 
 const active = computed(() => store.state.active)
@@ -141,8 +141,8 @@ onBeforeUnmount(() => {
   align-items: center;
   gap: 4px;
   padding: 5px 8px;
-  background: var(--zen-surface, #202026);
-  border-bottom: 1px solid var(--zen-border, #3a3a44);
+  background: var(--zen-chrome-bg, var(--zen-surface, #202026));
+  border-bottom: 1px solid var(--zen-surface-border, var(--zen-border, #3a3a44));
 }
 .zen-app-sep {
   width: 1px;

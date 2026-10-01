@@ -6,6 +6,7 @@
 // fast and off-screen thumbnails never load). Set `menuWidth` for a roomier popover.
 import { computed, nextTick, onBeforeUnmount, ref, useSlots, watch } from 'vue'
 import type { ComboItem } from '../types'
+import { inOtherLayer } from '../overlays/layers'
 import '../lib/scrollbar.css'
 
 type Val = string | number
@@ -93,7 +94,7 @@ const windowItems = computed(() => {
 
 function onDoc(e: PointerEvent) {
   const t = e.target as Node
-  if (root.value?.contains(t) || menuRef.value?.contains(t)) return
+  if (root.value?.contains(t) || menuRef.value?.contains(t) || inOtherLayer(e.target, menuRef.value)) return
   close()
 }
 function place() {
@@ -217,6 +218,7 @@ onBeforeUnmount(close)
       <div
         v-if="open"
         ref="menuRef"
+        data-zen-layer
         class="zen-combo-menu"
         :class="{ grid }"
         :style="[menuStyle, grid && gridMin ? { '--zc-grid-min': gridMin + 'px' } : {}]"
@@ -332,9 +334,9 @@ onBeforeUnmount(close)
   width: 100%;
   box-sizing: border-box;
   min-height: 28px;
-  background: var(--zen-input, #1b1b20);
+  background: var(--zen-control-bg, var(--zen-input, #1b1b20));
   color: var(--zen-text, #e5e5ea);
-  border: 1px solid var(--zen-border, #34343c);
+  border: 1px solid var(--zen-control-border, var(--zen-border, #34343c));
   border-radius: var(--zen-radius, 7px);
   padding: 4px 8px;
   font: inherit;
@@ -344,7 +346,8 @@ onBeforeUnmount(close)
   transition: border-color 0.12s ease;
 }
 .zc-trigger:hover:not(:disabled) {
-  border-color: var(--zen-accent, #6366f1);
+  border-color: var(--zen-control-hover-border, var(--zen-accent, #6366f1));
+  background: var(--zen-control-hover-bg, var(--zen-control-bg));
 }
 .zc-trigger:disabled {
   opacity: 0.5;
@@ -376,9 +379,9 @@ onBeforeUnmount(close)
   display: flex;
   flex-direction: column;
   max-height: 360px;
-  background: var(--zen-surface, #202026);
-  border: 1px solid var(--zen-border, #34343c);
-  border-radius: var(--zen-radius, 8px);
+  background: var(--zen-chrome-bg, var(--zen-surface, #202026));
+  border: 1px solid var(--zen-surface-border, var(--zen-border, #34343c));
+  border-radius: var(--zen-radius-surface, var(--zen-radius, 8px));
   box-shadow: 0 12px 34px rgba(0, 0, 0, 0.5);
   overflow: hidden;
   font-family: var(--p-font-family, system-ui, sans-serif);

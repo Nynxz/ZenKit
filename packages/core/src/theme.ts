@@ -10,6 +10,7 @@ import {
   packs as registeredPacks,
   packModes as packModesOf,
   registerPack as registerThemePack,
+  zenAliases,
 } from '@nynxz/zenkit-theme'
 import type { ThemeMode, ThemePack } from '@nynxz/zenkit-types'
 import { ensureStyle } from './dom'
@@ -25,6 +26,25 @@ export const ZEN_TOKENS = [
   '--zen-accent',
   '--zen-accent-text',
   '--zen-radius',
+  '--zen-radius-surface',
+  '--zen-surface-border',
+  '--zen-chrome-bg',
+  '--zen-control-bg',
+  '--zen-field-bg',
+  '--zen-control-border',
+  '--zen-control-hover-bg',
+  '--zen-control-hover-border',
+  '--zen-ghost-bg',
+  '--zen-ghost-hover-text',
+  '--zen-danger',
+  '--zen-danger-text',
+  '--zen-warn',
+  '--zen-warn-text',
+  '--zen-ok',
+  '--zen-ok-text',
+  '--zen-info',
+  '--zen-info-text',
+  '--zen-mono',
 ] as const
 
 export type { ThemeMode }
@@ -214,37 +234,6 @@ function resolveThemeTokens(pack: ThemePack, mode: ThemeMode): Record<string, st
   return { ...translated, ...withFallbacks } // core tokens win over their translations
 }
 
-// Parse a hex / rgb() color to [r,g,b] (0-255), or null for forms we can't read
-// (var(), hsl, oklch, named) — caller then falls back to the pack's own foreground.
-function parseRgb(c: string): [number, number, number] | null {
-  const s = (c || '').trim()
-  let m = s.match(/^#([0-9a-f]{3})$/i)
-  if (m) {
-    const h = m[1]!
-    return [0, 1, 2].map((i) => parseInt(h[i]! + h[i]!, 16)) as [number, number, number]
-  }
-  m = s.match(/^#([0-9a-f]{6})$/i)
-  if (m) {
-    const h = m[1]!
-    return [0, 2, 4].map((i) => parseInt(h.slice(i, i + 2), 16)) as [number, number, number]
-  }
-  m = s.match(/^rgba?\(\s*([\d.]+)[\s,]+([\d.]+)[\s,]+([\d.]+)/i)
-  if (m) return [+m[1]!, +m[2]!, +m[3]!]
-  return null
-}
-// Pick black or white text for a background by which gives more contrast — fixes
-// unreadable white-on-light-accent (e.g. a yellow primary in a theme).
-function readableText(bg: string): string | null {
-  const rgb = parseRgb(bg)
-  if (!rgb) return null
-  const lin = (v: number) => {
-    const c = v / 255
-    return c <= 0.03928 ? c / 12.92 : ((c + 0.055) / 1.055) ** 2.4
-  }
-  const L = 0.2126 * lin(rgb[0]) + 0.7152 * lin(rgb[1]) + 0.0722 * lin(rgb[2])
-  return 1.05 / (L + 0.05) >= (L + 0.05) / 0.05 ? '#ffffff' : '#15151a'
-}
-
 // ComfyUI's node execution progress bar reads three hardcoded Tailwind theme vars
 // (--color-interface-panel-job-progress-{primary,secondary,border}) that default to a
 // fixed blue, so the bar ignores the active pack. Derive them from the pack's --primary
@@ -264,64 +253,76 @@ function jobProgressDefaults(map: Record<string, string>): Record<string, string
   return out
 }
 
-// Derive ZenKit's own --zen-* tokens from the resolved core tokens.
-function zenDerived(map: Record<string, string>): Record<string, string> {
-  const g = (...k: string[]) => selectTokenValue(map, k)
-  const out: Record<string, string> = {}
-  const set = (k: string, v?: string) => {
-    if (v) out[k] = v
-  }
-  set('--zen-bg', g('--background'))
-  set('--zen-surface', g('--card', '--background'))
-  set('--zen-surface-2', g('--secondary', '--muted', '--card'))
-  set('--zen-input', g('--input', '--secondary'))
-  set('--zen-text', g('--foreground'))
-  set('--zen-muted', g('--muted-foreground', '--foreground'))
-  set('--zen-border', g('--border', '--input'))
-  const accent = g('--primary', '--accent')
-  set('--zen-accent', accent)
-  // Compute a text color that actually contrasts the accent (a light/yellow accent
-  // with a white foreground is unreadable). Fall back to the pack's own foreground
-  // only when the accent isn't a parseable color.
-  set(
-    '--zen-accent-text',
-    (accent && readableText(accent)) || g('--primary-foreground', '--background'),
-  )
-  set('--zen-radius', g('--radius'))
-  return out
-}
-
 // --zen-* fallbacks to ComfyUI vars (the 'comfy' pack / before a pack loads).
 const BASE_CSS = `:root{
   --zen-bg: var(--comfy-menu-bg, #1a1a1f);
   --zen-surface: var(--comfy-menu-secondary-bg, #202026);
   --zen-surface-2: color-mix(in srgb, var(--zen-surface) 78%, transparent);
+  /* Chrome (bars, headers, menus) takes ComfyUI's menu background, like its tab bar. */
+  --zen-chrome-bg: var(--comfy-menu-bg, var(--zen-surface));
   --zen-input: var(--comfy-input-bg, #15151a);
   --zen-text: var(--input-text, #e5e5ea);
   --zen-muted: var(--descrip-text, #9aa0aa);
   --zen-border: var(--border-color, #3a3a44);
+  /* Controls (buttons, selects) and fields (text/number inputs) as ComfyUI draws its own:
+     borderless on the secondary background, lifting a step on hover. */
+  --zen-control-bg: var(--secondary-background, var(--zen-surface));
+  --zen-field-bg: var(--secondary-background, var(--zen-input));
+  --zen-control-border: transparent;
+  --zen-control-hover-bg: var(--secondary-background-hover, var(--zen-control-bg));
+  --zen-control-hover-border: transparent;
+  /* Icon buttons sitting on chrome, like ComfyUI's sidebar icons: no fill until hovered. */
+  --zen-ghost-bg: transparent;
+  --zen-ghost-hover-text: var(--zen-text);
+  /* Edge of floating surfaces (menus, popovers, panels); the New UI style's faint ring. */
+  --zen-surface-border: var(--zen-border);
   --zen-accent: var(--p-primary-color, #3b82f6);
   /* Text that sits ON the accent (primary buttons). PrimeVue computes a contrasting
      value per theme, so a light primary gets dark text instead of unreadable white. */
   --zen-accent-text: var(--p-primary-contrast-color, #fff);
-  --zen-radius: var(--radius-md, 10px);
+  /* ComfyUI's scale: items take its button radius, floating surfaces (panels, menus,
+     popovers) its card radius, which grows with the New UI style. */
+  --zen-radius: var(--radius-lg, 8px);
+  --zen-radius-surface: var(--radius-lg, 8px);
   --zen-glass: color-mix(in srgb, var(--zen-bg) 86%, transparent);
+  /* Status colours, from ComfyUI's own semantic palette, each with the text that sits on it. */
+  --zen-danger: var(--color-destructive-background, #dc2626);
+  --zen-danger-text: #fff;
+  --zen-warn: var(--color-warning-background, #d97706);
+  --zen-warn-text: var(--color-warning-on-background, #15151a);
+  --zen-ok: var(--color-success-background, #16a34a);
+  --zen-ok-text: #fff;
+  --zen-info: var(--zen-accent);
+  --zen-info-text: var(--zen-accent-text);
+  --zen-mono: ui-monospace, 'SF Mono', Menlo, Consolas, monospace;
+}
+:root.new-ui-style{
+  --zen-radius-surface: var(--radius-xl, 12px);
+  --zen-surface-border: var(--new-ui-ring, var(--zen-border));
+}
+/* On a node, ComfyUI's secondary background is the node's own, so controls take its widget
+   background instead — the step its built-in widgets sit on. */
+html:not([data-zen-theme-pack]) [data-pack-widget]{
+  --zen-control-bg: var(--component-node-widget-background, var(--secondary-background-hover));
+  --zen-field-bg: var(--component-node-widget-background, var(--secondary-background-hover));
+  --zen-control-hover-bg: var(--component-node-widget-background-hovered, var(--zen-control-bg));
 }`
 
-// Themed scrollbars: ZenKit panels + sidebar-hosted content, plus any .zen-scroll element
-// (covers teleported menus/popovers that live outside #zenkit-host). Thumb uses the accent.
+// Scrollbars match ComfyUI's own (its `scrollbar-custom`): the browser's thin scrollbar in a
+// quiet colour, no accent flash on hover. With ComfyUI's own theme that colour is ComfyUI's
+// (--dialog-surface); while a ZenKit pack is active it follows the pack's text instead, so it
+// reads on light and dark packs, and ComfyUI's scrollbars take it too. scrollbar-color is inherited, so setting it on a container covers everything inside;
+// scrollbar-width is not, so it goes on every element, at zero specificity (:where) so a
+// component that hides its own scrollbar still wins.
 const SCROLLBAR_CSS = `
-#zenkit-host ::-webkit-scrollbar, .zenkit-sidebar-tab ::-webkit-scrollbar, .zen-scroll::-webkit-scrollbar { width: 10px; height: 10px; }
-#zenkit-host ::-webkit-scrollbar-track, .zenkit-sidebar-tab ::-webkit-scrollbar-track, .zen-scroll::-webkit-scrollbar-track { background: transparent; }
-#zenkit-host ::-webkit-scrollbar-thumb, .zenkit-sidebar-tab ::-webkit-scrollbar-thumb, .zen-scroll::-webkit-scrollbar-thumb {
-  background: var(--zen-scrollbar, color-mix(in srgb, var(--zen-text, #9aa0aa) 22%, transparent));
-  border: 2px solid transparent; border-radius: var(--zen-radius, 8px); background-clip: padding-box;
+:root { --zen-scrollbar: var(--dialog-surface, color-mix(in srgb, var(--zen-text, #9aa0aa) 24%, transparent)); }
+html[data-zen-theme-pack] { --zen-scrollbar: color-mix(in srgb, var(--zen-text, #9aa0aa) 24%, transparent); }
+#zenkit-host, .zenkit-sidebar-tab, .zen-scroll,
+html[data-zen-theme-pack], html[data-zen-theme-pack] .scrollbar-custom {
+  scrollbar-color: var(--zen-scrollbar) transparent;
 }
-#zenkit-host ::-webkit-scrollbar-thumb:hover, .zenkit-sidebar-tab ::-webkit-scrollbar-thumb:hover, .zen-scroll::-webkit-scrollbar-thumb:hover { background: var(--zen-scrollbar-hover, var(--zen-accent, #3b82f6)); background-clip: padding-box; }
-#zenkit-host ::-webkit-scrollbar-corner, .zenkit-sidebar-tab ::-webkit-scrollbar-corner, .zen-scroll::-webkit-scrollbar-corner { background: transparent; }
-/* Firefox only — setting these on Chromium would disable the webkit styling above. */
-@supports not selector(::-webkit-scrollbar) {
-  #zenkit-host *, .zenkit-sidebar-tab *, .zen-scroll { scrollbar-width: thin; scrollbar-color: var(--zen-scrollbar, color-mix(in srgb, var(--zen-text, #9aa0aa) 26%, transparent)) transparent; }
+:where(#zenkit-host, #zenkit-host *, .zenkit-sidebar-tab, .zenkit-sidebar-tab *, .zen-scroll, .zen-scroll *) {
+  scrollbar-width: thin;
 }`
 
 // Direct !important rules on the ComfyUI 2.0 node DOM + chrome.
@@ -442,7 +443,6 @@ html[data-zen-theme-pack] [data-testid="node-inner-wrapper"] input,
 html[data-zen-theme-pack] [data-testid="node-inner-wrapper"] select {
   color: var(--component-node-foreground, var(--foreground)) !important;
 }
-html[data-zen-theme-pack] .litegraph-minimap { border-radius: var(--radius, 10px) !important; overflow: hidden !important; }
 /* PrimeVue / ComfyUI overlay menus (tiered/context/command menus, dropdown + autocomplete
    popovers) keep their own fixed border-radius, so they look "weirdly rounded" against a
    theme — pin them to the theme radius. Also drive PrimeVue's radius scale so anything that
@@ -530,11 +530,30 @@ const ATTR = 'data-zen-theme-pack'
 let currentPack = 'comfy'
 let currentMode: ThemeMode = 'dark'
 const listeners = new Set<(pack: string) => void>()
+// Whether ZenKit restyles ComfyUI's own UI (pack tokens on ComfyUI's vars, the bridge rules,
+// pack CSS, canvas controls moved into the taskbar). Off keeps ComfyUI stock while ZenKit's
+// own UI still follows the pack.
+let restyleComfy = true
+const restyleListeners = new Set<(on: boolean) => void>()
 
 const roots = (): HTMLElement[] => [document.documentElement, document.body]
 
+// ComfyUI keeps `.dark-theme` on <html> from its own palette, and its dark rules match anything
+// under that class — so a light ZenKit theme left it there and got white text on a light page.
+// While a ZenKit pack is active, <html> follows the pack's mode too; ComfyUI's own setting is
+// remembered and put back when its theme returns.
+let comfyHtmlDark: boolean | null = null
 function applyMode() {
-  document.body.classList.toggle('dark-theme', currentMode === 'dark')
+  const dark = currentMode === 'dark'
+  document.body.classList.toggle('dark-theme', dark)
+  const html = document.documentElement.classList
+  if (currentPack === 'comfy') {
+    if (comfyHtmlDark !== null) html.toggle('dark-theme', comfyHtmlDark)
+    comfyHtmlDark = null
+    return
+  }
+  if (comfyHtmlDark === null) comfyHtmlDark = html.contains('dark-theme')
+  html.toggle('dark-theme', dark)
 }
 function persist() {
   try {
@@ -544,7 +563,19 @@ function persist() {
     /* ignore */
   }
 }
+// Comfy Desktop paints its window chrome from `--comfy-menu-bg` but only re-reads it when
+// ComfyUI's own palette changes, so tell it about pack switches directly. Skipped during
+// init: until ComfyUI's palette loads, the 'comfy' value is just the stylesheet default.
+let ready = false
+function reportChromeColor() {
+  if (!ready) return
+  const bg = getComputedStyle(document.body).getPropertyValue('--comfy-menu-bg').trim()
+  const host = window as { __comfyDesktop2?: { reportTheme?: (bg: string, text: string) => void } }
+  if (bg) host.__comfyDesktop2?.reportTheme?.(bg, '')
+}
+
 function notify() {
+  reportChromeColor()
   listeners.forEach((cb) => {
     try {
       cb(currentPack)
@@ -560,10 +591,14 @@ function notify() {
 // fully replaces the rule rather than diffing. Target BOTH html and body: ComfyUI
 // sets vars inline on <body>, and custom props resolve from the nearest ancestor —
 // so a body-level definition would shadow an html-only one for descendant nodes.
-function tokenCss(map: Record<string, string>): string {
+function declarations(map: Record<string, string>): string {
   let body = ''
   for (const k of Object.keys(map)) body += `${k}:${map[k]} !important;`
-  return `html[${ATTR}],body[${ATTR}]{${body}}`
+  return body
+}
+
+function tokenCss(map: Record<string, string>): string {
+  return `html[${ATTR}],body[${ATTR}]{${declarations(map)}}`
 }
 
 // ComfyUI's --radius-* scale is fixed values (not derived from --radius), so override
@@ -583,6 +618,32 @@ function radiusScale(r: string): Record<string, string> {
   }
 }
 
+// Hosts that follow ComfyUI's theme (e.g. Comfy Desktop's window chrome) expect
+// `--comfy-menu-bg` as a plain colour like ComfyUI's own palettes, so it's emitted as hex.
+let colorCtx: CanvasRenderingContext2D | null | undefined
+/** Any CSS colour (packs mostly use oklch) as `#rrggbb`, via the canvas's sRGB pixel. */
+function toHex(color: string): string | null {
+  if (colorCtx === undefined) {
+    const canvas = document.createElement('canvas')
+    canvas.width = canvas.height = 1
+    colorCtx = canvas.getContext('2d', { willReadFrequently: true })
+  }
+  const ctx = colorCtx
+  if (!ctx || !color) return null
+  // An invalid fillStyle is silently ignored, so a real colour reads back the
+  // same over two different starting values.
+  ctx.fillStyle = '#000'
+  ctx.fillStyle = color
+  const first = ctx.fillStyle
+  ctx.fillStyle = '#fff'
+  ctx.fillStyle = color
+  if (ctx.fillStyle !== first) return null
+  ctx.clearRect(0, 0, 1, 1)
+  ctx.fillRect(0, 0, 1, 1)
+  const [r, g, b] = ctx.getImageData(0, 0, 1, 1).data
+  return `#${[r, g, b].map((c) => c!.toString(16).padStart(2, '0')).join('')}`
+}
+
 function applyTheme() {
   const pack = currentPack === 'comfy' ? null : getPack(currentPack)
   if (!pack) {
@@ -594,14 +655,24 @@ function applyTheme() {
     return
   }
   const resolved = resolveThemeTokens(pack, currentMode)
+  if (!restyleComfy) {
+    ensureStyle('zenkit-theme-tokens', `:root{${declarations(zenAliases(resolved))}}`)
+    ensureStyle('zenkit-theme-css', '')
+    for (const el of roots()) el.removeAttribute(ATTR)
+    applyMode()
+    notify()
+    return
+  }
   const r = resolved['--radius']
+  const menuBg = toHex(resolved['--comfy-menu-bg'] ?? '')
   ensureStyle(
     'zenkit-theme-tokens',
     tokenCss({
       ...jobProgressDefaults(resolved),
       ...resolved,
-      ...zenDerived(resolved),
+      ...zenAliases(resolved),
       ...(r ? radiusScale(r) : {}),
+      ...(menuBg ? { '--comfy-menu-bg': menuBg } : {}),
     }),
   )
   // The active pack's custom CSS (header notches, etc.), injected verbatim AFTER
@@ -642,6 +713,7 @@ export const theme = {
     const modes = this.packModes(currentPack)
     if (modes.length && !modes.includes(currentMode)) currentMode = modes[0]!
     applyTheme()
+    ready = true
   },
   packs(): string[] {
     return themePackIds()
@@ -710,6 +782,19 @@ export const theme = {
   onChange(cb: (pack: string) => void) {
     listeners.add(cb)
     return () => listeners.delete(cb)
+  },
+  comfyRestyle(): boolean {
+    return restyleComfy
+  },
+  setComfyRestyle(on: boolean) {
+    if (on === restyleComfy) return
+    restyleComfy = on
+    applyTheme()
+    restyleListeners.forEach((cb) => cb(on))
+  },
+  onComfyRestyleChange(cb: (on: boolean) => void) {
+    restyleListeners.add(cb)
+    return () => restyleListeners.delete(cb)
   },
   packModes(id: string): ThemeMode[] {
     return id === 'comfy' ? ['light', 'dark'] : packModesOf(id)

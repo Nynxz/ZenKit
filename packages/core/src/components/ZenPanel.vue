@@ -12,6 +12,8 @@
     :style="zpStyle"
     :data-zen-status="panel.status"
     :data-zen-docked="docked"
+    :data-zen-dock-side="panel.dockSide ?? undefined"
+    :data-zen-edge-lit="(docked && store.state.dockEdgeLit === panel.dockSide) || undefined"
     :data-zen-frame="panel.frame"
     :data-zen-active="isActive"
     :data-zen-interacting="isActive && store.state.interacting"
@@ -32,6 +34,7 @@
         class="bar zenkit-panel-header"
         :class="{ peek: panel.headerHidden }"
         @pointerdown="startDrag"
+        @dblclick="onTitleDblClick"
         @contextmenu.prevent.stop="openMenu($event)"
       >
         <ZenIcon class="tcon zenkit-panel-icon" :icon="panel.icon" />
@@ -377,56 +380,97 @@ function endInteract() {
   ops.setInteract(false)
 }
 
+/** Keep the gesture's events on the grabbed element wherever the pointer goes. */
+function capture(e: PointerEvent) {
+  ;(e.currentTarget as Element | null)?.setPointerCapture?.(e.pointerId)
+}
+
+/** Past this many px a press on the title bar becomes a drag — so a click or double-click on a
+ *  maximized or snapped panel never tears it loose. */
+const DRAG_THRESHOLD = 4
+
+function onTitleDblClick(e: MouseEvent) {
+  if ((e.target as HTMLElement).closest('button, a, input, textarea, select, [data-no-drag]'))
+    return
+  ops.toggleMaximize(props.panel.id)
+}
+
+/** Escape cancels the gesture in progress and puts the panel back as it started. */
+function onEscape(cancel: () => void) {
+  const onKey = (k: KeyboardEvent) => {
+    if (k.key !== 'Escape') return
+    k.preventDefault()
+    k.stopPropagation()
+    cancel()
+  }
+  window.addEventListener('keydown', onKey, true)
+  return () => window.removeEventListener('keydown', onKey, true)
+}
+
 function startDrag(e: PointerEvent) {
+  if (e.button !== 0) return
   e.preventDefault()
+  capture(e)
   const p = props.panel
   ops.front(p.id)
-  beginInteract('grabbing')
-  if (p.restoreRect) {
-    const rw = p.restoreRect.w
-    const rh = p.restoreRect.h
-    ops.clearRestore(p.id)
-    ops.setRect(p.id, { x: e.clientX - rw / 2, y: e.clientY - 14, w: rw, h: rh })
-  }
-  // dragging a maximized panel restores its pre-max size under the cursor (OS behavior)
-  if (p.maximized) {
-    const rw = p.preMax?.w ?? Math.round(window.innerWidth * 0.5)
-    const rh = p.preMax?.h ?? Math.round(window.innerHeight * 0.6)
-    ops.toggleMaximize(p.id) // un-maximize (restores pre-max geom)
-    ops.setRect(p.id, { x: e.clientX - rw / 2, y: e.clientY - 14, w: rw, h: rh })
-  }
-  const ox = e.clientX - p.x
-  const oy = e.clientY - p.y
+  const sx = e.clientX
+  const sy = e.clientY
+  const grab = { x: p.x, w: p.w }
+  const before = ops.snapshot(p.id)
+  let ox = sx - p.x
+  const oy = sy - p.y
+  let moving = false
   const onMove = (m: PointerEvent) => {
+    if (!moving) {
+      if (Math.hypot(m.clientX - sx, m.clientY - sy) < DRAG_THRESHOLD) return
+      moving = true
+      beginInteract('grabbing')
+      // Pulling a maximized or snapped panel free restores its float size, keeping the same
+      // point of the title bar under the pointer — as a desktop OS does.
+      const size = ops.tearOffSize(p.id)
+      if (size) {
+        ox = ((sx - grab.x) / grab.w) * size.w
+        ops.setRect(p.id, { x: m.clientX - ox, y: m.clientY - oy, w: size.w, h: size.h })
+      }
+    }
     ops.setRect(p.id, { x: m.clientX - ox, y: m.clientY - oy })
     if (bare.value) return // ambient overlays never dock or snap to edges
     // edge → dock-drop preview, else snap preview
-    const drop = dockDropFor(m.clientX, m.clientY)
+    const drop = dockDropFor(m.clientX, m.clientY, store.state.sidebarAvailable)
     store.state.dockDrop = drop
     store.state.snap = drop ? null : snapZoneFor(m.clientX, m.clientY)
   }
-  const onUp = () => {
-    // Drag to an edge → ZenKit dock zone (overlays the canvas). The native "Comfy
-    // sidebar" is a separate, untouched feature (right-click → Pin to sidebar).
-    if (store.state.dockDrop) ops.setDock(p.id, store.state.dockDrop)
+  const finish = (commit: boolean) => {
+    stopEscape()
+    window.removeEventListener('pointermove', onMove, true)
+    window.removeEventListener('pointerup', onUp, true)
+    window.removeEventListener('pointercancel', onCancel)
+    if (!moving) return
+    // Drag onto ComfyUI's sidebar (or the left edge) → pin into it; the right edge or the
+    // taskbar → a ZenKit dock.
+    if (!commit) ops.restoreSnapshot(p.id, before)
+    else if (store.state.dockDrop) ops.dropInto(p.id, store.state.dockDrop)
     else if (store.state.snap) ops.applySnap(p.id, store.state.snap)
+    else ops.setRect(p.id, {}, true)
     store.state.snap = null
     store.state.dockDrop = null
-    ops.setRect(p.id, {}, true)
     endInteract()
-    window.removeEventListener('pointermove', onMove)
-    window.removeEventListener('pointerup', onUp)
   }
-  window.addEventListener('pointermove', onMove)
-  window.addEventListener('pointerup', onUp)
+  const onUp = () => finish(true)
+  const onCancel = () => finish(false)
+  const stopEscape = onEscape(onCancel)
+  window.addEventListener('pointermove', onMove, true)
+  window.addEventListener('pointerup', onUp, true)
+  window.addEventListener('pointercancel', onCancel)
 }
 
 function startResize(e: PointerEvent, h: (typeof HANDLES)[number]) {
   e.preventDefault()
+  capture(e)
   const p = props.panel
   ops.front(p.id)
-  ops.clearRestore(p.id)
   beginInteract(CURSORS[h] || 'default')
+  const before = ops.snapshot(p.id)
   const start = { x: p.x, y: p.y, w: p.w, h: p.h }
   const sx = e.clientX
   const sy = e.clientY
@@ -448,14 +492,21 @@ function startResize(e: PointerEvent, h: (typeof HANDLES)[number]) {
     if (r.h < p.minHeight && h.includes('n')) r.y = start.y + (start.h - p.minHeight)
     ops.setRect(p.id, r)
   }
-  const onUp = () => {
-    ops.setRect(p.id, {}, true)
+  const finish = (commit: boolean) => {
+    stopEscape()
+    if (commit) ops.setRect(p.id, {}, true)
+    else ops.restoreSnapshot(p.id, before)
     endInteract()
-    window.removeEventListener('pointermove', onMove)
-    window.removeEventListener('pointerup', onUp)
+    window.removeEventListener('pointermove', onMove, true)
+    window.removeEventListener('pointerup', onUp, true)
+    window.removeEventListener('pointercancel', onCancel)
   }
-  window.addEventListener('pointermove', onMove)
-  window.addEventListener('pointerup', onUp)
+  const onUp = () => finish(true)
+  const onCancel = () => finish(false)
+  const stopEscape = onEscape(onCancel)
+  window.addEventListener('pointermove', onMove, true)
+  window.addEventListener('pointerup', onUp, true)
+  window.addEventListener('pointercancel', onCancel)
 }
 </script>
 
@@ -466,8 +517,9 @@ function startResize(e: PointerEvent, h: (typeof HANDLES)[number]) {
   flex-direction: column;
   overflow: hidden;
   background: var(--zen-glass, color-mix(in srgb, var(--zen-bg, #1a1a1f) 86%, transparent));
-  border: 1px solid color-mix(in srgb, var(--zen-border, #3a3a44) 86%, transparent);
-  border-radius: var(--zen-radius, 10px);
+  border: 1px solid
+    color-mix(in srgb, var(--zen-surface-border, var(--zen-border, #3a3a44)) 86%, transparent);
+  border-radius: var(--zen-radius-surface, var(--zen-radius, 10px));
   /* layered depth + a top hairline "glass lip" so the panel reads as lifted, not flat */
   box-shadow:
     0 18px 48px -16px rgba(0, 0, 0, 0.62),
@@ -497,9 +549,40 @@ function startResize(e: PointerEvent, h: (typeof HANDLES)[number]) {
   flex: 0 0 auto;
 }
 /* docked panel = a solid panel filling its reserved grid cell (canvas reflows around it) */
+/* The resize edge, as on ComfyUI's paneled sidebar: a 3px primary line just inside the card's
+   inner edge, clipped by its rounded corners, lit a moment after its grip is hovered and for as
+   long as it is dragged. */
+.zp.docked::after {
+  content: '';
+  position: absolute;
+  z-index: 20;
+  inset-block: 0;
+  width: 3px;
+  background: var(--p-primary-color, var(--zen-accent, #3b82f6));
+  opacity: 0;
+  pointer-events: none;
+  transition: opacity 0.2s ease;
+}
+.zp.docked[data-zen-dock-side='left']::after {
+  right: 0;
+}
+.zp.docked[data-zen-dock-side='right']::after {
+  left: 0;
+}
+.zp.docked[data-zen-dock-side='bottom']::after {
+  inset-block: 0 auto;
+  inset-inline: 0;
+  width: auto;
+  height: 3px;
+}
+.zp.docked[data-zen-edge-lit]::after {
+  opacity: 1;
+  transition-delay: 300ms;
+}
 .zp.docked {
-  background: var(--zen-bg, #1a1a1f);
-  border-radius: 0;
+  background: var(--zen-chrome-bg, var(--zen-bg, #1a1a1f));
+  box-shadow: var(--interface-floating-panel-shadow, 0 6px 18px rgba(0, 0, 0, 0.28));
+  backdrop-filter: none;
 }
 .bar {
   flex: 0 0 auto;
@@ -510,10 +593,11 @@ function startResize(e: PointerEvent, h: (typeof HANDLES)[number]) {
   padding: 0 6px 0 11px;
   background: linear-gradient(
     180deg,
-    color-mix(in srgb, var(--zen-surface, #202026) 92%, transparent),
-    color-mix(in srgb, var(--zen-surface, #202026) 62%, transparent)
+    color-mix(in srgb, var(--zen-chrome-bg, var(--zen-surface, #202026)) 92%, transparent),
+    color-mix(in srgb, var(--zen-chrome-bg, var(--zen-surface, #202026)) 62%, transparent)
   );
-  border-bottom: 1px solid color-mix(in srgb, var(--zen-border, #3a3a44) 85%, transparent);
+  border-bottom: 1px solid
+    color-mix(in srgb, var(--zen-surface-border, var(--zen-border, #3a3a44)) 85%, transparent);
   box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.05);
   cursor: grab;
   user-select: none;
@@ -521,7 +605,8 @@ function startResize(e: PointerEvent, h: (typeof HANDLES)[number]) {
 }
 .zp.pos-bottom .bar {
   border-bottom: none;
-  border-top: 1px solid color-mix(in srgb, var(--zen-border, #3a3a44) 85%, transparent);
+  border-top: 1px solid
+    color-mix(in srgb, var(--zen-surface-border, var(--zen-border, #3a3a44)) 85%, transparent);
 }
 .bar:active {
   cursor: grabbing;
@@ -574,13 +659,15 @@ function startResize(e: PointerEvent, h: (typeof HANDLES)[number]) {
   z-index: 4;
   transform: translateY(-100%);
   transition: transform 0.14s ease;
-  border-radius: var(--zen-radius, 10px) var(--zen-radius, 10px) 0 0;
+  border-radius: var(--zen-radius-surface, var(--zen-radius, 10px))
+    var(--zen-radius-surface, var(--zen-radius, 10px)) 0 0;
 }
 .zp.pos-bottom .bar.peek {
   top: auto;
   bottom: 0;
   transform: translateY(100%);
-  border-radius: 0 0 var(--zen-radius, 10px) var(--zen-radius, 10px);
+  border-radius: 0 0 var(--zen-radius-surface, var(--zen-radius, 10px))
+    var(--zen-radius-surface, var(--zen-radius, 10px));
 }
 /* hidden-header grab strip: drag to move the panel */
 .hoverzone {
@@ -695,9 +782,9 @@ function startResize(e: PointerEvent, h: (typeof HANDLES)[number]) {
   display: flex;
   flex-direction: column;
   gap: 1px;
-  background: var(--zen-surface, #202026);
-  border: 1px solid var(--zen-border, #3a3a44);
-  border-radius: var(--zen-radius, 8px);
+  background: var(--zen-chrome-bg, var(--zen-surface, #202026));
+  border: 1px solid var(--zen-surface-border, var(--zen-border, #3a3a44));
+  border-radius: var(--zen-radius-surface, var(--zen-radius, 8px));
   box-shadow: 0 10px 30px rgba(0, 0, 0, 0.5);
 }
 .menu button {
@@ -743,9 +830,9 @@ function startResize(e: PointerEvent, h: (typeof HANDLES)[number]) {
   top: -5px;
   min-width: 150px;
   padding: 4px;
-  background: var(--zen-surface, #202026);
-  border: 1px solid var(--zen-border, #3a3a44);
-  border-radius: var(--zen-radius, 8px);
+  background: var(--zen-chrome-bg, var(--zen-surface, #202026));
+  border: 1px solid var(--zen-surface-border, var(--zen-border, #3a3a44));
+  border-radius: var(--zen-radius-surface, var(--zen-radius, 8px));
   box-shadow: 0 10px 30px rgba(0, 0, 0, 0.5);
 }
 .menu .submenu.left {

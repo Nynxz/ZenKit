@@ -7,12 +7,11 @@
 //   { channel, url }                                                 — publish
 //   { channel }                          (no image)                  — declare only
 import { reactive } from 'vue'
-import { api } from '@comfy/api'
 import { zdebug } from './log'
+import { onChannelEvent } from './wsEvents'
 import type { ZenBus } from './bus'
 import type { ChannelImage, ChannelInput } from '@nynxz/zenkit-types'
 
-export const CHANNEL_EVENT = 'zenkit.channel'
 export const LAST = '$last' // subscribe/get the most recently published image (any channel)
 
 export type ChannelsStore = ReturnType<typeof createChannels>
@@ -67,19 +66,12 @@ export function createChannels(bus: ZenBus) {
   }
 
   // ws event → publish if it carries an image, else just declare the channel.
-  try {
-    ;(
-      api as { addEventListener?: (e: string, cb: (ev: { detail?: unknown }) => void) => void }
-    )?.addEventListener?.(CHANNEL_EVENT, (e) => {
-      const d = (e?.detail as Record<string, unknown>) || {}
-      const name = String(d.channel ?? 'default')
-      zdebug('channel event:', name, d)
-      if (d.filename || d.url) publish(name, d as ChannelInput)
-      else declare(name, { label: typeof d.label === 'string' ? d.label : undefined })
-    })
-  } catch (err) {
-    console.warn('[ZenKit] channel listener failed to register', err)
-  }
+  onChannelEvent((d) => {
+    const name = String(d.channel ?? 'default')
+    zdebug('channel event:', name, d)
+    if (d.filename || d.url) publish(name, d as ChannelInput)
+    else declare(name, { label: typeof d.label === 'string' ? d.label : undefined })
+  })
 
   return {
     state,

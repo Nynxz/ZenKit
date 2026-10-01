@@ -76,5 +76,30 @@ export function zenAliases(tokens: Record<string, string>): Record<string, strin
     (accent && readableText(accent)) || g('--primary-foreground', '--background'),
   )
   set('--zen-radius', g('--radius'))
+  set('--zen-radius-surface', g('--radius'))
+  set('--zen-surface-border', g('--border', '--input'))
+  set('--zen-chrome-bg', g('--card', '--background'))
+  set('--zen-control-bg', g('--card', '--background'))
+  set('--zen-field-bg', g('--input', '--secondary'))
+  set('--zen-control-border', g('--border', '--input'))
+  set('--zen-control-hover-bg', g('--card', '--background'))
+  set('--zen-control-hover-border', accent)
+  set('--zen-ghost-bg', g('--background'))
+  set('--zen-ghost-hover-text', accent)
+  // Status colours. Packs may set --warning / --success / --info; danger follows --destructive.
+  const status: [string, string | undefined][] = [
+    ['danger', g('--destructive') ?? STATUS_DEFAULTS.danger],
+    ['warn', g('--warning') ?? STATUS_DEFAULTS.warn],
+    ['ok', g('--success') ?? STATUS_DEFAULTS.ok],
+    ['info', g('--info') ?? accent],
+  ]
+  for (const [name, colour] of status) {
+    set(`--zen-${name}`, colour)
+    set(`--zen-${name}-text`, (colour && readableText(colour)) || undefined)
+  }
+  set('--zen-mono', g('--font-mono') ?? MONO_STACK)
   return out
 }
+
+const STATUS_DEFAULTS = { danger: '#dc2626', warn: '#d97706', ok: '#16a34a' }
+const MONO_STACK = "ui-monospace, 'SF Mono', Menlo, Consolas, monospace"

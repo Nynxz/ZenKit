@@ -64,9 +64,9 @@ function onInput(e: Event) {
   font: inherit;
   font-size: 12px;
   line-height: normal;
-  background: var(--zen-input, #1b1b20);
+  background: var(--zen-field-bg, var(--zen-input, #1b1b20));
   color: var(--zen-text, #e5e5ea);
-  border: 1px solid var(--zen-border, #34343c);
+  border: 1px solid var(--zen-control-border, var(--zen-border, #34343c));
   border-radius: var(--zen-radius, 7px);
   padding: 8px 9px 6px;
   transition: border-color 0.12s ease;

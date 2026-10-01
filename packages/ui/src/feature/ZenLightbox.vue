@@ -1,8 +1,15 @@
 <script setup lang="ts">
 // ZenLightbox — image/video viewer: wheel-zoom, drag-pan, rotate, slideshow.
-// `inline` fills its container; otherwise a fullscreen overlay.
+// `inline` fills its container (hosts like the Media Viewer draw their own chrome); otherwise an
+// immersive fullscreen overlay over the theme's background: the picture edge to edge, with a
+// thumbnails sidebar and a title line + toolbar that fade in on movement. The chrome is built from
+// ZenKit's own buttons and surfaces so every theme dresses it like the rest of the UI.
 import { computed, nextTick, onBeforeUnmount, onMounted, ref, watch, Teleport } from 'vue'
+import ZenIconButton from '../primitives/ZenIconButton.vue'
 import ZenScroll from '../primitives/ZenScroll.vue'
+import ZenPopover from '../overlays/ZenPopover.vue'
+import ZenSwitch from '../inputs/ZenSwitch.vue'
+import ZenSlider from '../inputs/ZenSlider.vue'
 import type { LightboxItem } from '../types'
 
 const props = withDefaults(
@@ -11,8 +18,8 @@ const props = withDefaults(
     index: number
     inline?: boolean // true = fill container; false = fullscreen overlay
     slideshowMs?: number
-    // Built-in chrome: 'bottom' (default), 'top', or 'none' (host drives it via
-    // the exposed API — see defineExpose below). 'none' also hides the nav arrows.
+    // Built-in chrome: shown unless 'none' (the host drives it via the exposed API — see
+    // defineExpose below). 'none' also hides the nav zones. 'top' is accepted for compatibility.
     controls?: 'bottom' | 'top' | 'none'
   }>(),
   { inline: false, slideshowMs: 3000, controls: 'bottom' },
@@ -41,13 +48,6 @@ watch(strip, (v) => {
     /* storage may be unavailable */
   }
 })
-// Click the dark stage around the image (not the image itself) to close — only when not
-// zoomed in (so a pan-drag never closes it). The image is a child, so @click.self on the
-// stage fires only for the backdrop.
-function onStageClick() {
-  if (!props.inline && zoom.value === 1) emit('close')
-}
-
 // --- virtualized thumbnail grid (search + zoom; only visible rows render) ----------------
 // Each entry keeps its ORIGINAL index `i` so click → go(i) and highlight track props.index
 // regardless of search filtering.
@@ -163,6 +163,12 @@ watch(search, () => {
   sideScrollTop.value = 0
 })
 
+// Click the backdrop around the picture (not the picture itself) to close — only when not
+// zoomed in, so a pan-drag never closes it.
+function onStageClick() {
+  if (!props.inline && zoom.value === 1) emit('close')
+}
+
 // --- view transform ---------------------------------------------------------
 const zoom = ref(1)
 const rot = ref(0) // degrees
@@ -175,6 +181,78 @@ const imgStyle = computed(() => ({
   transform: `translate(${tx.value}px, ${ty.value}px) rotate(${rot.value}deg) scale(${zoom.value})`,
   cursor: zoom.value > 1 ? 'grab' : 'default',
 }))
+
+// --- fit to stage ------------------------------------------------------------
+// `.zlb-media` is max-width/max-height only, which fits media DOWN but never UP: a 512px clip on
+// a 1400px stage renders at 512px, and since <video> also never received the zoom transform there
+// was no way to make it bigger at all. Compute the fitted size instead, so media always grows to
+// meet whichever edge it reaches first.
+//
+// It is applied as an explicit width/height rather than `width:100%;object-fit:contain` so the
+// element's layout box still matches what you actually see. The stage closes on `@click.self`,
+// and a full-bleed element would swallow every click in the letterbox.
+const stageEl = ref<HTMLElement | null>(null)
+const stageW = ref(0)
+const natW = ref(0) // intrinsic media size; 0 until it loads
+const natH = ref(0)
+let stageRO: ResizeObserver | null = null
+
+function measureStage() {
+  const el = stageEl.value
+  if (!el) return
+  const cs = getComputedStyle(el)
+  const px = (v: string) => parseFloat(v) || 0
+  stageW.value = el.clientWidth - px(cs.paddingLeft) - px(cs.paddingRight)
+}
+
+/** `loadedmetadata` for video, `load` for images — both give us the intrinsic size. */
+function onMediaMeta(e: Event) {
+  const t = e.target
+  if (t instanceof HTMLVideoElement) {
+    natW.value = t.videoWidth
+    natH.value = t.videoHeight
+  } else if (t instanceof HTMLImageElement) {
+    natW.value = t.naturalWidth
+    natH.value = t.naturalHeight
+  }
+}
+
+/** Fitted size + the pan/zoom/rotate transform. Used by BOTH <img> and <video>. The size is in
+ *  container units of the stage, so the browser refits it on every frame of a resize (the
+ *  sidebar sliding, a panel being dragged) instead of a measurement behind. */
+const mediaStyle = computed(() => {
+  if (!natW.value || !natH.value) return imgStyle.value
+  const ar = natW.value / natH.value
+  return {
+    width: `min(100cqw, ${100 * ar}cqh)`,
+    height: `min(100cqh, ${100 / ar}cqw)`,
+    ...imgStyle.value,
+  }
+})
+
+// Re-fit whenever the stage appears or changes size (panel resize, window, thumb strip toggle).
+watch(
+  stageEl,
+  (el) => {
+    stageRO?.disconnect()
+    stageRO = null
+    if (!el) return
+    measureStage()
+    if (typeof ResizeObserver !== 'undefined') {
+      stageRO = new ResizeObserver(() => measureStage())
+      stageRO.observe(el)
+    }
+  },
+  { immediate: true },
+)
+// A new source has a new intrinsic size; drop the old one so it can't fit against stale numbers.
+watch(
+  () => item.value?.src,
+  () => {
+    natW.value = 0
+    natH.value = 0
+  },
+)
 
 function reset() {
   zoom.value = 1
@@ -207,10 +285,61 @@ function download() {
   a.remove()
 }
 
+/** Loading an image's workflow sends you to the graph, so the viewer gets out of the way. */
+function loadWorkflow() {
+  item.value?.onWorkflow?.()
+  if (!props.inline) emit('close')
+}
+
 function go(i: number) {
   if (i < 0 || i >= count.value) return
   emit('update:index', i)
 }
+// The floating chrome fades out while the pointer rests, so it never sits over the picture for
+// long; any movement brings it back.
+const idle = ref(false)
+let idleTimer: ReturnType<typeof setTimeout> | undefined
+function wake() {
+  idle.value = false
+  clearTimeout(idleTimer)
+  idleTimer = setTimeout(() => (idle.value = true), 2200)
+}
+onBeforeUnmount(() => clearTimeout(idleTimer))
+
+// Decode the neighbouring pictures ahead of time, so a slide starts the moment you ask for it
+// instead of waiting on the next image to load.
+watch(
+  () => props.index,
+  (i) => {
+    for (const n of [i + 1, i - 1]) {
+      const it = props.items[n]
+      if (it && (it.kind ?? 'image') === 'image') {
+        const img = new Image()
+        img.src = it.src
+        void img.decode?.().catch(() => undefined)
+      }
+    }
+  },
+  { immediate: true },
+)
+
+// Which way the media slides when it changes: the way you moved (a loop back to the start counts
+// as moving on).
+// The slideshow always moves forward, even when shuffling to an earlier picture.
+const direction = ref<'next' | 'prev'>('next')
+/** The slideshow glides; stepping by hand is quicker, but never a snap. */
+const slideDuration = ref(460)
+let advancing = false
+watch(
+  () => props.index,
+  (now, before) => {
+    direction.value =
+      !advancing && now < before && !(before === count.value - 1 && now === 0) ? 'prev' : 'next'
+    slideDuration.value = advancing ? 700 : 460
+    advancing = false
+  },
+  { flush: 'sync' },
+)
 const canPrev = computed(() => props.index > 0)
 const canNext = computed(() => props.index < count.value - 1)
 
@@ -224,15 +353,40 @@ watch(
 )
 
 // --- pointer interactions ---------------------------------------------------
+// Wheel zoom keeps the point under the pointer where it is. The media is centred in the stage and
+// transformed as translate(t) · rotate · scale(z) about its centre C, so a point at the pointer
+// sits at d = pointer − C; zooming by f keeps it there when t' = d − f·(d − t).
 function onWheel(e: WheelEvent) {
   e.preventDefault()
-  zoomBy(e.deltaY < 0 ? 1.15 : 1 / 1.15)
+  const before = zoom.value
+  const after = clampZoom(before * (e.deltaY < 0 ? 1.15 : 1 / 1.15))
+  if (after === before) return
+  zoom.value = after
+  const media = stageEl.value?.querySelector<HTMLElement>('.zlb-media:last-of-type')
+  const stage = stageEl.value?.getBoundingClientRect()
+  if (after === 1 || !media || !stage) {
+    if (after === 1) tx.value = ty.value = 0
+    return
+  }
+  const f = after / before
+  const dx = e.clientX - (stage.left + media.offsetLeft + media.offsetWidth / 2)
+  const dy = e.clientY - (stage.top + media.offsetTop + media.offsetHeight / 2)
+  tx.value = dx - f * (dx - tx.value)
+  ty.value = dy - f * (dy - ty.value)
 }
 function onDblClick() {
   reset()
 }
+// Native video controls sit in a strip along the bottom of the element. A pan-drag starting
+// there would preventDefault the press and make the scrubber unusable, so leave that band alone.
+const VIDEO_CONTROLS_H = 56
+function onVideoControls(e: PointerEvent): boolean {
+  const t = e.target
+  if (!(t instanceof HTMLVideoElement)) return false
+  return e.clientY >= t.getBoundingClientRect().bottom - VIDEO_CONTROLS_H
+}
 function startPan(e: PointerEvent) {
-  if (zoom.value <= 1) return
+  if (zoom.value <= 1 || onVideoControls(e)) return
   e.preventDefault()
   const ox = e.clientX - tx.value
   const oy = e.clientY - ty.value
@@ -249,15 +403,52 @@ function startPan(e: PointerEvent) {
 }
 
 // --- slideshow --------------------------------------------------------------
+// One slide at a time: the countdown restarts whenever the picture changes, by hand or by the
+// show, so the progress line always tells the truth. The overlay remembers its own speed and
+// shuffle; an inline host (the Media Viewer) passes its speed in as `slideshowMs`.
+/** Seconds per slide the slider offers. */
+const SPEED = { min: 1, max: 30, step: 0.5 }
+const SLIDE_KEY = 'zenkit.lightbox.slideshow'
+function loadSlide(): { ms: number; shuffle: boolean } {
+  try {
+    const saved = JSON.parse(localStorage.getItem(SLIDE_KEY) || '{}')
+    const ms = Number(saved.ms)
+    const ok = Number.isFinite(ms) && ms >= SPEED.min * 1000 && ms <= SPEED.max * 1000
+    return { ms: ok ? ms : 3000, shuffle: saved.shuffle === true }
+  } catch {
+    return { ms: 3000, shuffle: false }
+  }
+}
+const slidePrefs = ref(loadSlide())
+watch(
+  slidePrefs,
+  (v) => {
+    try {
+      localStorage.setItem(SLIDE_KEY, JSON.stringify(v))
+    } catch {
+      /* storage may be unavailable */
+    }
+  },
+  { deep: true },
+)
+const slideMs = computed(() =>
+  Math.max(500, props.inline ? props.slideshowMs : slidePrefs.value.ms),
+)
+const fmtSpeed = (ms: number) => `${ms / 1000}s`
+
 const playing = ref(false)
-let timer: ReturnType<typeof setInterval> | null = null
+let timer: ReturnType<typeof setTimeout> | null = null
 function tick() {
-  if (!count.value) return
-  go(props.index < count.value - 1 ? props.index + 1 : 0) // loop
+  if (count.value < 2) return
+  advancing = true
+  if (slidePrefs.value.shuffle && !props.inline) {
+    const next = Math.floor(Math.random() * (count.value - 1))
+    go(next >= props.index ? next + 1 : next)
+  } else go(props.index < count.value - 1 ? props.index + 1 : 0) // loop
 }
 function stopTimer() {
   if (timer) {
-    clearInterval(timer)
+    clearTimeout(timer)
     timer = null
   }
 }
@@ -266,14 +457,11 @@ function togglePlay() {
 }
 function syncTimer() {
   stopTimer()
-  if (playing.value) timer = setInterval(tick, Math.max(500, props.slideshowMs))
+  if (playing.value) timer = setTimeout(tick, slideMs.value)
 }
-watch(playing, syncTimer)
-// Restart the timer if the interval changes mid-playback (host dropdown).
-watch(
-  () => props.slideshowMs,
-  () => playing.value && syncTimer(),
-)
+watch([playing, slideMs, () => props.index], syncTimer)
+/** Restarts the progress line's animation whenever the countdown restarts. */
+const progressKey = computed(() => `${props.index}:${slideMs.value}:${playing.value}`)
 
 // --- keyboard ---------------------------------------------------------------
 // Only the fullscreen overlay grabs keys (modal); inline would hijack arrows/space.
@@ -326,6 +514,7 @@ onBeforeUnmount(() => {
   window.removeEventListener('keydown', onKey)
   stopTimer()
   sideRO?.disconnect()
+  stageRO?.disconnect()
 })
 
 // Imperative API for hosts that render their own chrome (controls="none").
@@ -346,185 +535,247 @@ defineExpose({
 
 <template>
   <component :is="inline ? 'div' : Teleport" v-bind="inline ? {} : { to: 'body' }">
-    <div
-      class="zlb"
-      :class="{ inline, 'has-side': showChrome && strip && count > 1 }"
-      @pointerdown.self="!inline && emit('close')"
-    >
-      <!-- LEFT thumbnail panel: virtualized, searchable, zoomable, resizable square grid -->
-      <aside
-        v-if="showChrome && strip && count > 1"
-        class="zlb-side"
-        :style="{ flexBasis: sideWidth + 'px' }"
-      >
-        <div class="zlb-side-head">
-          <button class="zlb-zb" title="Hide panel" @click.stop="strip = false">
-            <i class="mdi mdi-chevron-left" />
-          </button>
-          <div class="zlb-search">
-            <i class="mdi mdi-magnify" />
-            <input v-model="search" placeholder="Search…" spellcheck="false" />
-          </div>
-        </div>
-        <ZenScroll ref="sideScroll" class="zlb-tscroll" @scroll="onSideScroll">
-          <div class="zlb-tpad" :style="{ height: tTotalH + 'px' }">
-            <div class="zlb-grid" :style="tGridStyle">
-              <button
-                v-for="t in tVisible"
-                :key="t.i"
-                class="zlb-cell"
-                :class="{ on: t.i === index }"
-                :title="t.it.label"
-                @click.stop="go(t.i)"
-              >
-                <!-- video poster = first frame via the #t media fragment (no server thumbnailing) -->
-                <video
-                  v-if="t.it.kind === 'video'"
-                  :src="t.it.src + '#t=0.1'"
-                  muted
-                  preload="metadata"
-                  playsinline
-                />
-                <i v-else-if="t.it.kind === 'audio'" class="mdi mdi-music-note zlb-cell-audio" />
-                <img v-else :src="t.it.src" loading="lazy" alt="" />
-                <i v-if="t.it.kind === 'video'" class="mdi mdi-play-circle zlb-cell-badge" />
-                <i
-                  v-if="t.it.onWorkflow"
-                  class="mdi mdi-sitemap-outline zlb-cell-wf"
-                  title="Has a workflow"
-                />
-              </button>
+    <div class="zlb" :class="{ inline }">
+      <Transition name="zlb-side">
+        <aside
+          v-if="showChrome && !inline && strip && count > 1"
+          class="zlb-side"
+          :style="{ flexBasis: sideWidth + 'px', '--zlb-side-w': sideWidth + 'px' }"
+        >
+          <div class="zlb-side-head">
+            <div class="zlb-search">
+              <i class="mdi mdi-magnify" />
+              <input v-model="search" placeholder="Search…" spellcheck="false" />
             </div>
           </div>
-        </ZenScroll>
-        <div class="zlb-side-foot">
-          <button class="zlb-zb" title="Smaller (zoom out)" @click.stop="zoomThumbs(-1)">
-            <i class="mdi mdi-magnify-minus-outline" />
-          </button>
-          <button class="zlb-zb" title="Larger (zoom in)" @click.stop="zoomThumbs(1)">
-            <i class="mdi mdi-magnify-plus-outline" />
-          </button>
-          <span class="zlb-grow" />
-          <span class="zlb-foot-n">
-            {{ thumbs.length }}
-            <template v-if="thumbs.length !== count">/ {{ count }}</template>
-          </span>
-        </div>
-        <div
-          class="zlb-resize"
-          title="Drag to resize"
-          @pointerdown="startResize"
-          @pointermove="onResize"
-          @pointerup="endResize"
-        />
-      </aside>
+          <ZenScroll ref="sideScroll" class="zlb-tscroll" @scroll="onSideScroll">
+            <div class="zlb-tpad" :style="{ height: tTotalH + 'px' }">
+              <div class="zlb-grid" :style="tGridStyle">
+                <button
+                  v-for="t in tVisible"
+                  :key="t.i"
+                  class="zlb-cell"
+                  :class="{ on: t.i === index }"
+                  :title="t.it.label"
+                  @click.stop="go(t.i)"
+                >
+                  <!-- video poster = first frame via the #t media fragment (no server thumbnailing) -->
+                  <video
+                    v-if="t.it.kind === 'video'"
+                    :src="t.it.src + '#t=0.1'"
+                    muted
+                    preload="metadata"
+                    playsinline
+                  />
+                  <i v-else-if="t.it.kind === 'audio'" class="mdi mdi-music-note zlb-cell-audio" />
+                  <img v-else :src="t.it.src" loading="lazy" alt="" />
+                  <i v-if="t.it.kind === 'video'" class="mdi mdi-play-circle zlb-cell-badge" />
+                  <i
+                    v-if="t.it.onWorkflow"
+                    class="mdi mdi-sitemap-outline zlb-cell-wf"
+                    title="Has a workflow"
+                  />
+                </button>
+              </div>
+            </div>
+          </ZenScroll>
+          <div class="zlb-side-foot">
+            <ZenIconButton
+              icon="mdi mdi-magnify-minus-outline"
+              title="Smaller thumbnails"
+              @click.stop="zoomThumbs(-1)"
+            />
+            <ZenIconButton
+              icon="mdi mdi-magnify-plus-outline"
+              title="Larger thumbnails"
+              @click.stop="zoomThumbs(1)"
+            />
+            <span class="zlb-grow" />
+            <span class="zlb-foot-n">
+              {{ thumbs.length }}
+              <template v-if="thumbs.length !== count">/ {{ count }}</template>
+            </span>
+          </div>
+          <div
+            class="zlb-resize"
+            title="Drag to resize"
+            @pointerdown="startResize"
+            @pointermove="onResize"
+            @pointerup="endResize"
+          />
+        </aside>
+      </Transition>
 
-      <div class="zlb-main">
-        <!-- top bar: title + position + close (kept off the image so nothing overlaps) -->
-        <div v-if="showChrome" class="zlb-top">
-          <button
-            v-if="count > 1"
-            class="zlb-tbtn"
-            title="Thumbnails panel"
-            :class="{ on: strip }"
-            @click.stop="strip = !strip"
-          >
-            <i class="mdi mdi-view-grid-outline" />
-          </button>
-          <div class="zlb-info">
+      <div class="zlb-main" :class="{ idle: idle && !inline }" @pointermove="wake">
+        <header v-if="showChrome" class="zlb-top">
+          <div class="zlb-chrome zlb-info">
             <span v-if="item?.label" class="zlb-label">{{ item.label }}</span>
             <span class="zlb-pos">{{ count ? index + 1 : 0 }} / {{ count }}</span>
             <span v-if="item?.meta" class="zlb-meta">{{ item.meta }}</span>
           </div>
           <span class="zlb-grow" />
-          <button
-            v-if="item?.onWorkflow"
-            class="zlb-tbtn"
-            title="Load this image's workflow"
-            @click.stop="item.onWorkflow?.()"
-          >
-            <i class="mdi mdi-sitemap-outline" />
-          </button>
-          <button v-if="!inline" class="zlb-tbtn" title="Close (Esc)" @click="emit('close')">
-            <i class="mdi mdi-close" />
-          </button>
-        </div>
+          <div class="zlb-chrome zlb-actions">
+            <ZenIconButton
+              v-if="item?.onWorkflow"
+              icon="mdi mdi-sitemap-outline"
+              title="Load this image's workflow"
+              @click.stop="loadWorkflow"
+            />
+            <ZenIconButton
+              v-if="!inline"
+              icon="mdi mdi-close"
+              title="Close (Esc)"
+              @click="emit('close')"
+            />
+          </div>
+        </header>
 
         <div
+          ref="stageEl"
           class="zlb-stage"
+          :style="{ '--zlb-slide': `${stageW + 48}px`, '--zlb-slide-ms': `${slideDuration}ms` }"
           @wheel="onWheel"
           @pointerdown="startPan"
           @dblclick="onDblClick"
           @click.self="onStageClick"
         >
           <button
-            v-if="showChrome"
+            v-if="showChrome && zoom <= 1"
             class="zlb-nav prev"
             :disabled="!canPrev"
             title="Previous (Left)"
             @click.stop="go(index - 1)"
+            @pointerdown.stop
           >
             <i class="mdi mdi-chevron-left" />
           </button>
-          <video
-            v-if="item && item.kind === 'video'"
-            :src="item.src"
-            class="zlb-media"
-            controls
-            autoplay
-            loop
-          />
-          <div v-else-if="item && item.kind === 'audio'" class="zlb-audio">
-            <i class="mdi mdi-music-circle-outline" />
-            <span v-if="item.label" class="zlb-audio-name">{{ item.label }}</span>
-            <audio :src="item.src" controls />
-          </div>
-          <img
-            v-else-if="item"
-            :key="index"
-            :src="item.src"
-            class="zlb-media"
-            :style="imgStyle"
-            draggable="false"
-            alt=""
-          />
-          <div v-else class="zlb-empty"><i class="mdi mdi-image-off-outline" /></div>
+          <Transition :name="`zlb-slide-${direction}`">
+            <video
+              v-if="item && item.kind === 'video'"
+              :key="`v${index}`"
+              :src="item.src"
+              class="zlb-media"
+              :style="mediaStyle"
+              controls
+              autoplay
+              loop
+              @loadedmetadata="onMediaMeta"
+            />
+            <div v-else-if="item && item.kind === 'audio'" :key="`a${index}`" class="zlb-audio">
+              <i class="mdi mdi-music-circle-outline" />
+              <span v-if="item.label" class="zlb-audio-name">{{ item.label }}</span>
+              <audio :src="item.src" controls />
+            </div>
+            <img
+              v-else-if="item"
+              :key="index"
+              :src="item.src"
+              class="zlb-media"
+              :style="mediaStyle"
+              draggable="false"
+              alt=""
+              @load="onMediaMeta"
+            />
+            <div v-else class="zlb-empty"><i class="mdi mdi-image-off-outline" /></div>
+          </Transition>
           <button
-            v-if="showChrome"
+            v-if="showChrome && zoom <= 1"
             class="zlb-nav next"
             :disabled="!canNext"
             title="Next (Right)"
             @click.stop="go(index + 1)"
+            @pointerdown.stop
           >
             <i class="mdi mdi-chevron-right" />
           </button>
         </div>
 
-        <!-- bottom toolbar: view controls -->
-        <div v-if="showChrome" class="zlb-bar">
-          <button title="Slideshow (Space)" :class="{ on: playing }" @click.stop="togglePlay">
-            <i class="mdi" :class="playing ? 'mdi-pause' : 'mdi-play'" />
-          </button>
-          <button title="Rotate left (Shift+R)" @click.stop="rotateBy(-90)">
-            <i class="mdi mdi-rotate-left" />
-          </button>
-          <button title="Rotate right (R)" @click.stop="rotateBy(90)">
-            <i class="mdi mdi-rotate-right" />
-          </button>
-          <span class="zlb-sep" />
-          <button title="Zoom out (-)" @click.stop="zoomBy(1 / 1.2)">
-            <i class="mdi mdi-magnify-minus-outline" />
-          </button>
-          <span class="zlb-zval">{{ Math.round(zoom * 100) }}%</span>
-          <button title="Zoom in (+)" @click.stop="zoomBy(1.2)">
-            <i class="mdi mdi-magnify-plus-outline" />
-          </button>
-          <button title="Reset (0 / double-click)" @click.stop="reset">
-            <i class="mdi mdi-fit-to-screen-outline" />
-          </button>
-          <span class="zlb-sep" />
-          <button title="Download" @click.stop="download"><i class="mdi mdi-download" /></button>
-        </div>
+        <footer v-if="showChrome" class="zlb-bottom">
+          <div class="zlb-chrome zlb-tools">
+            <span
+              v-if="playing"
+              :key="progressKey"
+              class="zlb-progress"
+              :style="{ animationDuration: `${slideMs}ms` }"
+            />
+            <ZenIconButton
+              v-if="count > 1 && !inline"
+              icon="mdi mdi-view-grid-outline"
+              title="Thumbnails"
+              :active="strip"
+              @click.stop="strip = !strip"
+            />
+            <template v-if="count > 1">
+              <ZenIconButton
+                :icon="playing ? 'mdi mdi-pause' : 'mdi mdi-play'"
+                :title="playing ? 'Pause slideshow (Space)' : 'Play slideshow (Space)'"
+                :active="playing"
+                @click.stop="togglePlay"
+              />
+              <ZenPopover placement="top-start" :offset="10">
+                <template #trigger="{ toggle, active }">
+                  <button
+                    class="zlb-caret"
+                    :class="{ on: active }"
+                    title="Slideshow settings"
+                    @click.stop="toggle"
+                  >
+                    <i class="mdi mdi-chevron-up" />
+                  </button>
+                </template>
+                <div class="zlb-slidepop" @click.stop>
+                  <div class="zlb-slidepop-row">
+                    <span class="zlb-slidepop-label">Time per slide</span>
+                    <div class="zlb-slidepop-speed">
+                      <ZenSlider
+                        :model-value="slidePrefs.ms / 1000"
+                        :min="SPEED.min"
+                        :max="SPEED.max"
+                        :step="SPEED.step"
+                        @update:model-value="(sec: number) => (slidePrefs.ms = sec * 1000)"
+                      />
+                      <span class="zlb-slidepop-value">{{ fmtSpeed(slidePrefs.ms) }}</span>
+                    </div>
+                  </div>
+                  <label class="zlb-slidepop-row inline">
+                    <span class="zlb-slidepop-label">Shuffle</span>
+                    <ZenSwitch v-model="slidePrefs.shuffle" />
+                  </label>
+                </div>
+              </ZenPopover>
+            </template>
+            <span class="zlb-sep" />
+            <ZenIconButton
+              icon="mdi mdi-rotate-left"
+              title="Rotate left (Shift+R)"
+              @click.stop="rotateBy(-90)"
+            />
+            <ZenIconButton
+              icon="mdi mdi-rotate-right"
+              title="Rotate right (R)"
+              @click.stop="rotateBy(90)"
+            />
+            <span class="zlb-sep" />
+            <ZenIconButton
+              icon="mdi mdi-magnify-minus-outline"
+              title="Zoom out (-)"
+              @click.stop="zoomBy(1 / 1.2)"
+            />
+            <span class="zlb-zval">{{ Math.round(zoom * 100) }}%</span>
+            <ZenIconButton
+              icon="mdi mdi-magnify-plus-outline"
+              title="Zoom in (+)"
+              @click.stop="zoomBy(1.2)"
+            />
+            <ZenIconButton
+              icon="mdi mdi-fit-to-screen-outline"
+              title="Fit (0 / double-click)"
+              @click.stop="reset"
+            />
+            <span class="zlb-sep" />
+            <ZenIconButton icon="mdi mdi-download" title="Download" @click.stop="download" />
+          </div>
+        </footer>
       </div>
     </div>
   </component>
@@ -536,29 +787,240 @@ defineExpose({
   inset: 0;
   z-index: 100000;
   display: flex;
-  flex-direction: row;
-  background: rgba(0, 0, 0, 0.85);
-  backdrop-filter: blur(4px);
+  overflow: hidden;
+  background: color-mix(in srgb, var(--zen-bg, #111114) 92%, transparent);
+  backdrop-filter: blur(6px);
   font-family: var(--p-font-family, system-ui, sans-serif);
-  color: #e8e8ea;
+  color: var(--zen-text, #e8e8ea);
 }
 .zlb.inline {
   position: absolute;
   z-index: 1;
   border-radius: var(--zen-radius, 8px);
-  overflow: hidden;
   background: var(--zen-bg, #1a1a1f);
 }
 
-/* LEFT thumbnail panel — virtualized, searchable, zoomable (asset-gallery style) */
+.zlb-main {
+  position: relative;
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+}
+
+/* chrome: dressed exactly like ZenKit's floating taskbar, so themes style it the same way */
+.zlb-chrome {
+  display: flex;
+  align-items: center;
+  gap: 2px;
+  padding: 3px;
+  background: color-mix(
+    in srgb,
+    var(--zen-chrome-bg, var(--zen-surface, #202026)) 94%,
+    transparent
+  );
+  border: 1px solid var(--zen-surface-border, var(--zen-border, #3a3a44));
+  border-radius: var(--zen-radius-surface, var(--zen-radius, 10px));
+  box-shadow: var(--interface-floating-panel-shadow, 0 6px 18px rgba(0, 0, 0, 0.28));
+  backdrop-filter: blur(12px);
+}
+.zlb-chrome .zen-iconbtn {
+  width: 30px;
+  height: 30px;
+}
+.zlb-top,
+.zlb-bottom {
+  position: absolute;
+  left: 12px;
+  right: 12px;
+  z-index: 4;
+  display: flex;
+  gap: 8px;
+  pointer-events: none;
+  transition:
+    opacity 0.25s ease,
+    translate 0.25s ease;
+}
+.zlb-top > *,
+.zlb-bottom > * {
+  pointer-events: auto;
+}
+.zlb-top {
+  top: 12px;
+  align-items: flex-start;
+}
+.zlb-bottom {
+  bottom: 12px;
+  align-items: flex-end;
+  justify-content: center;
+  flex-wrap: wrap-reverse;
+}
+.zlb-main.idle .zlb-top {
+  opacity: 0;
+  translate: 0 -6px;
+}
+.zlb-main.idle .zlb-bottom {
+  opacity: 0;
+  translate: 0 6px;
+}
+.zlb-main.idle {
+  cursor: none;
+}
+.zlb-grow {
+  flex: 1;
+}
+.zlb-info {
+  gap: 10px;
+  min-width: 0;
+  height: 38px;
+  box-sizing: border-box;
+  padding: 0 14px;
+  font-size: 13px;
+}
+.zlb-label {
+  font-weight: 600;
+  color: var(--zen-text, #e8e8ea);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  max-width: 40vw;
+}
+.zlb-pos,
+.zlb-meta,
+.zlb-zval {
+  font-size: 11.5px;
+  color: var(--zen-muted, #9a9aa0);
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+}
+.zlb-zval {
+  min-width: 40px;
+  text-align: center;
+}
+.zlb-tools {
+  position: relative;
+  overflow: hidden;
+}
+/* time to the next slide, along the toolbar's bottom edge */
+.zlb-progress {
+  position: absolute;
+  left: 0;
+  bottom: 0;
+  height: 2px;
+  width: 100%;
+  transform-origin: left;
+  background: var(--zen-accent, #3b82f6);
+  animation: zlb-progress linear forwards;
+}
+@keyframes zlb-progress {
+  from {
+    transform: scaleX(0);
+  }
+  to {
+    transform: scaleX(1);
+  }
+}
+.zlb-caret {
+  width: 18px;
+  height: 30px;
+  margin-left: -2px;
+  padding: 0;
+  cursor: pointer;
+  color: var(--zen-muted, #9a9aa0);
+  background: none;
+  border: 1px solid transparent;
+  border-radius: var(--zen-radius, 6px);
+}
+.zlb-caret:hover,
+.zlb-caret.on {
+  color: var(--zen-text, #e8e8ea);
+  background: color-mix(in srgb, var(--zen-text, #fff) 12%, transparent);
+}
+.zlb-slidepop {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  padding: 10px 12px;
+  min-width: 230px;
+}
+.zlb-slidepop-row {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+.zlb-slidepop-row.inline {
+  flex-direction: row;
+  align-items: center;
+  justify-content: space-between;
+  cursor: pointer;
+}
+.zlb-slidepop-speed {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+.zlb-slidepop-speed .zen-slider {
+  flex: 1;
+  min-width: 0;
+}
+.zlb-slidepop-value {
+  min-width: 34px;
+  text-align: right;
+  font-size: 12px;
+  font-variant-numeric: tabular-nums;
+  color: var(--zen-text, #e8e8ea);
+}
+.zlb-slidepop-label {
+  font-size: 11.5px;
+  font-weight: 600;
+  color: var(--zen-muted, #9a9aa0);
+}
+.zlb-sep {
+  width: 1px;
+  height: 18px;
+  margin: 0 4px;
+  background: var(--zen-surface-border, var(--zen-border, #3a3a44));
+}
+
+/* opening and closing: the card slides in from the left while the picture makes room */
+.zlb-side.zlb-side-enter-active,
+.zlb-side.zlb-side-leave-active {
+  transition:
+    translate 0.3s cubic-bezier(0.45, 0, 0.2, 1),
+    margin-right 0.3s cubic-bezier(0.45, 0, 0.2, 1),
+    opacity 0.22s ease;
+}
+.zlb-side.zlb-side-enter-from,
+.zlb-side.zlb-side-leave-to {
+  translate: calc(-100% - 12px) 0;
+  margin-right: calc(-1 * (var(--zlb-side-w, 264px) + 12px));
+  opacity: 0;
+}
+@media (prefers-reduced-motion: reduce) {
+  .zlb-side-enter-active,
+  .zlb-side-leave-active {
+    transition: none;
+  }
+}
+/* the thumbnails: a floating card dressed like the rest of the chrome */
 .zlb-side {
   position: relative;
+  z-index: 5;
   flex: 0 0 auto;
   display: flex;
   flex-direction: column;
   min-height: 0;
-  background: var(--zen-surface, #202026);
-  border-right: 1px solid var(--zen-border, #34343c);
+  margin: 12px 0 12px 12px;
+  overflow: hidden;
+  background: color-mix(
+    in srgb,
+    var(--zen-chrome-bg, var(--zen-surface, #202026)) 94%,
+    transparent
+  );
+  border: 1px solid var(--zen-surface-border, var(--zen-border, #3a3a44));
+  border-radius: var(--zen-radius-surface, var(--zen-radius, 10px));
+  box-shadow: var(--interface-floating-panel-shadow, 0 6px 18px rgba(0, 0, 0, 0.28));
+  backdrop-filter: blur(12px);
 }
 .zlb-resize {
   position: absolute;
@@ -608,26 +1070,6 @@ defineExpose({
   color: var(--zen-text, #e5e5ea);
   font: inherit;
   font-size: 12px;
-}
-.zlb-zb {
-  flex: none;
-  width: 28px;
-  height: 28px;
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  border: none;
-  border-radius: var(--zen-radius, 6px);
-  background: transparent;
-  color: var(--zen-muted, #9aa0aa);
-  cursor: pointer;
-}
-.zlb-zb:hover {
-  background: color-mix(in srgb, var(--zen-text, #fff) 10%, transparent);
-  color: var(--zen-text, #fff);
-}
-.zlb-zb .mdi {
-  font-size: 16px;
 }
 /* virtualization: ZenScroll container + full-height pad + windowed grid (overflow from ZenScroll) */
 .zlb-tscroll {
@@ -715,74 +1157,11 @@ defineExpose({
 }
 
 /* main column: top bar + stage + bottom toolbar (flex siblings → never overlap the image) */
-.zlb-main {
-  flex: 1;
-  min-width: 0;
-  display: flex;
-  flex-direction: column;
-}
-.zlb-top {
-  flex: 0 0 auto;
-  display: flex;
-  align-items: center;
-  gap: 10px;
-  padding: 9px 12px;
-}
-.zlb-grow {
-  flex: 1;
-}
-.zlb-info {
-  display: flex;
-  align-items: baseline;
-  gap: 10px;
-  min-width: 0;
-}
-.zlb-label {
-  font-weight: 600;
-  color: #fff;
-  white-space: nowrap;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  max-width: 40vw;
-}
-.zlb-pos {
-  font-size: 12px;
-  color: #b8b8bd;
-  font-variant-numeric: tabular-nums;
-}
-.zlb-meta {
-  font-size: 11px;
-  color: #9a9aa0;
-  white-space: nowrap;
-  overflow: hidden;
-  text-overflow: ellipsis;
-}
-.zlb-tbtn {
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  width: 32px;
-  height: 32px;
-  border: none;
-  border-radius: var(--zen-radius, 8px);
-  background: transparent;
-  color: #d6d6da;
-  cursor: pointer;
-}
-.zlb-tbtn:hover {
-  background: rgba(255, 255, 255, 0.14);
-  color: #fff;
-}
-.zlb-tbtn.on {
-  background: var(--zen-accent, #3b82f6);
-  color: #fff;
-}
-.zlb-tbtn .mdi {
-  font-size: 19px;
-}
 
-/* stage: image is centred with side gutters for the nav arrows, so nothing overlaps */
+/* stage: the picture fills it; its edges are the prev/next zones. A size container, so the
+   media is fitted by CSS (`cqw`/`cqh`) on every frame. */
 .zlb-stage {
+  container-type: size;
   position: relative;
   flex: 1;
   min-height: 0;
@@ -790,9 +1169,8 @@ defineExpose({
   align-items: center;
   justify-content: center;
   overflow: hidden;
-  padding: 8px 64px;
+  padding: 16px;
 }
-/* inline embeds (MediaViewer/GalleryViewer) have no nav arrows → no side gutters */
 .zlb.inline .zlb-stage {
   padding: 6px;
 }
@@ -802,22 +1180,25 @@ defineExpose({
   object-fit: contain;
   display: block;
   border-radius: var(--zen-radius, 6px);
+  box-shadow: 0 24px 60px -20px rgba(0, 0, 0, 0.55);
   transition: transform 0.05s linear;
+}
+.zlb.inline .zlb-media {
+  box-shadow: none;
 }
 .zlb-empty {
   opacity: 0.4;
   font-size: 48px;
 }
-/* audio: a big glyph + name + the native player, centred on the stage */
 .zlb-audio {
   display: flex;
   flex-direction: column;
   align-items: center;
   gap: 14px;
-  color: #e8e8ea;
   padding: 24px;
   max-width: 560px;
   width: 100%;
+  color: var(--zen-text, #e8e8ea);
 }
 .zlb-audio .mdi {
   font-size: 96px;
@@ -834,94 +1215,87 @@ defineExpose({
 .zlb-audio audio {
   width: 100%;
 }
-/* nav arrows: circular glassy pills; fully hidden (not ghosted) at the ends */
-.zlb-nav {
-  flex: none;
-  position: absolute;
-  top: 50%;
-  transform: translateY(-50%);
-  z-index: 3;
-  width: 46px;
-  height: 46px;
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  border: 1px solid rgba(255, 255, 255, 0.12);
-  border-radius: 999px;
-  background: rgba(18, 18, 22, 0.45);
-  backdrop-filter: blur(6px);
-  color: #fff;
-  cursor: pointer;
-  transition:
-    background 0.12s ease,
-    border-color 0.12s ease,
-    transform 0.08s ease,
-    opacity 0.12s ease;
-}
-.zlb-nav:hover:not(:disabled) {
-  background: rgba(18, 18, 22, 0.72);
-  border-color: color-mix(in srgb, var(--zen-accent, #3b82f6) 70%, transparent);
-}
-.zlb-nav:active:not(:disabled) {
-  transform: translateY(-50%) scale(0.93);
-}
-.zlb-nav:disabled {
-  opacity: 0;
-  pointer-events: none;
-}
-.zlb-nav.prev {
-  left: 14px;
-}
-.zlb-nav.next {
-  right: 14px;
-}
-.zlb-nav .mdi {
-  font-size: 26px;
-}
 
-/* bottom toolbar: centred view controls */
-.zlb-bar {
-  flex: 0 0 auto;
+/* prev/next: the middle of each edge. Invisible until hovered, then a soft glow in the primary
+   colour (fading out top and bottom) and a chevron; hidden at the ends and while zoomed. */
+.zlb-nav {
+  position: absolute;
+  top: 20%;
+  bottom: 20%;
+  z-index: 3;
+  width: clamp(40px, 7%, 84px);
   display: flex;
   align-items: center;
-  justify-content: center;
-  gap: 3px;
-  padding: 8px 12px;
-}
-.zlb-bar button {
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  width: 32px;
-  height: 32px;
+  padding: 0 8px;
   border: none;
-  border-radius: var(--zen-radius, 7px);
-  background: transparent;
-  color: #d6d6da;
+  color: #fff;
   cursor: pointer;
+  opacity: 0;
+  transition: opacity 0.16s ease;
+  mask-image: linear-gradient(to bottom, transparent, #000 30%, #000 70%, transparent);
 }
-.zlb-bar button:hover {
-  background: rgba(255, 255, 255, 0.14);
-  color: #fff;
+.zlb-nav.prev {
+  left: 0;
+  justify-content: flex-start;
+  background: linear-gradient(
+    to right,
+    color-mix(in srgb, var(--zen-accent, #3b82f6) 20%, transparent),
+    transparent
+  );
 }
-.zlb-bar button.on {
-  background: var(--zen-accent, #3b82f6);
-  color: #fff;
+.zlb-nav.next {
+  right: 0;
+  justify-content: flex-end;
+  background: linear-gradient(
+    to left,
+    color-mix(in srgb, var(--zen-accent, #3b82f6) 20%, transparent),
+    transparent
+  );
 }
-.zlb-bar .mdi {
-  font-size: 18px;
+.zlb-nav:hover:not(:disabled) {
+  opacity: 1;
 }
-.zlb-sep {
-  width: 1px;
-  height: 20px;
-  margin: 0 6px;
-  background: rgba(255, 255, 255, 0.14);
+.zlb-nav:disabled {
+  display: none;
 }
-.zlb-zval {
-  font-size: 11px;
-  color: #b8b8bd;
-  min-width: 40px;
-  text-align: center;
-  font-variant-numeric: tabular-nums;
+.zlb-nav .mdi {
+  font-size: 28px;
+  filter: drop-shadow(0 1px 4px rgba(0, 0, 0, 0.6));
+  transition: translate 0.16s ease;
+}
+.zlb-nav.prev:hover .mdi {
+  translate: -3px 0;
+}
+.zlb-nav.next:hover .mdi {
+  translate: 3px 0;
+}
+
+/* the media slides the way you moved: a whole stage-width, like a carousel. `translate` (not
+   `transform`) so it stacks with the inline zoom/rotate transform instead of replacing it. */
+.zlb-slide-next-enter-active,
+.zlb-slide-next-leave-active,
+.zlb-slide-prev-enter-active,
+.zlb-slide-prev-leave-active {
+  transition: translate var(--zlb-slide-ms, 460ms) cubic-bezier(0.45, 0, 0.2, 1);
+}
+.zlb-slide-next-leave-active,
+.zlb-slide-prev-leave-active {
+  position: absolute;
+}
+.zlb-slide-next-enter-from,
+.zlb-slide-prev-leave-to {
+  translate: var(--zlb-slide, 100%) 0;
+}
+.zlb-slide-next-leave-to,
+.zlb-slide-prev-enter-from {
+  translate: calc(var(--zlb-slide, 100%) * -1) 0;
+}
+@media (prefers-reduced-motion: reduce) {
+  .zlb-slide-next-enter-active,
+  .zlb-slide-next-leave-active,
+  .zlb-slide-prev-enter-active,
+  .zlb-slide-prev-leave-active {
+    transition: none;
+  }
 }
 </style>

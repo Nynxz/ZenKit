@@ -13,6 +13,18 @@ try:
 except Exception as e:  # pragma: no cover
     print(f"[ZenKit] theme route failed to load: {e}")
 
+# The shared vue/ui/client modules other Zen plugins import from /zenkit/runtime/.
+try:
+    from . import zenkit_runtime_api  # noqa: F401
+except Exception as e:  # pragma: no cover
+    print(f"[ZenKit] runtime route failed to load: {e}")
+
+# Cached thumbnails for input/output/temp files at /zenkit/thumb (client: thumbUrl).
+try:
+    from . import zenkit_thumb_api  # noqa: F401
+except Exception as e:  # pragma: no cover
+    print(f"[ZenKit] thumbnail route failed to load: {e}")
+
 # Serve ./js (the built Vue bundle) as this extension's web directory.
 from comfy_api.latest import ComfyExtension, io
 

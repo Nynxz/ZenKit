@@ -1,0 +1,23 @@
+[build-system]
+requires = ["setuptools>=70.0"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "comfyui-zenexample"
+version = "0.1.0"
+description = "Zen Example — a reference ZenKit plugin that exercises the toolkit's features. Requires ComfyUI-ZenKit."
+license = { text = "MIT" }
+
+[project.urls]
+Repository = "https://github.com/Nynxz/ZenKit/tree/main/plugins/ComfyUI-ZenExample"
+
+[tool.comfy]
+PublisherId = "nynxz"
+DisplayName = "ComfyUI-ZenExample"
+includes = ["js"]
+
+[tool.zenkit]
+id = "zenexample"
+
+[tool.setuptools.package-data]
+"*" = ["*.*"]

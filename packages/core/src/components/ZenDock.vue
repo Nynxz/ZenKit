@@ -1,7 +1,7 @@
 <template>
   <!-- One tab rail per docked side; click toggles/switches, drag undocks. -->
   <template v-for="zone in zones" :key="zone.side">
-    <div class="rail" :class="'side-' + zone.side" :style="rectStyle(zone.rail)">
+    <div v-if="zone.rail" class="rail" :class="'side-' + zone.side" :style="rectStyle(zone.rail)">
       <div class="tabs" :class="zone.side === 'bottom' ? 'horiz' : 'vert'">
         <button
           v-for="m in zone.members"
@@ -24,7 +24,9 @@
       class="dockresize"
       :class="'rs-' + zone.side"
       :style="resizeStyle(zone)"
-      @pointerdown.stop="startResize($event, zone.side)"
+      @pointerenter="store.state.dockEdgeLit = zone.side"
+      @pointerleave="!store.state.interacting && (store.state.dockEdgeLit = null)"
+      @pointerdown.stop="startResize($event, zone)"
     />
   </template>
 
@@ -63,9 +65,8 @@
 import { computed, inject, onBeforeUnmount, onMounted, ref } from 'vue'
 import { ZenIcon } from '@nynxz/zenkit-ui'
 import { STORE_KEY, type Panel, type PanelStore } from '../panelStore'
-import { computeDockLayout, RAIL, type ZoneLayout } from '../tiling'
-import { dockDropFor } from '../dockDrop'
-import { snapZoneFor } from '../panelStore'
+import { computeDockLayout, dockLayoutVersion, type ZoneLayout } from '../tiling'
+import { startDockTabDrag } from '../dockDrag'
 import { detachPanel } from '../detach'
 import type { Rect } from '../types'
 
@@ -90,8 +91,11 @@ onBeforeUnmount(() => {
 
 const zones = computed<ZoneLayout[]>(() => {
   void vpTick.value
+  void dockLayoutVersion.value
   const layout = computeDockLayout(store)
-  return (['left', 'right', 'bottom'] as const).map((s) => layout[s]).filter((z) => z.rail)
+  return (['left', 'right', 'bottom'] as const)
+    .map((s) => layout[s])
+    .filter((z) => z.rail || z.body)
 })
 
 const rectStyle = (r: Rect | null) =>
@@ -107,7 +111,7 @@ function resizeStyle(zone: ZoneLayout): Record<string, string> {
       top: b.y + 'px',
       width: '12px',
       height: b.h + 'px',
-      cursor: 'ew-resize',
+      cursor: 'col-resize',
     }
   if (zone.side === 'right')
     return {
@@ -115,21 +119,20 @@ function resizeStyle(zone: ZoneLayout): Record<string, string> {
       top: b.y + 'px',
       width: '12px',
       height: b.h + 'px',
-      cursor: 'ew-resize',
+      cursor: 'col-resize',
     }
   return {
     left: b.x + 'px',
     top: b.y - 7 + 'px',
     width: b.w + 'px',
     height: '12px',
-    cursor: 'ns-resize',
+    cursor: 'row-resize',
   }
 }
 
 // --- tab click vs drag-out ---
 function onTabClick(zone: ZoneLayout, m: Panel) {
-  if (m.id === zone.activeId && !zone.collapsed) ops.toggleDockCollapsed(zone.side)
-  else ops.setDockActive(zone.side, m.id)
+  ops.toggleDockTab(zone.side, m.id)
 }
 
 function beginInteract(cursor: string) {
@@ -144,66 +147,33 @@ function endInteract() {
 }
 
 function onTabDown(e: PointerEvent, zone: ZoneLayout, m: Panel) {
-  if (e.button !== 0) return
-  e.preventDefault()
-  const sx = e.clientX
-  const sy = e.clientY
-  let dragging = false
-  let off = { x: 0, y: 0 }
-  const onMove = (mv: PointerEvent) => {
-    if (!dragging) {
-      if (Math.hypot(mv.clientX - sx, mv.clientY - sy) < 14) return
-      // drag-out: undock to a floating panel under the cursor
-      dragging = true
-      ops.setDock(m.id, null)
-      const p = ops.get(m.id)
-      if (!p) return
-      off = { x: Math.min(p.w / 2, mv.clientX), y: 14 }
-      beginInteract('grabbing')
-    }
-    ops.setRect(m.id, { x: mv.clientX - off.x, y: mv.clientY - off.y })
-    const drop = dockDropFor(mv.clientX, mv.clientY)
-    store.state.dockDrop = drop
-    store.state.snap = drop ? null : snapZoneFor(mv.clientX, mv.clientY)
-  }
-  const onUp = () => {
-    window.removeEventListener('pointermove', onMove)
-    window.removeEventListener('pointerup', onUp)
-    if (!dragging) {
-      onTabClick(zone, m)
-      return
-    }
-    if (store.state.dockDrop) ops.setDock(m.id, store.state.dockDrop)
-    else if (store.state.snap) ops.applySnap(m.id, store.state.snap)
-    store.state.dockDrop = null
-    store.state.snap = null
-    ops.setRect(m.id, {}, true)
-    endInteract()
-  }
-  window.addEventListener('pointermove', onMove)
-  window.addEventListener('pointerup', onUp)
+  startDockTabDrag(e, store, m.id, () => onTabClick(zone, m))
 }
 
 // --- zone resize ---
-function startResize(e: PointerEvent, side: ZoneLayout['side']) {
+function startResize(e: PointerEvent, zone: ZoneLayout) {
   e.preventDefault()
+  const { side } = zone
+  const body = zone.body!
   // capture so the drag survives crossing the canvas/iframes
   const grip = e.currentTarget as HTMLElement
   grip.setPointerCapture?.(e.pointerId)
-  beginInteract(side === 'bottom' ? 'ns-resize' : 'ew-resize')
+  beginInteract(side === 'bottom' ? 'row-resize' : 'col-resize')
   const onMove = (m: PointerEvent) => {
-    if (side === 'left') ops.setDockSize(side, m.clientX - RAIL)
-    else if (side === 'right') ops.setDockSize(side, window.innerWidth - RAIL - m.clientX)
-    else ops.setDockSize(side, window.innerHeight - RAIL - m.clientY)
+    if (side === 'left') ops.setDockSize(side, m.clientX - body.x, false)
+    else if (side === 'right') ops.setDockSize(side, body.x + body.w - m.clientX, false)
+    else ops.setDockSize(side, body.y + body.h - m.clientY, false)
   }
-  const onUp = () => {
+  const onUp = (u: PointerEvent) => {
     endInteract()
+    ops.setDockSize(side, store.state.docks[side].size)
+    if (document.elementFromPoint(u.clientX, u.clientY) !== grip) store.state.dockEdgeLit = null
     grip.releasePointerCapture?.(e.pointerId)
-    window.removeEventListener('pointermove', onMove)
-    window.removeEventListener('pointerup', onUp)
+    window.removeEventListener('pointermove', onMove, true)
+    window.removeEventListener('pointerup', onUp, true)
   }
-  window.addEventListener('pointermove', onMove)
-  window.addEventListener('pointerup', onUp)
+  window.addEventListener('pointermove', onMove, true)
+  window.addEventListener('pointerup', onUp, true)
 }
 
 // --- tab context menu ---
@@ -233,18 +203,12 @@ function menuAct(fn: () => void) {
   pointer-events: auto;
   display: flex;
   overflow: hidden;
-  background: color-mix(in srgb, var(--zen-surface, #202026) 92%, transparent);
-  border: 1px solid var(--zen-border, #3a3a44);
+  box-sizing: border-box;
+  background: var(--zen-chrome-bg, var(--zen-surface, #202026));
+  border: 1px solid var(--zen-surface-border, var(--zen-border, #3a3a44));
+  border-radius: var(--zen-radius-surface, var(--zen-radius, 10px));
+  box-shadow: var(--interface-floating-panel-shadow, 0 6px 18px rgba(0, 0, 0, 0.28));
   font-family: var(--p-font-family, system-ui, sans-serif);
-}
-.rail.side-left {
-  border-width: 0 1px 0 0;
-}
-.rail.side-right {
-  border-width: 0 0 0 1px;
-}
-.rail.side-bottom {
-  border-width: 1px 0 0 0;
 }
 
 .tabs {
@@ -263,9 +227,8 @@ function menuAct(fn: () => void) {
   align-items: stretch;
 }
 /* hide scrollbars on the rail */
-.tabs::-webkit-scrollbar {
-  width: 0;
-  height: 0;
+.tabs {
+  scrollbar-width: none;
 }
 
 .tab {
@@ -328,35 +291,6 @@ function menuAct(fn: () => void) {
   user-select: none;
   pointer-events: auto;
 }
-/* 1px line centered in the 7px grip, on the canvas-facing edge */
-.dockresize::before {
-  content: '';
-  position: absolute;
-  background: var(--zen-border, #3a3a44);
-  transition: background 0.12s ease;
-}
-.dockresize.rs-left::before,
-.dockresize.rs-right::before {
-  top: 0;
-  bottom: 0;
-  left: 50%;
-  width: 1px;
-  transform: translateX(-50%);
-}
-.dockresize.rs-bottom::before {
-  left: 0;
-  right: 0;
-  top: 50%;
-  height: 1px;
-  transform: translateY(-50%);
-}
-.dockresize:hover::before {
-  background: var(--zen-accent, #3b82f6);
-}
-.dockresize:hover {
-  background: color-mix(in srgb, var(--zen-accent, #3b82f6) 40%, transparent);
-}
-
 .tabmenu {
   position: fixed;
   z-index: 100001;
@@ -365,9 +299,9 @@ function menuAct(fn: () => void) {
   display: flex;
   flex-direction: column;
   gap: 1px;
-  background: var(--zen-surface, #202026);
-  border: 1px solid var(--zen-border, #3a3a44);
-  border-radius: var(--zen-radius, 8px);
+  background: var(--zen-chrome-bg, var(--zen-surface, #202026));
+  border: 1px solid var(--zen-surface-border, var(--zen-border, #3a3a44));
+  border-radius: var(--zen-radius-surface, var(--zen-radius, 8px));
   box-shadow: 0 10px 30px rgba(0, 0, 0, 0.5);
   pointer-events: auto;
   font-family: var(--p-font-family, system-ui, sans-serif);

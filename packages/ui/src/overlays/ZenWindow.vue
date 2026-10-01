@@ -143,7 +143,7 @@ onBeforeUnmount(() => {
 
 <template>
   <Teleport to="body">
-    <div v-if="open" class="zw-root" :class="{ 'zw-backdrop': backdrop }">
+    <div v-if="open" data-zen-layer class="zw-root zen-scroll" :class="{ 'zw-backdrop': backdrop }">
       <div class="zw" :class="{ max: maximized }" :style="winStyle">
         <header class="zw-bar" @pointerdown="startDrag" @dblclick="toggleMax">
           <i class="zw-icon" :class="icon" />
@@ -190,8 +190,8 @@ onBeforeUnmount(() => {
   overflow: hidden;
   color: var(--zen-text, #e5e5ea);
   background: var(--zen-glass, color-mix(in srgb, var(--zen-bg, #1a1a1f) 90%, transparent));
-  border: 1px solid var(--zen-border, #34343c);
-  border-radius: var(--zen-radius, 12px);
+  border: 1px solid var(--zen-surface-border, var(--zen-border, #34343c));
+  border-radius: var(--zen-radius-surface, var(--zen-radius, 12px));
   box-shadow: 0 24px 70px rgba(0, 0, 0, 0.55);
   backdrop-filter: blur(12px);
 }
@@ -203,8 +203,12 @@ onBeforeUnmount(() => {
   height: 40px;
   padding: 0 8px 0 12px;
   cursor: grab;
-  background: color-mix(in srgb, var(--zen-surface, #202026) 82%, transparent);
-  border-bottom: 1px solid var(--zen-border, #34343c);
+  background: color-mix(
+    in srgb,
+    var(--zen-chrome-bg, var(--zen-surface, #202026)) 82%,
+    transparent
+  );
+  border-bottom: 1px solid var(--zen-surface-border, var(--zen-border, #34343c));
   user-select: none;
 }
 .zw-bar:active {
@@ -246,8 +250,12 @@ onBeforeUnmount(() => {
   align-items: center;
   gap: 10px;
   padding: 6px 12px;
-  background: color-mix(in srgb, var(--zen-surface, #202026) 82%, transparent);
-  border-top: 1px solid var(--zen-border, #34343c);
+  background: color-mix(
+    in srgb,
+    var(--zen-chrome-bg, var(--zen-surface, #202026)) 82%,
+    transparent
+  );
+  border-top: 1px solid var(--zen-surface-border, var(--zen-border, #34343c));
 }
 .zw-resize {
   position: absolute;

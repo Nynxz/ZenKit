@@ -3,10 +3,19 @@
 // (saturation/brightness box + hue slider + hex field + presets). No native OS dialog, so it
 // stays consistent with the rest of the UI. v-model is a `#rrggbb` string.
 import { computed, nextTick, onBeforeUnmount, ref, watch } from 'vue'
+import { inOtherLayer } from '../overlays/layers'
 
-const props = withDefaults(defineProps<{ modelValue: string; presets?: string[] }>(), {
-  presets: () => ['#ff3b30', '#ffcc00', '#34c759', '#0a84ff', '#ffffff', '#000000'],
-})
+const props = withDefaults(
+  defineProps<{
+    modelValue: string
+    presets?: string[]
+    /** Swatch-only trigger, for a row that shows the value itself. */
+    compact?: boolean
+  }>(),
+  {
+    presets: () => ['#ff3b30', '#ffcc00', '#34c759', '#0a84ff', '#ffffff', '#000000'],
+  },
+)
 const emit = defineEmits<{ 'update:modelValue': [string] }>()
 
 const open = ref(false)
@@ -158,7 +167,7 @@ function place() {
 }
 function onDoc(e: PointerEvent) {
   const t = e.target as Node
-  if (trigger.value?.contains(t) || pop.value?.contains(t)) return
+  if (trigger.value?.contains(t) || pop.value?.contains(t) || inOtherLayer(e.target, pop.value)) return
   closePop()
 }
 function toggle() {
@@ -182,14 +191,16 @@ syncFromModel()
 </script>
 
 <template>
-  <div class="zcp">
+  <div class="zcp" :class="{ compact }">
     <button ref="trigger" type="button" class="zcp-trigger" @click="toggle">
       <span class="zcp-sw" :style="{ background: modelValue }" />
-      <span class="zcp-hexlbl">{{ modelValue }}</span>
-      <i class="mdi mdi-chevron-down" />
+      <template v-if="!compact">
+        <span class="zcp-hexlbl">{{ modelValue }}</span>
+        <i class="mdi mdi-chevron-down" />
+      </template>
     </button>
     <Teleport to="body">
-      <div v-if="open" ref="pop" class="zcp-pop" :style="popStyle" @pointerdown.stop>
+      <div v-if="open" ref="pop" data-zen-layer class="zcp-pop" :style="popStyle" @pointerdown.stop>
         <div class="zcp-sv" :style="{ background: hueColor }" @pointerdown="svDown">
           <div class="zcp-sv-white" />
           <div class="zcp-sv-black" />
@@ -235,6 +246,18 @@ syncFromModel()
   width: 100%;
   min-width: var(--zen-control-min, 76px);
 }
+.zcp.compact {
+  display: inline-block;
+  width: auto;
+  min-width: 0;
+}
+.zcp.compact .zcp-trigger {
+  width: auto;
+  height: auto;
+  padding: 0;
+  border: none;
+  background: none;
+}
 .zcp-trigger {
   display: flex;
   align-items: center;
@@ -243,16 +266,17 @@ syncFromModel()
   height: 28px;
   box-sizing: border-box;
   padding: 0 6px;
-  border: 1px solid var(--zen-border, #34343c);
+  border: 1px solid var(--zen-control-border, var(--zen-border, #34343c));
   border-radius: var(--zen-radius, 6px);
-  background: var(--zen-input, #1b1b20);
+  background: var(--zen-control-bg, var(--zen-input, #1b1b20));
   color: var(--zen-text, #e5e5ea);
   cursor: pointer;
   font: inherit;
   font-size: 11px;
 }
 .zcp-trigger:hover {
-  border-color: var(--zen-accent, #6366f1);
+  border-color: var(--zen-control-hover-border, var(--zen-accent, #6366f1));
+  background: var(--zen-control-hover-bg, var(--zen-control-bg));
 }
 .zcp-sw {
   width: 16px;
@@ -288,9 +312,9 @@ syncFromModel()
   flex-direction: column;
   gap: 8px;
   padding: 8px;
-  background: var(--zen-surface, #202026);
-  border: 1px solid var(--zen-border, #34343c);
-  border-radius: var(--zen-radius, 8px);
+  background: var(--zen-chrome-bg, var(--zen-surface, #202026));
+  border: 1px solid var(--zen-surface-border, var(--zen-border, #34343c));
+  border-radius: var(--zen-radius-surface, var(--zen-radius, 8px));
   box-shadow: 0 12px 32px rgba(0, 0, 0, 0.5);
 }
 .zcp-sv {
@@ -354,9 +378,9 @@ syncFromModel()
   height: 26px;
   box-sizing: border-box;
   padding: 0 6px;
-  border: 1px solid var(--zen-border, #34343c);
+  border: 1px solid var(--zen-control-border, var(--zen-border, #34343c));
   border-radius: var(--zen-radius, 6px);
-  background: var(--zen-input, #1b1b20);
+  background: var(--zen-field-bg, var(--zen-input, #1b1b20));
   color: var(--zen-text, #e5e5ea);
   font: inherit;
   font-size: 11px;

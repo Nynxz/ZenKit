@@ -12,6 +12,7 @@ const MENU_SEL = '.comfy-command-menu'
 const ITEM_LABEL = 'ZenKit Themes' // matches the command label registered in the plugin
 const WIRED = 'data-zen-themes-wired' // our native item, once hover-wired
 const COMFY_MARK = 'data-zen-comfy-theme' // ComfyUI's native "Theme" <li>, once tagged
+const SEP_MARK = 'data-zen-sep-hidden' // a separator we hid for landing next to another
 const STYLE_ID = 'zenkit-comfy-thememenu-style'
 const POPUP_ID = 'zenkit-theme-popup'
 const CLOSE_DELAY = 140 // hover-intent grace when moving between the item and the popup
@@ -24,10 +25,10 @@ const STYLE = `
    active theme — not ComfyUI's own menu vars, which may be unset or off-theme. */
 #${POPUP_ID} {
   position:fixed; z-index:100001; display:none; flex-direction:column; width:240px; max-height:min(70vh, 440px);
-  overflow:hidden; background:var(--zen-surface, #1f1f25);
+  overflow:hidden; background:var(--zen-chrome-bg, var(--zen-surface, #1f1f25));
   color:var(--zen-text, #e5e5ea);
-  border:1px solid var(--zen-border, #34343c);
-  border-radius:var(--zen-radius, 10px); box-shadow:0 12px 32px rgba(0,0,0,.46);
+  border:1px solid var(--zen-surface-border, var(--zen-border, #34343c));
+  border-radius:var(--zen-radius-surface, var(--zen-radius, 10px)); box-shadow:0 12px 32px rgba(0,0,0,.46);
   font-family:var(--p-font-family, system-ui, sans-serif); font-size:13px;
 }
 #${POPUP_ID}.zen-open { display:flex; }
@@ -111,7 +112,9 @@ function comfyOption(id: string, name: string, active: boolean): HTMLLIElement {
 
 /** Controller for the ZenKit theme popup wired to the native ComfyUI menu item. */
 export function createComfyThemeMenu() {
-  let running = false
+  // `enabled` is the setting; the observer outlives it, because the menu is rebuilt every time it
+  // opens and our registered "ZenKit Themes" command has to be hidden again each time while off.
+  let enabled = false
   let obs: MutationObserver | null = null
   let raf = 0
   let offTheme: (() => void) | null = null
@@ -241,20 +244,48 @@ export function createComfyThemeMenu() {
   function wire(li: HTMLElement) {
     if (li.hasAttribute(WIRED)) return
     li.setAttribute(WIRED, '1')
-    li.addEventListener('mouseenter', () => openFor(li))
+    li.addEventListener('mouseenter', () => {
+      if (enabled) openFor(li)
+    })
     li.addEventListener('mouseleave', scheduleClose)
   }
 
-  // We take theming over entirely, so ComfyUI's native "Theme" item is always hidden — its
-  // palettes live in our popup's "1.0" tab instead.
-  function applyComfyVisibility() {
-    for (const li of document.querySelectorAll<HTMLElement>(`${MENU_SEL} [${COMFY_MARK}]`)) {
-      li.style.display = 'none'
+  // On, we take theming over: ComfyUI's native "Theme" item is hidden (its palettes live in our
+  // popup's Comfy tab). Off, ours is hidden and ComfyUI's comes back.
+  function applyVisibility() {
+    for (const li of document.querySelectorAll<HTMLElement>(`${MENU_SEL} [${COMFY_MARK}]`))
+      li.style.display = enabled ? 'none' : ''
+    for (const li of document.querySelectorAll<HTMLElement>(`${MENU_SEL} [${WIRED}]`))
+      li.style.display = enabled ? '' : 'none'
+  }
+
+  // Hiding an item can leave two separators touching — or one at either end — which draws as a
+  // double rule. Keep one per run of visible items.
+  function collapseSeparators(list: HTMLElement) {
+    for (const li of list.querySelectorAll<HTMLElement>(`:scope > [${SEP_MARK}]`)) {
+      li.style.display = ''
+      li.removeAttribute(SEP_MARK)
+    }
+    let previous: 'start' | 'item' | 'separator' = 'start'
+    let trailing: HTMLElement | null = null
+    for (const li of list.querySelectorAll<HTMLElement>(':scope > li')) {
+      if (li.style.display === 'none') continue
+      const separator = /separator/.test(li.className)
+      if (separator && previous !== 'item') {
+        li.style.display = 'none'
+        li.setAttribute(SEP_MARK, '1')
+        continue
+      }
+      previous = separator ? 'separator' : 'item'
+      trailing = separator ? li : null
+    }
+    if (trailing) {
+      trailing.style.display = 'none'
+      trailing.setAttribute(SEP_MARK, '1')
     }
   }
 
   function scan() {
-    if (!running) return
     for (const menu of document.querySelectorAll<HTMLElement>(MENU_SEL)) {
       for (const li of menu.querySelectorAll<HTMLElement>('li')) {
         const label = li.querySelector('.p-menubar-item-label')?.textContent?.trim()
@@ -263,7 +294,9 @@ export function createComfyThemeMenu() {
           li.setAttribute(COMFY_MARK, '1')
       }
     }
-    applyComfyVisibility()
+    applyVisibility()
+    for (const list of document.querySelectorAll<HTMLElement>(`${MENU_SEL} ul`))
+      collapseSeparators(list)
     // The anchor was removed (menu closed/rebuilt) → drop the popup.
     if (anchor && !anchor.isConnected) closePopup()
   }
@@ -276,37 +309,35 @@ export function createComfyThemeMenu() {
     })
   }
 
+  function observe() {
+    if (obs || typeof document === 'undefined') return
+    obs = new MutationObserver(schedule)
+    obs.observe(document.body, { childList: true, subtree: true })
+  }
+
   return {
     start() {
-      if (running || typeof document === 'undefined') return
-      running = true
+      if (enabled || typeof document === 'undefined') return
+      enabled = true
       ensureStyle()
-      obs = new MutationObserver(schedule)
-      obs.observe(document.body, { childList: true, subtree: true })
+      observe()
       offTheme = theme.onChange(() => {
-        applyComfyVisibility()
+        applyVisibility()
         if (anchor) renderPopup() // live-update the open popup
       })
       window.addEventListener('pointerdown', onPointerDown, true)
       scan()
     },
     stop() {
-      running = false
-      obs?.disconnect()
-      obs = null
+      enabled = false
+      observe()
       offTheme?.()
       offTheme = null
       window.removeEventListener('pointerdown', onPointerDown, true)
-      if (raf) cancelAnimationFrame(raf)
-      raf = 0
       closePopup()
       popup?.remove()
       popup = head = list = foot = null
-      // Restore ComfyUI's native "Theme" item we may have hidden.
-      for (const li of document.querySelectorAll<HTMLElement>(`${MENU_SEL} [${COMFY_MARK}]`)) {
-        li.style.display = ''
-        li.removeAttribute(COMFY_MARK)
-      }
+      scan()
     },
   }
 }

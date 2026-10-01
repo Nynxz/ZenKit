@@ -1,14 +1,13 @@
 /* Shared Inspector styling. Global (not scoped) because five components render the same
    chips, rows and code spans, and duplicating that per-SFC drifts immediately. Everything
    is `zi-` prefixed and only ever used inside the panel root, so nothing leaks outward.
-   Colours come from ZenKit theme tokens; only the four status hues are literal, since the
-   token set has no semantic success/warning colours. */
+   Colours, including the four status hues, come from ZenKit theme tokens. */
 
 .zi {
-  --zi-err: #ef4444;
-  --zi-warn: #eab308;
-  --zi-ok: #22c55e;
-  --zi-info: #60a5fa;
+  --zi-err: var(--zen-danger);
+  --zi-warn: var(--zen-warn);
+  --zi-ok: var(--zen-ok);
+  --zi-info: var(--zen-info);
   --zi-line: color-mix(in srgb, var(--zen-text, #fff) 10%, transparent);
   --zi-fill: color-mix(in srgb, var(--zen-text, #fff) 6%, transparent);
   --zi-fill-2: color-mix(in srgb, var(--zen-text, #fff) 12%, transparent);
@@ -24,7 +23,7 @@
 /* ── text bits ─────────────────────────────────────────────────────────────────────── */
 .zi code,
 .zi-code {
-  font-family: var(--zen-mono, ui-monospace, SFMono-Regular, Menlo, monospace);
+  font-family: var(--zen-mono);
   font-size: 11px;
   background: var(--zi-fill);
   padding: 1px 5px;

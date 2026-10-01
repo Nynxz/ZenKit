@@ -16,16 +16,20 @@ export interface ZenPanelSpec {
   height?: number
   minWidth?: number
   minHeight?: number
+  /** Remember geometry across reloads (ZenKit default: true). */
+  persist?: boolean
   /** Props handed to the component. */
   props?: Record<string, unknown>
 }
 
 export interface ZenPanelHandle {
   close(): void
+  setTitle(title: string): void
 }
 
 interface PanelHandleLike {
   close?: () => void
+  setTitle?: (title: string) => void
 }
 
 interface ZenKitLike {
@@ -67,6 +71,7 @@ export function openZenPanel(spec: ZenPanelSpec, component: Component): ZenPanel
       height: spec.height,
       minWidth: spec.minWidth,
       minHeight: spec.minHeight,
+      persist: spec.persist,
       render(el: HTMLElement) {
         const app = createApp(component, spec.props ?? {})
         app.mount(el)
@@ -75,7 +80,10 @@ export function openZenPanel(spec: ZenPanelSpec, component: Component): ZenPanel
         return () => app.unmount()
       },
     })
-    return { close: () => handle?.close?.() }
+    return {
+      close: () => handle?.close?.(),
+      setTitle: (title) => handle?.setTitle?.(title),
+    }
   } catch {
     return null
   }

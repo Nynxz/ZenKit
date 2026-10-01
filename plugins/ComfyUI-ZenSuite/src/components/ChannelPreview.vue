@@ -454,12 +454,10 @@ onBeforeUnmount(() => {
   width: 96px;
 }
 /* a slim scrollbar for the strip */
-.zcp-wall.is-row::-webkit-scrollbar {
-  height: 7px;
-}
-.zcp-wall.is-row::-webkit-scrollbar-thumb {
-  background: color-mix(in srgb, var(--zen-text, #fff) 18%, transparent);
-  border-radius: 4px;
+.zcp-wall.is-row {
+  scrollbar-width: thin;
+  scrollbar-color: var(--zen-scrollbar, color-mix(in srgb, var(--zen-text, #fff) 24%, transparent))
+    transparent;
 }
 
 .zcp-cell {

@@ -59,20 +59,15 @@
               @contextmenu.prevent="openMenu($event, it, startRow * cols + i)"
             >
               <div class="img">
+                <!-- videos too: the server serves their first frame as a cached JPEG, so the grid
+                     never holds a <video> (each one is a decoder) -->
                 <img
-                  v-if="it.kind === 'image'"
-                  :src="thumbUrl(root, it.rel, 256)"
+                  v-if="it.kind === 'image' || it.kind === 'video'"
+                  :src="thumbUrl(root, it.rel, 256, it.mtime)"
                   draggable="false"
+                  decoding="async"
                   alt=""
                 />
-                <!-- video poster = first frame via the #t fragment; no server-side thumbnailing needed -->
-                <video
-                  v-else-if="it.kind === 'video'"
-                  :src="viewUrl(it, root) + '#t=0.1'"
-                  muted
-                  preload="metadata"
-                  playsinline
-                ></video>
                 <i v-else-if="it.kind === 'audio'" class="mdi mdi-music-note vid"></i>
                 <i v-else class="mdi mdi-file-outline vid"></i>
                 <span v-if="it.kind === 'video'" class="kbadge">
@@ -106,7 +101,7 @@
           :min="80"
           :max="320"
           :step="20"
-          @update:model-value="(v) => (cardW = v)"
+          @update:model-value="(v) => setCardW(v as number)"
         />
       </div>
     </ZenPopover>
@@ -143,7 +138,7 @@ import {
   ZenPopover,
   ZenMenuItem,
 } from '@nynxz/zenkit-ui'
-import { setImageDragData, openViewer, type ViewerItem } from '@nynxz/zenkit-client'
+import { setImageDragData, openViewer, useJob, type ViewerItem } from '@nynxz/zenkit-client'
 import { app } from '@comfy/app'
 import {
   listAssets,
@@ -154,7 +149,6 @@ import {
   type AssetRoot,
   type RootInfo,
 } from '../lib/api'
-import { watchJobs } from '../lib/jobs'
 import { watchOutputs, type LiveOutput } from '../lib/liveAssets'
 
 // Drag a tile onto the ComfyUI graph. Everything we list already lives in ComfyUI's
@@ -244,12 +238,10 @@ function measure() {
 // Selection (highlight only).
 const selected = ref<AssetItem | null>(null)
 
-// Live scan progress for the current root (driven by zenkit.job events). The
+// Live scan progress for the current root (the server's zenkit.job events). The
 // background reconcile after a generation runs the same scan, so gate the bar on
 // `silentScan` — otherwise it would flash on every single generation.
-const { progress: scanRaw, stop: stopJobs } = watchJobs(
-  (id) => id === `zensuite:scan:${root.value}`,
-)
+const scanRaw = useJob((job) => job.id === `zensuite:scan:${root.value}`)
 const silentScan = ref(false)
 const scan = computed(() => (silentScan.value ? null : scanRaw.value))
 const scanPct = computed(() => {
@@ -257,7 +249,6 @@ const scanPct = computed(() => {
   return s && s.total ? Math.min(100, Math.round((s.current / s.total) * 100)) : 0
 })
 onBeforeUnmount(() => {
-  stopJobs()
   stopOutputs?.()
   if (reconcileTimer) clearTimeout(reconcileTimer)
   ro?.disconnect()
@@ -489,17 +480,38 @@ function anchorScroll(mutate: () => void) {
     mutate()
     return
   }
-  const row = Math.floor(el.scrollTop / rowH.value)
+  const rowBefore = rowH.value
+  const row = Math.floor(el.scrollTop / rowBefore)
   const anchorRel = filtered.value[row * cols.value]?.rel
-  const withinRow = el.scrollTop - row * rowH.value
+  // As a FRACTION of the row, not raw px: a geometry change (resize, card-size) alters rowH,
+  // and a px offset measured against the old row height would drift. For a plain list change
+  // rowH is unchanged, so this is identical to the offset it replaces.
+  const withinFrac = rowBefore > 0 ? (el.scrollTop - row * rowBefore) / rowBefore : 0
   mutate()
   if (!anchorRel) return
   nextTick(() => {
+    const el2 = scrollEl.value
     const i = filtered.value.findIndex((f) => f.rel === anchorRel)
-    if (i < 0 || !scrollEl.value) return
-    const top = Math.floor(i / cols.value) * rowH.value + withinRow
-    scrollEl.value.scrollTop = top
-    scrollTop.value = top
+    if (i < 0 || !el2) return
+    const top = (Math.floor(i / cols.value) + withinFrac) * rowH.value
+    // The list may now be shorter than the anchor's old position allows.
+    const max = Math.max(0, el2.scrollHeight - el2.clientHeight)
+    const next = Math.min(Math.max(0, top), max)
+    el2.scrollTop = next
+    scrollTop.value = next
+  })
+}
+
+// Geometry changes move every row: resizing the panel (or a ZenKit dock resizing the workspace)
+// changes the column count, and the card-size slider changes the row height. Either way the tile
+// you were looking at slides away under a scrollTop that now means something else. Route both
+// through anchorScroll so the tile at the top of the view stays at the top of the view.
+function remeasure() {
+  anchorScroll(measure)
+}
+function setCardW(v: number) {
+  anchorScroll(() => {
+    cardW.value = v
   })
 }
 
@@ -577,7 +589,7 @@ onMounted(async () => {
   measure()
   stopOutputs = watchOutputs(onLiveOutputs)
   if (typeof ResizeObserver !== 'undefined' && scrollEl.value) {
-    ro = new ResizeObserver(() => measure())
+    ro = new ResizeObserver(() => remeasure())
     ro.observe(scrollEl.value)
   }
 })
@@ -674,7 +686,7 @@ function openSelectedThenClose() {
 }
 .err {
   flex: 0 0 auto;
-  color: #f87171;
+  color: var(--zen-danger);
   font-size: 11px;
   padding: 6px 8px;
 }
@@ -761,12 +773,6 @@ function openSelectedThenClose() {
   justify-content: center;
 }
 .img img {
-  width: 100%;
-  height: 100%;
-  object-fit: contain;
-  display: block;
-}
-.img video {
   width: 100%;
   height: 100%;
   object-fit: contain;

@@ -12,6 +12,8 @@ export interface NodeWidgetDef {
   type: string
   component: Component
   minHeight?: number
+  /** The narrowest the node may be resized to. */
+  minWidth?: number
   /** Stretch to fill the node body (stays user-resizable) instead of growing to fit content. */
   fill?: boolean
   /** Visual-only body: a press falls through to drag/select the node. */

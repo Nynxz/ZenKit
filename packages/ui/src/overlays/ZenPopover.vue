@@ -6,6 +6,7 @@
 // managing button) OR with v-model:open + :anchor (an element, a DOMRect, or an {x,y} point —
 // e.g. a right-click). The default slot is the content and receives { close }.
 import { computed, nextTick, onBeforeUnmount, ref, watch } from 'vue'
+import { inOtherLayer, openLayer } from './layers'
 
 type Placement =
   'bottom-start' | 'bottom-end' | 'top-start' | 'top-end' | 'right-start' | 'left-start'
@@ -20,7 +21,9 @@ const props = withDefaults(
     offset?: number
     matchWidth?: boolean
   }>(),
-  { placement: 'bottom-start', offset: 6, matchWidth: false },
+  // `open: undefined` keeps it uncontrolled when not bound: an absent boolean prop is otherwise
+  // cast to `false`, which reads as controlled-and-closed and the trigger can never open it.
+  { open: undefined, placement: 'bottom-start', offset: 6, matchWidth: false },
 )
 const emit = defineEmits<{ 'update:open': [boolean] }>()
 
@@ -99,17 +102,20 @@ function toggle() {
 
 function onDoc(e: PointerEvent) {
   const t = e.target as Node
-  if (panelEl.value?.contains(t) || anchorEl.value?.contains(t)) return
+  if (panelEl.value?.contains(t) || anchorEl.value?.contains(t) || inOtherLayer(e.target, panelEl.value)) return
   close()
 }
+let layer: ReturnType<typeof openLayer> | null = null
 function onKey(e: KeyboardEvent) {
-  if (e.key === 'Escape') close()
+  if (e.key === 'Escape' && layer?.isTop()) close()
 }
 function onReflow() {
   if (isOpen.value) place()
 }
 
 function teardown() {
+  layer?.release()
+  layer = null
   window.removeEventListener('pointerdown', onDoc, true)
   window.removeEventListener('keydown', onKey, true)
   window.removeEventListener('resize', onReflow)
@@ -121,6 +127,7 @@ watch(isOpen, (v) => {
     return
   }
   ready.value = false
+  layer ??= openLayer()
   nextTick(() => {
     place()
     // defer the dismiss listeners a tick so the opening click doesn't immediately close it
@@ -144,7 +151,8 @@ defineExpose({ open: show, close, toggle })
     <div
       v-if="isOpen"
       ref="panelEl"
-      class="zen-pop"
+      data-zen-layer
+      class="zen-pop zen-scroll"
       :style="[panelStyle, { visibility: ready ? 'visible' : 'hidden' }]"
       role="menu"
     >
@@ -167,9 +175,9 @@ defineExpose({ open: show, close, toggle })
   display: flex;
   flex-direction: column;
   gap: 1px;
-  background: var(--zen-surface, #202026);
-  border: 1px solid var(--zen-border, #3a3a44);
-  border-radius: var(--zen-radius, 8px);
+  background: var(--zen-chrome-bg, var(--zen-surface, #202026));
+  border: 1px solid var(--zen-surface-border, var(--zen-border, #3a3a44));
+  border-radius: var(--zen-radius-surface, var(--zen-radius, 8px));
   box-shadow: 0 10px 30px rgba(0, 0, 0, 0.5);
   font-family: var(--p-font-family, system-ui, sans-serif);
   color: var(--zen-text, #e5e5ea);
