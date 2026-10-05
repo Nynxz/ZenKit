@@ -36,7 +36,10 @@ import ZenSettings from './components/ZenSettings.vue'
 // ZenKit's own family tile (docs/assets/render/brand.mjs) — the "core" row in Zen Settings.
 import zenkitLogo from './brand/zenkit.svg'
 
-export const ZENKIT_VERSION = '0.2.0'
+// The runtime's version is core's package version, so it can't drift from what ships.
+import { version as ZENKIT_VERSION } from '../package.json'
+
+export { ZENKIT_VERSION }
 
 export interface InstallOptions {
   /** Theme packs to register (JSON loaded by the host). */
