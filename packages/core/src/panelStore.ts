@@ -5,10 +5,11 @@ import type { ZenBus } from './bus'
 import { setSidebarAutohide as applySidebarAutohide } from './sidebarAutohide'
 import type { DockDrop } from './dockDrop'
 import { ensureStyle, removeStyle } from './dom'
-import { zdebug, zlog } from './log'
-import { focusTiles, isTiled } from './tileStore'
+import { zdebug, zlog, zwarn } from './log'
+import { activate, untile, workspaceOf } from './workspaces'
 import type {
   DockSide,
+  DockState,
   PanelApi,
   PanelContext,
   PanelHandle,
@@ -28,7 +29,9 @@ export interface Panel extends Rect {
   status: PanelStatus
   minWidth: number
   minHeight: number
-  dockSide: DockSide
+  /** One of ZenKit's docks, or null. A panel pinned into ComfyUI's sidebar has `inSidebar`
+   *  instead, so this is never `'sidebar'`. */
+  dockSide: DockSidePos | null
   /** Where the panel lives when it is free-floating. Every other layout — maximized, snapped,
    *  docked, pinned in the sidebar — is somewhere it is *shown*, and leaving it comes back here.
    *  Only a move or resize of the free panel itself changes it. */
@@ -65,7 +68,7 @@ let zTop = 20
 
 // Start-button branding. Two settable layers over COMFY_BRAND, resolved into `state.branding`
 // (the only one chrome should render):
-//   base — the distributor's, from installZenKit({ branding }) / ZenKit.setBranding(). Not
+//   base — the distributor's, from installZenKit({ branding }) / ZenKit.branding.set(). Not
 //          persisted: it is re-declared on every boot by whoever ships the build.
 //   user — the local override typed into Zen Settings. Persisted; wins field-by-field.
 // An empty string at either layer means "inherit", so clearing a field in Settings falls back
@@ -246,7 +249,6 @@ export function createPanelStore(bus: ZenBus) {
     branding: { logo: '', title: '' } as Branding,
     brandingBase: { logo: '', title: '' } as Branding, // distributor's (install opts / API)
     brandingUser: { logo: '', title: '' } as Branding, // local override (Zen Settings)
-    minimizedAnchor: 'center' as 'left' | 'center' | 'right',
     docks: loadDocks() as Record<DockSidePos, DockZone>,
     sidebarAvailable: false, // ComfyUI native sidebar present → "Pin to sidebar" enabled
     panelsHidden: false, // taskbar "show desktop" toggle — hide all panels without minimizing
@@ -313,7 +315,7 @@ export function createPanelStore(bus: ZenBus) {
     string,
     Rect & {
       status?: PanelStatus
-      dockSide?: DockSide
+      dockSide?: DockSidePos | null
       headerHidden?: boolean
       headerPos?: 'top' | 'bottom'
       dockOrder?: number
@@ -536,12 +538,6 @@ export function createPanelStore(bus: ZenBus) {
       console.error('[ZenKit] panels.open needs an id or instanceOf', spec)
       return makeHandle('')
     }
-    // If this panel already lives in the tiling area, surface the Tile Area instead
-    // of floating a second copy (which would render the content twice).
-    if (isTiled(id)) {
-      focusTiles()
-      return makeHandle(id)
-    }
     if (get(id)) {
       reveal(id)
       return makeHandle(id)
@@ -564,6 +560,9 @@ export function createPanelStore(bus: ZenBus) {
     const rect = saved?.maximized
       ? maximizedRect(minWidth, minHeight)
       : clampRect(base, minWidth, minHeight)
+    // An explicit `dock` wins over where the panel was last session.
+    const want = spec.dock === undefined ? undefined : resolveDock(spec.dock)
+    const pinNow = want === 'sidebar' && !saved?.inSidebar
     state.list.push({
       ...rect,
       id,
@@ -576,7 +575,7 @@ export function createPanelStore(bus: ZenBus) {
       status: 'open', // explicit opens are active; restore applies saved status
       minWidth,
       minHeight,
-      dockSide: spec.dock ?? saved?.dockSide ?? null,
+      dockSide: want === undefined ? (saved?.dockSide ?? null) : want === 'sidebar' ? null : want,
       floatRect: saved?.floatRect ?? saved?.restoreRect ?? saved?.preMax ?? (saved ? null : rect),
       snapped: !!saved?.snapped || (!!saved?.restoreRect && !saved?.dockSide && !saved?.inSidebar),
       ctx: panelContext(id, persist),
@@ -585,7 +584,7 @@ export function createPanelStore(bus: ZenBus) {
       dockOrder: saved?.dockOrder ?? 0,
       instanceOf: spec.instanceOf ?? null,
       persist,
-      inSidebar: saved?.inSidebar ?? false,
+      inSidebar: want === undefined || want === 'sidebar' ? !!saved?.inSidebar : false,
       maximized: !!saved?.maximized,
       frame: spec.frame === 'none' ? 'none' : 'default',
     })
@@ -593,26 +592,58 @@ export function createPanelStore(bus: ZenBus) {
     if (opened.dockSide) {
       // joining a rail: append + activate, but don't clobber saved state during restore
       if (saved?.dockOrder == null) opened.dockOrder = nextDockOrder(opened.dockSide)
-      const z = state.docks[opened.dockSide as DockSidePos]
+      const z = state.docks[opened.dockSide]
       if (!restoring) {
         z.active = id
         z.collapsed = false
       }
       reconcileDocks()
     }
+    if (pinNow) pinSidebar(id)
     if (persist) saveGeom()
     emit('open', id)
     return makeHandle(id)
   }
 
-  function close(id: string) {
+  /** `panels.open` with a string: the registered panel with that id (a new instance for a multi
+   *  panel), an open panel with that id, or a saved instance of a registered type. */
+  function openById(id: string): PanelHandle | null {
+    const reg = state.registry.find((r) => r.id === id)
+    if (reg) return reg.open()
+    if (get(id)) {
+      reveal(id)
+      return makeHandle(id)
+    }
+    const type = id.includes(INSTANCE_SEP)
+      ? state.registry.find((r) => r.id === typeIdOf(id))
+      : null
+    return type?.multi ? type.open(id) : null
+  }
+  function openPanel(spec: PanelSpec): PanelHandle
+  function openPanel(id: string): PanelHandle | null
+  function openPanel(target: string | PanelSpec): PanelHandle | null {
+    return typeof target === 'string' ? openById(target) : open(target)
+  }
+
+  /** What a `DockSide` means right now: 'left' and 'sidebar' are ComfyUI's sidebar when the
+   *  frontend has one, and ZenKit's own left dock when it doesn't. */
+  function resolveDock(side: DockSide): DockSidePos | 'sidebar' | null {
+    if (side === 'left' || side === 'sidebar') return state.sidebarAvailable ? 'sidebar' : 'left'
+    return side
+  }
+
+  function close(id: string, opts: { keep?: boolean } = {}) {
     // removal unmounts the panel (runs render cleanup); minimize keeps it mounted
     const i = state.list.findIndex((p) => p.id === id)
     const wasDocked = i >= 0 ? state.list[i].dockSide : null
     if (i >= 0) state.list.splice(i, 1)
-    // Closing forgets the panel: it won't restore next session, and opening it again starts fresh.
-    forgetGeom(id)
-    forgetState(id)
+    // Closing forgets the panel: it won't restore next session, and opening it again starts fresh —
+    // unless asked to keep it, so reopening the same id finds its place again.
+    if (!opts.keep) {
+      untile(id)
+      forgetGeom(id)
+      forgetState(id)
+    }
     exposed.delete(id)
     if (wasDocked) reconcileDocks()
     emit('close', id)
@@ -632,7 +663,7 @@ export function createPanelStore(bus: ZenBus) {
       p.status = 'open'
       if (p.dockSide) {
         // Rejoin the rail as the active tab; floating panels come to the front.
-        const z = state.docks[p.dockSide as DockSidePos]
+        const z = state.docks[p.dockSide]
         z.active = id
         z.collapsed = false
         reconcileDocks()
@@ -646,14 +677,18 @@ export function createPanelStore(bus: ZenBus) {
   function reveal(id: string) {
     const p = get(id)
     if (!p) return
+    const home = workspaceOf(id)
+    if (home) activate(home.id)
     if (p.status !== 'open') restore(id)
     else if (p.dockSide) {
-      const z = state.docks[p.dockSide as DockSidePos]
+      const z = state.docks[p.dockSide]
       z.active = id
       z.collapsed = false
       reconcileDocks()
     } else front(id)
     if (p.inSidebar) bus.emit('panel:reveal', { id })
+    // front() announces a floating panel; a docked or pinned one is announced here.
+    if (p.dockSide || p.inSidebar) emit('focus', id)
   }
   function toggleFold(id: string) {
     const p = get(id)
@@ -751,15 +786,16 @@ export function createPanelStore(bus: ZenBus) {
     const p = get(id)
     if (p) p.icon = icon
   }
-  function setDock(id: string, side: DockSide) {
-    // The left side is ComfyUI's own sidebar now: docking there pins into it.
-    if (side === 'left') {
-      if (state.sidebarAvailable) pinSidebar(id)
-      else setDock(id, 'right')
-      return
-    }
+  function setDock(id: string, to: DockSide) {
+    const side = resolveDock(to)
+    if (side === 'sidebar') return pinSidebar(id)
+    if (side) untile(id)
     const p = get(id)
     if (!p) return
+    if (p.inSidebar) {
+      if (!side) return unpinSidebar(id)
+      p.inSidebar = false
+    }
     if (p.dockSide === side) return
     if (side) {
       // remember the floating rect, append to the rail as active tab, expand the zone
@@ -770,12 +806,12 @@ export function createPanelStore(bus: ZenBus) {
       p.dockSide = side
       p.dockOrder = order
       p.status = 'open'
-      const z = state.docks[side as DockSidePos]
+      const z = state.docks[side]
       z.active = id
       z.collapsed = false
     } else {
       // undock: restore the saved floating rect, or a centered default if we never had one
-      const from = p.dockSide as DockSidePos
+      const from = p.dockSide!
       p.dockSide = null
       Object.assign(p, floatGeom(p))
       p.status = 'open'
@@ -788,8 +824,7 @@ export function createPanelStore(bus: ZenBus) {
   }
   // Finish a panel drag on a drop target.
   function dropInto(id: string, target: DockDrop) {
-    if (target === 'sidebar') pinSidebar(id)
-    else setDock(id, target)
+    setDock(id, target)
   }
   // A dock tab was clicked: show it, or tuck the zone away when it is already showing.
   function toggleDockTab(side: DockSidePos, id: string) {
@@ -915,9 +950,6 @@ export function createPanelStore(bus: ZenBus) {
     }
   }
 
-  function setMinimizedAnchor(anchor: 'left' | 'center' | 'right') {
-    state.minimizedAnchor = anchor === 'left' || anchor === 'right' ? anchor : 'center'
-  }
   function setTaskbarFloating(on: boolean) {
     state.taskbarFloating = !!on
     try {
@@ -1106,6 +1138,7 @@ export function createPanelStore(bus: ZenBus) {
 
   // Move a panel into ComfyUI's native sidebar (a tab manager renders it there).
   function pinSidebar(id: string) {
+    untile(id)
     const p = get(id)
     if (!p || p.inSidebar) return
     rememberFloat(p)
@@ -1129,24 +1162,48 @@ export function createPanelStore(bus: ZenBus) {
     saveGeom()
   }
 
+  /** A docked panel's size is its dock's: `w` resizes a side dock, `h` the bottom one. */
+  function setSize(id: string, size: Partial<Rect>, persist: boolean) {
+    const p = get(id)
+    if (!p || p.inSidebar) return
+    if (!p.dockSide) return setRect(id, size, persist)
+    const px = p.dockSide === 'bottom' ? size.h : size.w
+    if (px !== undefined) setDockSize(p.dockSide, px, persist)
+  }
+
+  /** Where a panel renders, measured from its element (the overlay's, or the sidebar tab it is
+   *  pinned in); the rect it would take while it isn't on screen. */
+  function renderedRect(id: string): Rect | null {
+    const p = get(id)
+    if (!p) return null
+    for (const el of document.querySelectorAll(`[data-zen-panel-id="${CSS.escape(id)}"]`)) {
+      const r = el.getBoundingClientRect()
+      if (r.width > 0 && r.height > 0)
+        return {
+          x: Math.round(r.left),
+          y: Math.round(r.top),
+          w: Math.round(r.width),
+          h: Math.round(r.height),
+        }
+    }
+    return { x: p.x, y: p.y, w: p.w, h: p.h }
+  }
+
   function makeHandle(id: string): PanelHandle {
     return {
       id,
-      close: () => close(id),
+      close: (opts?: { keep?: boolean }) => close(id, opts),
       minimize: () => minimize(id),
       restore: () => restore(id),
       fold: () => toggleFold(id),
       maximize: () => toggleMaximize(id),
-      focus: () => front(id),
+      focus: () => reveal(id),
       setTitle: (t: string) => setTitle(id, t),
       setIcon: (i: string) => setIcon(id, i),
       dock: (side: DockSide) => setDock(id, side),
       setSize: (size: { w?: number; h?: number; x?: number; y?: number }, persist = true) =>
-        setRect(id, size, persist),
-      getRect: () => {
-        const p = get(id)
-        return p ? { x: p.x, y: p.y, w: p.w, h: p.h } : null
-      },
+        setSize(id, size, persist),
+      getRect: () => renderedRect(id),
       describe: () => exposed.get(id)?.describe?.() ?? null,
       commands: () =>
         Object.entries(exposed.get(id)?.commands ?? {}).map(([name, c]) => ({
@@ -1217,7 +1274,32 @@ export function createPanelStore(bus: ZenBus) {
     }
   }
 
-  // open instances of a panel type; drives the ZenBar instance list
+  // `docks.get` / `docks.set`: one of ZenKit's docks, for the public API.
+  function dockState(side: DockSidePos): DockState {
+    const members = dockMembers(side).map((p) => p.id)
+    const z = state.docks[side]
+    return {
+      members,
+      active: members.includes(z.active ?? '') ? z.active : (members[0] ?? null),
+      size: z.size,
+      collapsed: z.collapsed,
+    }
+  }
+  function setDockState(
+    side: DockSidePos,
+    patch: { active?: string; size?: number; collapsed?: boolean },
+  ) {
+    if (!DOCK_SIDES.includes(side)) return zwarn(`docks.set: no "${side}" dock`)
+    if (patch.active !== undefined) {
+      if (dockMembers(side).some((p) => p.id === patch.active)) setDockActive(side, patch.active)
+      else zwarn(`docks.set: "${patch.active}" isn't docked on the ${side}`)
+    }
+    if (typeof patch.size === 'number' && Number.isFinite(patch.size)) setDockSize(side, patch.size)
+    if (typeof patch.collapsed === 'boolean' && patch.collapsed !== state.docks[side].collapsed)
+      toggleDockCollapsed(side)
+  }
+
+  // open instances of a panel type; drives the Start menu instance list
   function instancesOf(typeId: string): { id: string; title: string }[] {
     return state.list
       .filter((p) => (p.instanceOf ?? p.id) === typeId)
@@ -1248,7 +1330,7 @@ export function createPanelStore(bus: ZenBus) {
 
   return {
     state,
-    open,
+    open: openPanel,
     close,
     get: (id: string): PanelHandle | null => (get(id) ? makeHandle(id) : null),
     list: () => state.list.map((p) => p.id),
@@ -1257,7 +1339,6 @@ export function createPanelStore(bus: ZenBus) {
     registered: () => state.registry.slice(),
     setBranding,
     setBrandingOverride,
-    setMinimizedAnchor,
     setTaskbarPos,
     setTaskbarFloating,
     setAbsorbComfyButtons,
@@ -1267,6 +1348,8 @@ export function createPanelStore(bus: ZenBus) {
     setFloatingSidebar,
     setPluginEnabled,
     pluginEnabled,
+    dockState,
+    setDockState,
     // internal ops for the Vue components
     _ops: {
       get,

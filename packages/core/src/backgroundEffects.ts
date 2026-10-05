@@ -7,7 +7,7 @@
 //
 // Effects render in GRAPH space, so they pan and zoom with the nodes rather than sitting flat on
 // the viewport like the finish does.
-import type { BackgroundContext, ZenBackgroundEffect } from '@nynxz/zenkit-types'
+import type { BackgroundContext, ZenBackgroundEffect } from '@nynxz/zenkit-client'
 
 const registry = new Map<string, ZenBackgroundEffect>()
 

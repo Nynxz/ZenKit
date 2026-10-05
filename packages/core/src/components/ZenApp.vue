@@ -77,7 +77,10 @@ function mountRoute() {
     params: m.params,
     query: active.value.query,
     router: store.makeRouter(key),
-    state: store.getState(key),
+    // Live, like PanelContext.state: a route that sets state and reads it back sees the update.
+    get state() {
+      return store.getState(key)
+    },
     setState: (s) => store.setState(key, s),
   }
   try {

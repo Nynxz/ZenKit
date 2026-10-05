@@ -10,11 +10,13 @@
       'pos-bottom': panel.headerPos === 'bottom',
     }"
     :style="zpStyle"
+    :data-zen-panel-id="panel.id"
     :data-zen-status="panel.status"
     :data-zen-docked="docked"
     :data-zen-dock-side="panel.dockSide ?? undefined"
     :data-zen-edge-lit="(docked && store.state.dockEdgeLit === panel.dockSide) || undefined"
     :data-zen-frame="panel.frame"
+    :data-zen-tiled="tiled || undefined"
     :data-zen-active="isActive"
     :data-zen-interacting="isActive && store.state.interacting"
     @pointerdown="onPointerDown"
@@ -65,7 +67,25 @@
           <i class="mdi mdi-minus"></i>
         </button>
         <button
-          v-if="!docked"
+          v-if="tiled"
+          class="b zenkit-panel-button"
+          title="float — take out of the workspace"
+          @pointerdown.stop
+          @click="floatOut"
+        >
+          <i class="mdi mdi-dock-window"></i>
+        </button>
+        <button
+          v-else-if="!docked && wsState.active"
+          class="b zenkit-panel-button"
+          title="tile into this workspace"
+          @pointerdown.stop
+          @click="tilePanel(panel.id)"
+        >
+          <i class="mdi mdi-view-grid-plus-outline"></i>
+        </button>
+        <button
+          v-if="!docked && !tiled"
           class="b zenkit-panel-button"
           :title="panel.maximized ? 'restore' : 'maximize'"
           @pointerdown.stop
@@ -87,9 +107,47 @@
       </div>
     </template>
 
+    <!-- A side dock titles its panels on its tab rail; the bottom dock has none (its tabs are
+         icons in the taskbar), so a panel docked there keeps a title bar of its own. Drag it to
+         pull the panel out. -->
+    <div
+      v-if="panel.dockSide === 'bottom' && !bare"
+      class="bar zenkit-panel-header"
+      title="drag out to float"
+      @pointerdown="startDockTabDrag($event, store, panel.id, () => {})"
+    >
+      <ZenIcon class="tcon zenkit-panel-icon" :icon="panel.icon" />
+      <span class="title zenkit-panel-title">{{ panel.title }}</span>
+      <span class="grow" />
+      <button
+        class="b zenkit-panel-button"
+        title="float"
+        @pointerdown.stop
+        @click="ops.setDock(panel.id, null)"
+      >
+        <i class="mdi mdi-dock-window"></i>
+      </button>
+      <button
+        class="b zenkit-panel-button"
+        title="collapse the dock"
+        @pointerdown.stop
+        @click="ops.toggleDockCollapsed('bottom')"
+      >
+        <i class="mdi mdi-chevron-down"></i>
+      </button>
+      <button
+        class="b close zenkit-panel-button"
+        title="close"
+        @pointerdown.stop
+        @click="ops.close(panel.id)"
+      >
+        <i class="mdi mdi-close"></i>
+      </button>
+    </div>
+
     <div v-show="bodyShown" ref="bodyRef" class="body zenkit-panel-body" />
 
-    <template v-if="!docked && !folded && !bare">
+    <template v-if="!docked && !folded && !bare && !tiled">
       <div
         v-for="h in HANDLES"
         :key="h"
@@ -121,6 +179,23 @@
         >
           <i class="mdi mdi-format-vertical-align-bottom" />
           Header {{ panel.headerPos === 'top' ? 'to bottom' : 'to top' }}
+        </button>
+        <div class="sep" />
+        <button v-if="tiled" @click="act(floatOut)">
+          <i class="mdi mdi-dock-window" />
+          Float (leave {{ home?.name }})
+        </button>
+        <button
+          v-for="w in wsState.list.filter((x) => x.id !== home?.id)"
+          :key="w.id"
+          @click="act(() => tilePanel(panel.id, undefined, w.id))"
+        >
+          <i class="mdi mdi-view-grid-plus-outline" />
+          Tile in {{ w.name }}
+        </button>
+        <button @click="act(() => tilePanel(panel.id, undefined, createWorkspace().id))">
+          <i class="mdi mdi-plus-box-multiple-outline" />
+          Tile in a new workspace
         </button>
         <div class="sep" />
         <div class="submenu-item" @pointerenter="openSub" @pointerleave="scheduleCloseSub">
@@ -172,12 +247,23 @@
 </template>
 
 <script setup lang="ts">
-import { computed, inject, onBeforeUnmount, onMounted, ref } from 'vue'
+import { computed, inject, nextTick, onBeforeUnmount, onMounted, ref } from 'vue'
 import { ZenIcon } from '@nynxz/zenkit-ui'
 import { STORE_KEY, snapZoneFor, type Panel, type PanelStore } from '../panelStore'
 import type { Rect } from '../types'
 import { dockDropFor } from '../dockDrop'
+import { startDockTabDrag } from '../dockDrag'
 import { detachPanel } from '../detach'
+import {
+  createWorkspace,
+  dropAt,
+  tilePanel,
+  tileRectOf,
+  untile,
+  workspaceOf,
+  ws as wsState,
+} from '../workspaces'
+import type { TileTarget } from '../tiling/engine'
 
 const props = defineProps<{ panel: Panel }>()
 const store = inject(STORE_KEY) as PanelStore
@@ -202,6 +288,18 @@ const dockVisible = computed(() => {
   const z = store.state.docks[side]
   return z.active === props.panel.id && !z.collapsed
 })
+// Tiled into a workspace: the tile decides the rect, and the panel only shows while its
+// workspace is on screen (it stays mounted when it isn't).
+const TILE_Z = 3
+const home = computed(() => workspaceOf(props.panel.id))
+const tileRect = computed(() => (home.value ? tileRectOf(props.panel.id) : null))
+const tiled = computed(() => tileRect.value !== null)
+function floatOut() {
+  const p = props.panel
+  untile(p.id)
+  ops.setRect(p.id, p.floatRect ?? { w: 900, h: 620 }, true)
+  ops.front(p.id)
+}
 const bodyShown = computed(() => (docked.value ? dockVisible.value : !folded.value))
 
 // The frontmost open window (highest z), exposed as `data-zen-active` for theme CSS.
@@ -244,6 +342,18 @@ const zpStyle = computed(() => {
       width: 'auto',
       height: 'auto',
       zIndex: p.z,
+      display: minimized.value || store.state.panelsHidden ? 'none' : 'flex',
+    }
+  }
+  const tile = tileRect.value
+  if (tile === 'hidden') return { display: 'none' }
+  if (tile) {
+    return {
+      left: tile.x + 'px',
+      top: tile.y + 'px',
+      width: tile.w + 'px',
+      height: (isFloatFold.value ? (p.headerHidden ? 12 : HEADER_PX) : tile.h) + 'px',
+      zIndex: TILE_Z,
       display: minimized.value || store.state.panelsHidden ? 'none' : 'flex',
     }
   }
@@ -310,7 +420,15 @@ function onDocPointer(e: PointerEvent) {
 const MENU_W = 172
 function openMenu(e?: MouseEvent) {
   ops.front(props.panel.id)
-  // anchor the (body-teleported) menu to the trigger so it escapes the panel clip
+  // A right-click opens the (body-teleported) menu at the pointer; the ⋯ button anchors it under
+  // itself. Either way it escapes the panel's clip.
+  if (e?.type === 'contextmenu') {
+    menuStyle.value = { left: e.clientX + 'px', top: e.clientY + 'px' }
+    menuOpen.value = true
+    void nextTick(() => keepOnScreen(e.clientX, e.clientY))
+    setTimeout(() => window.addEventListener('pointerdown', onDocPointer, true), 0)
+    return
+  }
   const r = (e?.currentTarget as HTMLElement | undefined)?.getBoundingClientRect?.()
   if (r) {
     const left = Math.max(8, Math.min(r.right - MENU_W, window.innerWidth - MENU_W - 8))
@@ -321,6 +439,15 @@ function openMenu(e?: MouseEvent) {
   }
   menuOpen.value = true
   setTimeout(() => window.addEventListener('pointerdown', onDocPointer, true), 0)
+}
+/** Put a menu opened at (x, y) where all of it shows: flipped left or up when it would cross an edge. */
+function keepOnScreen(x: number, y: number) {
+  const el = menuEl.value
+  if (!el) return
+  const { width, height } = el.getBoundingClientRect()
+  const left = x + width > window.innerWidth - 8 ? Math.max(8, x - width) : x
+  const top = y + height > window.innerHeight - 8 ? Math.max(8, y - height) : y
+  menuStyle.value = { left: left + 'px', top: top + 'px' }
 }
 function closeMenu() {
   if (!menuOpen.value) return
@@ -415,19 +542,30 @@ function startDrag(e: PointerEvent) {
   ops.front(p.id)
   const sx = e.clientX
   const sy = e.clientY
-  const grab = { x: p.x, w: p.w }
+  const startTile = typeof tileRect.value === 'object' ? tileRect.value : null
+  const from = startTile ?? { x: p.x, y: p.y, w: p.w, h: p.h }
+  const grab = { x: from.x, w: from.w }
   const before = ops.snapshot(p.id)
-  let ox = sx - p.x
-  const oy = sy - p.y
+  const homeBefore = home.value
+  const treeBefore = homeBefore?.tree ?? null
+  let ox = sx - from.x
+  const oy = sy - from.y
   let moving = false
+  let tileTarget: TileTarget | null = null
   const onMove = (m: PointerEvent) => {
     if (!moving) {
       if (Math.hypot(m.clientX - sx, m.clientY - sy) < DRAG_THRESHOLD) return
       moving = true
       beginInteract('grabbing')
-      // Pulling a maximized or snapped panel free restores its float size, keeping the same
-      // point of the title bar under the pointer — as a desktop OS does.
-      const size = ops.tearOffSize(p.id)
+      // Pulling a maximized, snapped or tiled panel free restores its float size, keeping the
+      // same point of the title bar under the pointer — as a desktop OS does.
+      if (startTile) untile(p.id)
+      const size = startTile
+        ? {
+            w: p.floatRect?.w ?? Math.min(900, startTile.w),
+            h: p.floatRect?.h ?? Math.min(620, startTile.h),
+          }
+        : ops.tearOffSize(p.id)
       if (size) {
         ox = ((sx - grab.x) / grab.w) * size.w
         ops.setRect(p.id, { x: m.clientX - ox, y: m.clientY - oy, w: size.w, h: size.h })
@@ -435,6 +573,15 @@ function startDrag(e: PointerEvent) {
     }
     ops.setRect(p.id, { x: m.clientX - ox, y: m.clientY - oy })
     if (bare.value) return // ambient overlays never dock or snap to edges
+    // Over a workspace, the edges (or anywhere, with Shift) tile instead of snapping or docking.
+    const hit = wsState.active ? dropAt(p.id, m.clientX, m.clientY, m.shiftKey) : null
+    tileTarget = hit?.target ?? null
+    wsState.preview = hit?.preview ?? null
+    if (hit) {
+      store.state.dockDrop = null
+      store.state.snap = null
+      return
+    }
     // edge → dock-drop preview, else snap preview
     const drop = dockDropFor(m.clientX, m.clientY, store.state.sidebarAvailable)
     store.state.dockDrop = drop
@@ -448,12 +595,16 @@ function startDrag(e: PointerEvent) {
     if (!moving) return
     // Drag onto ComfyUI's sidebar (or the left edge) → pin into it; the right edge or the
     // taskbar → a ZenKit dock.
-    if (!commit) ops.restoreSnapshot(p.id, before)
+    if (!commit) {
+      ops.restoreSnapshot(p.id, before)
+      if (homeBefore) homeBefore.tree = treeBefore
+    } else if (tileTarget) tilePanel(p.id, tileTarget)
     else if (store.state.dockDrop) ops.dropInto(p.id, store.state.dockDrop)
     else if (store.state.snap) ops.applySnap(p.id, store.state.snap)
     else ops.setRect(p.id, {}, true)
     store.state.snap = null
     store.state.dockDrop = null
+    wsState.preview = null
     endInteract()
   }
   const onUp = () => finish(true)
@@ -531,6 +682,13 @@ function startResize(e: PointerEvent, h: (typeof HANDLES)[number]) {
 }
 .zp.pos-bottom {
   flex-direction: column-reverse;
+}
+/* Tiled on an opaque workspace: nothing behind to blur, and a blur repainted on every frame of a
+   divider drag is what made resizing crawl. */
+.zp[data-zen-tiled] {
+  background: var(--zen-chrome-bg, var(--zen-bg, #1a1a1f));
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.05);
+  backdrop-filter: none;
 }
 /* bare / chromeless: no frame, transparent, and click-through — pointer-events is inherited,
    so only the consumer's content that opts back in (.zen-grip, or its own pointer-events)

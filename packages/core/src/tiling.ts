@@ -5,7 +5,7 @@
 // while the graph underneath stays put. Only the taskbar still reserves a grid cell, and it
 // never changes size.
 
-import { ref, watch } from 'vue'
+import { ref, shallowRef, watch } from 'vue'
 import type { Panel, PanelStore } from './panelStore'
 import { DOCK_SIDES, setFloatingBarInset, type DockSidePos } from './panelStore'
 import type { Rect } from './types'
@@ -58,8 +58,12 @@ function visibleChromeRow(): HTMLElement | null {
 }
 
 // The canvas gutter ComfyUI insets its own floating chrome by (a custom property, so it is
-// resolved through a length property).
-export function canvasGutter(): number {
+// resolved through a length property). Resolving it means inserting a probe, which forces a
+// style + layout pass over the whole page, and layout runs ask for it several times per pass —
+// so it is read once and kept until the window resizes or a theme / stylesheet changes.
+let gutterPx: number | null = null
+let gutterWatched = false
+function measureGutter(): number {
   const probe = document.createElement('div')
   probe.style.cssText =
     'position:absolute;visibility:hidden;margin-left:var(--comfy-canvas-gutter, 8px)'
@@ -67,6 +71,18 @@ export function canvasGutter(): number {
   const px = parseFloat(getComputedStyle(probe).marginLeft)
   probe.remove()
   return Number.isFinite(px) ? px : 8
+}
+export function canvasGutter(): number {
+  if (!gutterWatched) {
+    gutterWatched = true
+    const forget = () => (gutterPx = null)
+    window.addEventListener('resize', forget)
+    // Themes switch by root attributes and by swapping <style>/<link> text in <head>.
+    const mo = new MutationObserver(forget)
+    mo.observe(document.documentElement, { attributes: true })
+    mo.observe(document.head, { childList: true, subtree: true, characterData: true })
+  }
+  return (gutterPx ??= measureGutter())
 }
 
 const PAD_ATTR = 'data-zen-dock-pad'
@@ -92,6 +108,15 @@ function padRow(row: HTMLElement, pad: Record<DockSidePos, number>, animate: boo
 function padNewRows() {
   if (!(lastPad.left || lastPad.right || lastPad.bottom)) return
   for (const row of chromeRows()) if (!row.hasAttribute(PAD_ATTR)) padRow(row, lastPad, false)
+}
+
+/** Inside ZenKit's overlay, a node's DOM widget or the Vue node layer: never a chrome row. */
+const NOT_CHROME = '#zenkit-host, .dom-widget, [data-zen-layer], .lg-node, [data-testid="transform-pane"]'
+function mayMoveChrome(record: MutationRecord): boolean {
+  const target = record.target as Element
+  if (target.closest?.(NOT_CHROME)) return false
+  const elements = (nodes: NodeList) => [...nodes].some((n) => n.nodeType === Node.ELEMENT_NODE)
+  return elements(record.addedNodes) || elements(record.removedNodes)
 }
 
 function nudgeCanvas() {
@@ -183,8 +208,20 @@ export function setStatsPinned(on: boolean) {
   }
 }
 
+/** The layout the last re-layout settled on — what the dock views draw, so they never measure. */
+export const dockLayout = shallowRef<DockLayout | null>(null)
 /** Bumped on every re-layout, so views that draw from computeDockLayout redraw with it. */
 export const dockLayoutVersion = ref(0)
+
+/** What the docks, ComfyUI's top bar and the taskbar leave of the screen, plus
+ *  the gutter between things. Measured once per re-layout, for surfaces that tile into it. */
+export const freeArea = shallowRef<{ x: number; y: number; w: number; h: number; g: number }>({
+  x: 0,
+  y: 0,
+  w: window.innerWidth,
+  h: window.innerHeight,
+  g: 8,
+})
 
 /** A floating taskbar is an inset card over the canvas; only the bottom one can float. */
 export function taskbarFloats(store: PanelStore): boolean {
@@ -209,9 +246,13 @@ export function dockBounds(store: PanelStore) {
   }
 }
 
-// Dock geometry: rail/body cards per side, inset in the visible chrome row.
-export function computeDockLayout(store: PanelStore): DockLayout {
-  const { L, R, T, B, g } = dockBounds(store)
+// Dock geometry: rail/body cards per side, inset in the visible chrome row. Pass `bounds` when
+// they were just measured — each dockBounds() call forces layout.
+export function computeDockLayout(
+  store: PanelStore,
+  bounds: ReturnType<typeof dockBounds> = dockBounds(store),
+): DockLayout {
+  const { L, R, T, B, g } = bounds
   const W = R - L
   const H = B - T
   const zoneFor = (side: DockSidePos): ZoneLayout => {
@@ -295,7 +336,9 @@ export function startTiling(store: PanelStore) {
     resized = reserve('left', 0) || resized
     resized = reserve('right', 0) || resized
     if (resized) nudgeCanvas()
-    const layout = computeDockLayout(store)
+    // Measure once: padChrome below only pads inside the rows, so the bounds still hold after it.
+    const bounds = dockBounds(store)
+    const layout = computeDockLayout(store, bounds)
     for (const side of DOCK_SIDES) {
       // stack all members on the body rect; ZenPanel shows only the active tab
       const target = layout[side].body
@@ -309,6 +352,15 @@ export function startTiling(store: PanelStore) {
       },
       !store.state.interacting,
     )
+    {
+      const { L, R, T, B, g } = bounds
+      // A workspace covers ComfyUI's sidebar rail too: its panels would open beneath the tiles.
+      const x = L + layout.left.reserve
+      const right = R - layout.right.reserve
+      const bottom = B - layout.bottom.reserve
+      freeArea.value = { x, y: T, w: Math.max(0, right - x), h: Math.max(0, bottom - T), g }
+    }
+    dockLayout.value = layout
     dockLayoutVersion.value++
     if (statsPinned) {
       const g = canvasGutter()
@@ -337,7 +389,10 @@ export function startTiling(store: PanelStore) {
       const d = DOCK_SIDES.map(
         (s) => `${s}:${docks[s].active}:${docks[s].collapsed}:${docks[s].size}`,
       ).join('|')
+      // Docked panels only: opening, moving or closing a floating panel changes no dock, and
+      // re-laying the docks measures the page (a full forced layout) for nothing.
       const p = store.state.list
+        .filter((x) => x.dockSide)
         .map((x) => `${x.id}:${x.dockSide}:${x.status}:${x.dockOrder}`)
         .join(',')
       return d + '#' + p + '#' + store.state.taskbarPos + ':' + store.state.taskbarFloating
@@ -357,7 +412,12 @@ export function startTiling(store: PanelStore) {
       recompute()
     }
   }
-  new MutationObserver(() => {
+  // Only changes that can swap ComfyUI's chrome rows count. Everything else — a panel, a node's
+  // widgets, a ticking timecode — happens every frame while something animates, and re-checking
+  // the rows measures layout, so reacting to it forced a full layout per frame. The 400 ms check
+  // below still catches anything this lets through.
+  new MutationObserver((records) => {
+    if (!records.some(mayMoveChrome)) return
     padNewRows()
     if (!rowFrame) rowFrame = requestAnimationFrame(checkRow)
   }).observe(document.body, { childList: true, subtree: true })

@@ -3,7 +3,7 @@
 // recently finished ones), mirrored on the bus as `job` / `job:<id>`, and the taskbar's Jobs
 // widget shows it.
 import { reactive } from 'vue'
-import type { Job, JobHandle, JobStartOptions, JobStatus, JobUpdate } from '@nynxz/zenkit-types'
+import type { Job, JobHandle, JobStartOptions, JobStatus, JobUpdate } from '@nynxz/zenkit-client'
 import type { ZenBus } from './bus'
 import { zdebug } from './log'
 import { onJobEvent } from './wsEvents'
@@ -87,7 +87,21 @@ export function createJobs(bus: ZenBus) {
 
   function start(name: string, opts: JobStartOptions = {}): JobHandle {
     const id = opts.id ?? `frontend:${Date.now().toString(36)}:${++sequence}`
-    publish({ id, name, status: 'start', total: opts.total ?? 0, current: 0, ...opts })
+    const running = jobsState.byId[id]
+    // An id still running continues: its progress and start time stay, and only what is
+    // given here changes.
+    if (running && !isFinished(running)) publish({ ...opts, id, name, status: 'progress' })
+    else
+      publish({
+        ...opts,
+        id,
+        name,
+        status: 'start',
+        current: 0,
+        total: opts.total ?? 0,
+        message: opts.message ?? '',
+        startedAt: Date.now(),
+      })
     return {
       id,
       update: (progress: JobUpdate) => publish({ id, status: 'progress', ...progress }),

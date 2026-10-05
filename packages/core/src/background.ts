@@ -15,9 +15,11 @@ import type {
   ZenBackground,
   ZenBackgroundEffect,
   ZenBackgrounds,
-} from '@nynxz/zenkit-types'
+} from '@nynxz/zenkit-client'
 import { imageBackground, imageOptions, setImageOptions } from './backgroundImage'
 import { listEffects, registerEffect, resolveEffects } from './backgroundEffects'
+import { zwarn } from './log'
+import { theme } from './theme'
 
 // The LiteGraph canvas bits this touches. `app.canvas` is strictly typed as LGraphCanvas, but we
 // reach a couple of internal fields (_pattern/_bg_img) too, so go through this loose view.
@@ -538,7 +540,9 @@ class Host {
   private active: ZenBackground | null = null
   private state: unknown = null
   private started = false
-  private ptr = { x: 0, y: 0, over: false }
+  /** `onCanvas`: over the bare graph canvas (not a node, panel or widget) — the only place the
+   *  grid reacts to the pointer, so the only place moving it is worth a redraw. */
+  private ptr = { x: 0, y: 0, over: false, onCanvas: false }
   private saved: { bg?: unknown; clear?: unknown } = {}
   // Cursor-follow state (see setBackgroundFollow* below). Defaults keep the classic snap look;
   // flow params are pre-seeded so 'blob' works even before the sliders are first touched.
@@ -570,10 +574,14 @@ class Host {
       this.ptr.x = e.clientX
       this.ptr.y = e.clientY
       this.ptr.over = true
+      this.ptr.onCanvas = e.target === lgCanvas()?.canvas
     }
     window.addEventListener('pointermove', move, { capture: true, passive: true })
     window.addEventListener('pointerleave', () => (this.ptr.over = false), true)
     window.addEventListener('resize', () => this.resize())
+    // The layers paint in the theme's colours, and a still frame is never repainted (see due), so
+    // a theme switch must ask for one — or a light theme keeps the dark field and vignette.
+    theme.onChange(() => (this.lastSig = ''))
     this.whenReady()
   }
 
@@ -785,6 +793,30 @@ class Host {
     this.saved = {}
   }
 
+  /** Whether this frame should draw. A full-screen redraw every frame of a background that isn't
+   *  changing cost more than anything else on the page (and kept the graph recompositing under
+   *  every panel), so: full rate while something moves — the pointer over the graph, a pan or
+   *  zoom, a resize, a fading trail — and for a moment after; otherwise only the slow ambient
+   *  pulse is left, which reads the same at a few frames a second. With ComfyUI's "Disable
+   *  animations" on, it barely redraws when nothing changes. */
+  private lastSig = ''
+  private busyUntil = 0
+  private due(lg: LGCanvas, now: number): boolean {
+    const off = lg.ds?.offset ?? [0, 0]
+    const pointer = this.ptr.onCanvas ? `${this.ptr.x},${this.ptr.y}` : 'away'
+    const sig = `${off[0]},${off[1]},${lg.ds?.scale},${lg.canvas.width},${lg.canvas.height},${pointer}`
+    if (sig !== this.lastSig) {
+      this.lastSig = sig
+      this.busyUntil = now + 700
+      return true
+    }
+    if (now < this.busyUntil || this.trail.length > 0 || this.fx.length > 0) return true
+    // The ambient pulse runs only while the pointer is on the graph itself: working in a node, a
+    // panel or a workspace, the background holds still and costs nothing.
+    if (!this.ptr.onCanvas || document.body.classList.contains('disable-animations')) return false
+    return now - this.last >= 1000 / 15
+  }
+
   private buildCtx(surface: Surface, now: number): BackgroundContext {
     const c = this.layer!
     const off = surface.ds?.offset || [0, 0]
@@ -925,8 +957,10 @@ class Host {
   }
 
   private tick(now: number) {
+    if ('zenWorkspace' in document.documentElement.dataset) return // covered by a workspace
     const lg = lgCanvas()
     if (!this.active || !this.layer || !lg) return
+    if (!this.due(lg, now)) return
     const surface = surfaceFor(lg)
     this.place(surface, lg)
     this.resize(surface)
@@ -962,60 +996,117 @@ class Host {
 const host = new Host()
 
 /* ── public surface ─────────────────────────────────────────────────────────── */
-const BG_LS = 'zenkit.bg.v1'
-const KIND_LS = 'zenkit.bg.kind.v1'
 
-/** Which background the enable toggle turns ON (persisted; default the shader grid). Kept apart
- *  from the enabled flag so flipping the toggle off and on again returns you to YOUR background
- *  rather than snapping back to the grid. */
-function storedKind(): string {
+// Everything `zen.background` can change is saved here, so a call from a plugin survives a
+// reload just as a settings edit does. ComfyUI-ZenKit's settings mirror this state (see its
+// backgroundSettings.ts); they seed it only until ZenKit has saved a look of its own.
+const STATE_LS = 'zenkit.bg.v2'
+// Before v2 only these two were saved; they seed the first v2 state.
+const LEGACY_ENABLED_LS = 'zenkit.bg.v1'
+const LEGACY_KIND_LS = 'zenkit.bg.kind.v1'
+
+interface Saved {
+  enabled: boolean
+  /** Which background "on" means — kept even while its plugin hasn't registered it yet. */
+  kind: string
+  image: Required<BackgroundImageOptions>
+  finish: Required<BackgroundFinish>
+  /** Wanted effect ids, registered or not (a plugin's effect may register after load). */
+  effects: string[]
+  intensity: number
+}
+
+function readJson(key: string): unknown {
   try {
-    return localStorage.getItem(KIND_LS) || grid.id
+    const raw = localStorage.getItem(key)
+    return raw === null ? null : JSON.parse(raw)
   } catch {
-    return grid.id
+    return null
   }
 }
-let desiredKind = storedKind()
+function readLegacy(key: string): string | null {
+  try {
+    return localStorage.getItem(key)
+  } catch {
+    return null
+  }
+}
+
+const stored = readJson(STATE_LS) as Partial<Saved> | null
+const saved: Saved = {
+  enabled: stored?.enabled ?? readLegacy(LEGACY_ENABLED_LS) !== '0',
+  kind: stored?.kind || readLegacy(LEGACY_KIND_LS) || grid.id,
+  image: { ...imageOptions(), ...stored?.image },
+  finish: { ...FINISH_OFF, ...stored?.finish },
+  effects: Array.isArray(stored?.effects) ? stored.effects.map(String) : [],
+  intensity: typeof stored?.intensity === 'number' ? stored.intensity : 60,
+}
+setImageOptions(saved.image)
+host.setFinish(saved.finish)
+host.setEffects(saved.effects)
+host.setEffectIntensity(saved.intensity)
+
+let isStored = stored !== null
+const changeListeners = new Set<() => void>()
+function persist() {
+  saved.image = imageOptions()
+  saved.finish = host.finishState()
+  saved.intensity = host.effectIntensity()
+  try {
+    localStorage.setItem(STATE_LS, JSON.stringify(saved))
+    isStored = true
+  } catch {
+    /* storage is a convenience */
+  }
+  changeListeners.forEach((cb) => cb())
+}
+
+/** Whether ZenKit has saved a background look of its own. Until it has, a host's stored
+ *  settings may seed it (ComfyUI-ZenKit does, once, on upgrade). */
+export function backgroundStored(): boolean {
+  return isStored
+}
+
+/** Called after any background change, from the API or a setting. */
+export function onBackgroundChange(cb: () => void): () => void {
+  changeListeners.add(cb)
+  return () => changeListeners.delete(cb)
+}
+
+/** The kind to show: the chosen one once it is registered, the grid until then. */
+const shownKind = () => (registry.has(saved.kind) ? saved.kind : grid.id)
 
 /** The background chosen in settings — what `setBackgroundEnabled(true)` will activate. */
 export function backgroundKind(): string {
-  return desiredKind
+  return saved.kind
 }
 
-/** Choose the background ('grid', 'image', or any registered id). Applies immediately when the
- *  background is enabled; otherwise it is remembered for the next time it is switched on. */
+/** Choose the background ('grid', 'image', or any registered id — or one a plugin will register
+ *  later). Applies immediately when the background is enabled; otherwise it is remembered for
+ *  the next time it is switched on. */
 export function setBackgroundKind(id: string): void {
-  const next = id && id !== 'none' && registry.has(id) ? id : grid.id
-  desiredKind = next
-  try {
-    localStorage.setItem(KIND_LS, next)
-  } catch {
-    /* ignore */
-  }
-  if (backgroundEnabled()) host.setActive(next)
+  const next = id && id !== 'none' ? id : grid.id
+  if (next === saved.kind) return
+  saved.kind = next
+  persist()
+  if (saved.enabled) host.setActive(shownKind())
 }
 
 /** Whether the background is enabled (persisted; default on). */
 export function backgroundEnabled(): boolean {
-  try {
-    return localStorage.getItem(BG_LS) !== '0'
-  } catch {
-    return true
-  }
+  return saved.enabled
 }
 
 /** Enable/disable the background and persist the choice. */
 export function setBackgroundEnabled(on: boolean) {
-  try {
-    localStorage.setItem(BG_LS, on ? '1' : '0')
-  } catch {
-    /* ignore */
-  }
-  host.setActive(on ? desiredKind : null)
+  if (!!on === saved.enabled && (host.activeBackgroundId() !== null) === !!on) return
+  saved.enabled = !!on
+  persist()
+  host.setActive(on ? shownKind() : null)
 }
 
 export function startBackground(id: string | null = null) {
-  desiredId = backgroundEnabled() ? (id ?? desiredKind) : null
+  desiredId = saved.enabled ? (id ?? shownKind()) : null
   host.mount()
 }
 
@@ -1023,7 +1114,9 @@ export function startBackground(id: string | null = null) {
  *  same-origin path — ComfyUI's `/view?filename=…&type=output` is the useful one. This does not
  *  switch the background; pair it with `setBackgroundKind('image')`. */
 export function setBackgroundImage(opts: BackgroundImageOptions): void {
+  const before = JSON.stringify(imageOptions())
   setImageOptions(opts)
+  if (JSON.stringify(imageOptions()) !== before) persist()
 }
 
 /** The image background's current settings. */
@@ -1034,7 +1127,9 @@ export function backgroundImage(): Required<BackgroundImageOptions> {
 /** The dim / frost / vignette layer over the background. Merges with what is already set, so
  *  `setBackgroundFinish({ blur: 12 })` leaves the dim alone. */
 export function setBackgroundFinish(finish: BackgroundFinish): void {
+  const before = JSON.stringify(host.finishState())
   host.setFinish(finish)
+  if (JSON.stringify(host.finishState()) !== before) persist()
 }
 
 /** The finish as it currently stands. */
@@ -1042,10 +1137,15 @@ export function backgroundFinish(): Required<BackgroundFinish> {
   return host.finishState()
 }
 
-/** Enable exactly this set of overlay effects (unknown ids are ignored). Effects paint above the
- *  background and finish, so they are only visible while a ZenKit background is on. */
+/** Enable exactly this set of overlay effects. An id nothing has registered yet is kept and
+ *  switches on when its effect registers. Effects paint above the background and finish, so
+ *  they are only visible while a ZenKit background is on. */
 export function setBackgroundEffects(ids: string[]): void {
-  host.setEffects(ids)
+  const next = [...new Set(ids.map(String))]
+  if (next.join('|') === saved.effects.join('|')) return
+  saved.effects = next
+  host.setEffects(next)
+  persist()
 }
 
 /** Currently enabled effect ids. */
@@ -1056,7 +1156,9 @@ export function backgroundEffects(): string[] {
 /** 0–100 — how strongly the overlay effects read. Applied as layer opacity, so one knob
  *  scales every active effect, including ones another plugin registered. */
 export function setBackgroundEffectIntensity(pct: number): void {
+  const before = host.effectIntensity()
   host.setEffectIntensity(pct)
+  if (host.effectIntensity() !== before) persist()
 }
 
 /** The current effect intensity, 0–100. */
@@ -1069,21 +1171,36 @@ export function backgroundEffectList(): { id: string; label: string }[] {
   return listEffects()
 }
 
+/** Every registered background — what a settings UI lists. */
+export function backgroundList(): { id: string; label: string }[] {
+  return [...registry.values()].map((b) => ({ id: b.id, label: b.label }))
+}
+
 export const backgrounds: ZenBackgrounds = {
   register: (bg) => {
     registry.set(bg.id, bg)
+    // The saved choice may be this one, registered after load: show it now.
+    if (bg.id === saved.kind && saved.enabled) host.setActive(bg.id)
   },
-  set: (id) => host.setActive(id),
+  set: (id) => {
+    if (!id || id === 'none') return setBackgroundEnabled(false)
+    if (!registry.has(id)) return zwarn(`background.set: no background "${id}" is registered`)
+    setBackgroundKind(id)
+    setBackgroundEnabled(true)
+  },
   current: () => host.activeBackgroundId(),
-  list: () => [...registry.values()].map((b) => ({ id: b.id, label: b.label })),
-  setImage: (opts) => setImageOptions(opts),
-  setFinish: (finish) => host.setFinish(finish),
+  list: backgroundList,
+  setImage: setBackgroundImage,
+  setFinish: setBackgroundFinish,
   effects: {
-    register: (fx) => registerEffect(fx),
-    set: (ids) => host.setEffects(ids),
+    register: (fx) => {
+      registerEffect(fx)
+      if (saved.effects.includes(fx.id)) host.setEffects(saved.effects)
+    },
+    set: setBackgroundEffects,
     active: () => host.effectIds(),
     list: () => listEffects(),
-    setIntensity: (pct) => host.setEffectIntensity(pct),
+    setIntensity: setBackgroundEffectIntensity,
   },
 }
 

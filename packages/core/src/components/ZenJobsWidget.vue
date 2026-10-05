@@ -63,7 +63,7 @@
 <script setup lang="ts">
 import { computed, ref, watch } from 'vue'
 import { ZenPopover } from '@nynxz/zenkit-ui'
-import type { Job } from '@nynxz/zenkit-types'
+import type { Job } from '@nynxz/zenkit-client'
 import { clearFinishedJobs, jobsState } from '../jobs'
 
 const isFinished = (job: Job) => job.status === 'done' || job.status === 'error'

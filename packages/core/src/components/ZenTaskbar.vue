@@ -2,7 +2,15 @@
 // Permanent bottom taskbar: a Start button (→ start-menu launcher popup) and the
 // minimized panels as restore buttons. Replaces the old floating minimized chips.
 import { computed, inject, nextTick, onBeforeUnmount, onMounted, ref, watch } from 'vue'
-import { ZenSelect, ZenIcon, ZenPopover, ZenMenuItem, ZenMenuSeparator } from '@nynxz/zenkit-ui'
+import {
+  ZenContextMenu,
+  ZenSelect,
+  ZenIcon,
+  ZenPopover,
+  ZenMenuItem,
+  ZenMenuSeparator,
+  type ContextMenuItem,
+} from '@nynxz/zenkit-ui'
 import { STORE_KEY, type PanelStore } from '../panelStore'
 import { APP_STORE_KEY, type AppStore } from '../appStore'
 import { canvasGutter, TASKBAR_H, taskbarFloats, taskbarFootprint } from '../tiling'
@@ -12,6 +20,15 @@ import { isPinned, togglePin, pinnedIds } from '../pins'
 import TaskbarWidgetMount from './TaskbarWidgetMount.vue'
 import { useTaskReorder } from '../taskReorder'
 import { startDockTabDrag } from '../dockDrag'
+import {
+  activate,
+  createWorkspace,
+  removeWorkspace,
+  renameWorkspace,
+  workspaceOf,
+  ws,
+  type Workspace,
+} from '../workspaces'
 
 const store = inject(STORE_KEY) as PanelStore
 const appStore = inject(APP_STORE_KEY) as AppStore
@@ -40,6 +57,53 @@ function toggleApp() {
   if (appChipActive.value) appStore.close()
   else appStore.restore()
 }
+
+// --- workspaces ------------------------------------------------------------------------------
+const tileCount = (w: Workspace) => tileIds(w.tree).filter((id) => ops.get(id)).length
+function tileIds(node: Workspace['tree']): string[] {
+  if (!node) return []
+  return node.type === 'leaf' ? [node.id] : [...tileIds(node.a), ...tileIds(node.b)]
+}
+const renaming = ref<string | null>(null)
+const renameEl = ref<HTMLInputElement[] | null>(null)
+function startRename(id: string) {
+  renaming.value = id
+  void nextTick(() => {
+    renameEl.value?.[0]?.focus()
+    renameEl.value?.[0]?.select()
+  })
+}
+function finishRename(id: string, name: string) {
+  if (renaming.value === id) renameWorkspace(id, name)
+  renaming.value = null
+}
+const wsMenu = ref<InstanceType<typeof ZenContextMenu> | null>(null)
+const wsMenuFor = ref<string | null>(null)
+function openWsMenu(e: MouseEvent, id: string) {
+  wsMenuFor.value = id
+  wsMenu.value?.show(e)
+}
+const wsMenuItems = computed<ContextMenuItem[]>(() => {
+  const w = ws.list.find((x) => x.id === wsMenuFor.value)
+  if (!w) return []
+  return [
+    { heading: w.name },
+    {
+      label: ws.active === w.id ? 'Back to the graph' : 'Open',
+      icon: 'mdi mdi-arrow-right',
+      run: () => activate(ws.active === w.id ? null : w.id),
+    },
+    { label: 'Rename…', icon: 'mdi mdi-pencil-outline', run: () => startRename(w.id) },
+    '-',
+    {
+      label: 'Remove workspace',
+      icon: 'mdi mdi-trash-can-outline',
+      danger: true,
+      disabled: ws.list.length <= 1,
+      run: () => removeWorkspace(w.id),
+    },
+  ]
+})
 
 // enabled taskbar widgets, in user order (reactive — registry/prefs are reactive)
 const widgets = computed(() => activeWidgets())
@@ -71,6 +135,14 @@ const focusedId = computed(() => {
 })
 function taskClick(p: { id: string; status: string }) {
   if (clickWasDrag()) return
+  // A panel tiled in a workspace that isn't on screen: go there and show it.
+  const home = workspaceOf(p.id)
+  if (home && ws.active !== home.id) {
+    activate(home.id)
+    if (p.status === 'minimized') ops.restore(p.id)
+    else ops.front(p.id)
+    return
+  }
   if (p.status === 'minimized') ops.restore(p.id)
   else if (focusedId.value === p.id)
     ops.minimize(p.id) // click the active one → minimize
@@ -272,13 +344,16 @@ function launch(r: { open: () => void }) {
   closeMenu()
 }
 function openSettings() {
-  store.state.registry.find((r) => r.id === 'zenkit:settings')?.open()
+  store.open('zenkit:settings')
   closeMenu()
 }
 onBeforeUnmount(closeMenu)
 
 // --- theme controls (start-menu footer) ---
-const packOptions = theme.packs().map((id) => ({ value: id, label: theme.packLabel(id) }))
+// computed: a pack a plugin registers after the taskbar mounts still joins the list
+const packOptions = computed(() =>
+  theme.packs().map((id) => ({ value: id, label: theme.packLabel(id) })),
+)
 const current = ref(theme.current())
 const mode = ref(theme.currentMode())
 // keep the footer in sync when the theme changes from anywhere (Zen Settings, etc.)
@@ -299,7 +374,7 @@ function setDark() {
 }
 
 // White-label Start button. The store resolves the name/logo (Zen Settings override →
-// distributor's setBranding() → ComfyUI's own), so this is always renderable. The logo may
+// distributor's branding.set() → ComfyUI's own), so this is always renderable. The logo may
 // be an image URL/data URI or an MDI class — ZenIcon picks the renderer, and falls back to
 // the hexagon glyph if an image 404s.
 const branding = computed(() => store.state.branding)
@@ -441,6 +516,46 @@ function openTaskFromOverflow(p: Parameters<typeof taskClick>[0]) {
         :class="appChipActive ? 'mdi-home-outline' : 'mdi-arrow-top-right'"
       />
     </button>
+
+    <!-- workspaces: the graph, then each tiled workspace; Alt+` flips between them -->
+    <div class="tb-ws" @contextmenu.prevent>
+      <button
+        class="tb-ws-b"
+        :class="{ active: !ws.active }"
+        title="The graph (Alt+`)"
+        @click="activate(null)"
+      >
+        <i class="mdi mdi-graph-outline" />
+      </button>
+      <template v-for="(w, i) in ws.list" :key="w.id">
+        <input
+          v-if="renaming === w.id"
+          ref="renameEl"
+          class="tb-ws-rename"
+          :value="w.name"
+          @keydown.enter="($event.target as HTMLInputElement).blur()"
+          @keydown.esc="renaming = null"
+          @blur="finishRename(w.id, ($event.target as HTMLInputElement).value)"
+        />
+        <button
+          v-else
+          class="tb-ws-b"
+          :class="{ active: ws.active === w.id }"
+          :title="`${w.name} — ${tileCount(w)} panel${tileCount(w) === 1 ? '' : 's'} (Alt+${i + 1}) · double-click to rename · right-click for more`"
+          @click="activate(ws.active === w.id ? null : w.id)"
+          @dblclick="startRename(w.id)"
+          @contextmenu.prevent.stop="openWsMenu($event, w.id)"
+        >
+          <span class="tb-ws-n">{{ i + 1 }}</span>
+          <span v-if="ws.active === w.id" class="tb-ws-name">{{ w.name }}</span>
+          <span v-else-if="tileCount(w)" class="tb-ws-dot" />
+        </button>
+      </template>
+      <button class="tb-ws-b add" title="New workspace" @click="activate(createWorkspace().id)">
+        <i class="mdi mdi-plus" />
+      </button>
+    </div>
+    <ZenContextMenu ref="wsMenu" :items="wsMenuItems" />
 
     <div v-if="bottomDocked.length" class="tb-docked">
       <button
@@ -1213,5 +1328,95 @@ img.tb-logo {
   /* zoom (not transform: scale) so the layout box shrinks too — transform left the box
      full-size, which showed as massive empty padding + shoved the controls' position. */
   zoom: 0.78;
+}
+/* Workspace switcher: shaped like a task button (same height, border, radius) so it lines up in
+   the bar, holding the graph button, a divider, then one pill per workspace. */
+.tb-ws {
+  display: inline-flex;
+  flex: none;
+  align-items: stretch;
+  align-self: stretch;
+  gap: 2px;
+  box-sizing: border-box;
+  margin: 0 2px;
+  padding: 2px;
+  border: 1px solid var(--zen-border, #3a3a44);
+  border-radius: var(--zen-radius, 6px);
+  background: var(--zen-bg, #15151a);
+}
+.tb-ws-b {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 5px;
+  min-width: 22px;
+  padding: 0 6px;
+  border: 0;
+  border-radius: calc(var(--zen-radius, 6px) - 2px);
+  background: none;
+  color: var(--zen-muted, #9aa0aa);
+  font: inherit;
+  font-size: 11px;
+  font-weight: 600;
+  line-height: 1;
+  cursor: pointer;
+}
+.tb-ws-b:first-child {
+  position: relative;
+  margin-right: 5px;
+}
+.tb-ws-b:first-child::after {
+  position: absolute;
+  top: 3px;
+  right: -4px;
+  bottom: 3px;
+  width: 1px;
+  background: var(--zen-border, #3a3a44);
+  content: '';
+}
+.tb-ws-b:hover {
+  background: color-mix(in srgb, var(--zen-text, #fff) 9%, transparent);
+  color: var(--zen-text, #e5e5ea);
+}
+.tb-ws-b.active {
+  background: color-mix(in srgb, var(--zen-accent, #6366f1) 24%, transparent);
+  color: var(--zen-text, #e5e5ea);
+  box-shadow: inset 0 -2px 0 var(--zen-accent, #6366f1);
+}
+.tb-ws-b .mdi {
+  font-size: 14px;
+}
+.tb-ws-b.add {
+  min-width: 20px;
+  padding: 0 3px;
+}
+.tb-ws-n {
+  font-variant-numeric: tabular-nums;
+}
+.tb-ws-name {
+  max-width: 120px;
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+  font-weight: 500;
+}
+.tb-ws-dot {
+  width: 4px;
+  height: 4px;
+  margin-left: -2px;
+  border-radius: 50%;
+  background: var(--zen-accent, #6366f1);
+}
+.tb-ws-rename {
+  width: 110px;
+  height: auto;
+  padding: 0 6px;
+  border: 1px solid var(--zen-accent, #6366f1);
+  border-radius: calc(var(--zen-radius, 7px) - 2px);
+  outline: none;
+  background: var(--zen-field-bg, var(--zen-input, #1b1b20));
+  color: var(--zen-text, #e5e5ea);
+  font: inherit;
+  font-size: 11px;
 }
 </style>

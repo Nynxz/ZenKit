@@ -3,7 +3,7 @@
 //   • server — ComfyUI's /api/userdata (files on the server disk under
 //              user/<id>/zen/<scope>/<key>.json), via the host `api` helper.
 // Plaintext, single-user by default — never store secrets here.
-import type { ZenStorage, ZenStore } from '@nynxz/zenkit-types'
+import type { ZenStorage, ZenStore } from '@nynxz/zenkit-client'
 import { api, ComfyApi } from '@comfy/api'
 
 // ZenKit's own state must never follow an instance switch. ComfyUI-ZenInstances repoints the

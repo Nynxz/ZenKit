@@ -12,8 +12,9 @@ import { syncThemeSplash } from './themeSplash'
 import { createPanelStore, STORE_KEY, type PanelStore } from './panelStore'
 import { createAppStore, APP_STORE_KEY, type AppStore } from './appStore'
 import { setStatsPinned, startTiling } from './tiling'
+import { activate, attachWorkspaces, toggleWorkspace, workspacesApi, ws } from './workspaces'
 import { startSidebar } from './sidebar'
-import { CANVAS_CONTROLS_WIDGET, registerTaskbarWidget, setWidgetOn } from './taskbarWidgets'
+import { CANVAS_CONTROLS_WIDGET, registerTaskbarWidget } from './taskbarWidgets'
 import { createStorage } from './storage'
 import { startBackground, backgrounds } from './background'
 import { startSidebarPin } from './sidebarPin'
@@ -27,10 +28,13 @@ import { registerCoreCapabilities } from './coreCapabilities'
 import { registerWorkflowCapabilities } from './workflowCapabilities'
 import { createMedia } from './media'
 import { createViewer } from './viewer'
-import { setDebug } from './log'
+import { createChrome } from './chrome'
 import ZenHost from './components/ZenHost.vue'
 import ZenJobsWidget from './components/ZenJobsWidget.vue'
+import ZenRunWidget from './components/ZenRunWidget.vue'
 import ZenSettings from './components/ZenSettings.vue'
+// ZenKit's own family tile (docs/assets/render/brand.mjs) — the "core" row in Zen Settings.
+import zenkitLogo from './brand/zenkit.svg'
 
 export const ZENKIT_VERSION = '0.2.0'
 
@@ -73,6 +77,8 @@ export function installZenKit(opts: InstallOptions = {}): ZenKitApi {
   theStore = store
   theAppStore = appStore
   if (opts.branding) store.setBranding(opts.branding)
+  attachWorkspaces(store, appStore)
+  installWorkspaceKeys()
   startTiling(store)
   startSidebar(store, bus) // host pinned panels in ComfyUI's native sidebar (no-op if unavailable)
 
@@ -85,6 +91,20 @@ export function installZenKit(opts: InstallOptions = {}): ZenKitApi {
     defaultOn: true,
     render: (el) => {
       const widget = createApp(ZenJobsWidget)
+      widget.mount(el)
+      return () => widget.unmount()
+    },
+  })
+
+  // Built-in widget: Run / Stop, shown while a workspace or an app covers ComfyUI's action bar.
+  registerTaskbarWidget({
+    id: 'zenkit:run',
+    label: 'Run (when the graph is covered)',
+    icon: 'mdi mdi-play',
+    order: 80,
+    defaultOn: true,
+    render: (el) => {
+      const widget = createApp(ZenRunWidget, { appStore })
       widget.mount(el)
       return () => widget.unmount()
     },
@@ -218,7 +238,11 @@ export function installZenKit(opts: InstallOptions = {}): ZenKitApi {
   // Zen Settings (the store flag persists; start/stop tracks it, applied immediately on boot).
   // The startup splash follows the theme (and its light/dark mode) from the next load.
   theme.onChange(() => syncThemeSplash(store.state.themedSplash))
-  watch(() => store.state.themedSplash, (on) => syncThemeSplash(on), { immediate: true })
+  watch(
+    () => store.state.themedSplash,
+    (on) => syncThemeSplash(on),
+    { immediate: true },
+  )
 
   const comfyThemeMenu = createComfyThemeMenu()
   watch(
@@ -233,6 +257,7 @@ export function installZenKit(opts: InstallOptions = {}): ZenKitApi {
     id: 'zenkit:settings',
     title: 'Zen Settings',
     icon: 'mdi mdi-cog-outline',
+    logo: zenkitLogo,
     spawnOnly: true,
     open: () => openZenSettings()!,
   })
@@ -248,7 +273,8 @@ function buildApi(store: PanelStore, appStore: AppStore, bus: ZenBus): ZenKitApi
   const ready = new Promise<ZenKitApi>((r) => (resolveReady = r))
 
   const jobs = createJobs(bus)
-  const channels = createChannels(bus)
+  const media = createMedia()
+  const channels = createChannels(bus, media)
 
   const api: ZenKitApi = {
     version: ZENKIT_VERSION,
@@ -256,7 +282,7 @@ function buildApi(store: PanelStore, appStore: AppStore, bus: ZenBus): ZenKitApi
     require: (range) => semverSatisfies(ZENKIT_VERSION, range),
     panels: {
       open: store.open,
-      close: store.close,
+      close: (id, opts) => store.close(id, opts),
       get: store.get,
       list: store.list,
       instances: store.instances,
@@ -292,7 +318,7 @@ function buildApi(store: PanelStore, appStore: AppStore, bus: ZenBus): ZenKitApi
     graph: createGraph(),
     viewer: createViewer(),
     capabilities: createCapabilities(bus),
-    media: createMedia(),
+    media,
     apps: {
       register: appStore.register,
       registered: appStore.registered,
@@ -309,15 +335,16 @@ function buildApi(store: PanelStore, appStore: AppStore, bus: ZenBus): ZenKitApi
       location: appStore.location,
       on: appStore.on,
     },
-    setBranding: (b) => store.setBranding(b),
-    setMinimizedAnchor: (a) => store.setMinimizedAnchor(a),
-    setTaskbarPos: (p) => store.setTaskbarPos(p),
-    setAbsorbComfyButtons: (on) => store.setAbsorbComfyButtons(on),
-    setAbsorbCanvasControls: (on) => setWidgetOn(CANVAS_CONTROLS_WIDGET, on),
-    setAppUrlSync: (on) => appStore.setUrlSync(on),
-    setSidebarAutohide: (on) => store.setSidebarAutohide(on),
-    setFloatingSidebar: (on) => store.setFloatingSidebar(on),
-    setDebug: (v) => setDebug(v),
+    chrome: createChrome(store, appStore),
+    branding: {
+      get: () => ({ ...store.state.branding }),
+      set: (b) => store.setBranding(b),
+    },
+    workspaces: workspacesApi(),
+    docks: {
+      get: (side) => store.dockState(side),
+      set: (side, patch) => store.setDockState(side, patch),
+    },
   }
 
   installed = api
@@ -471,4 +498,27 @@ export function openZenSettings(): PanelHandle | undefined {
 /** Toggle "hide all panels" — same as the taskbar eye. */
 export function toggleZenPanels(): void {
   if (theStore) theStore.state.panelsHidden = !theStore.state.panelsHidden
+}
+
+/** Alt+` flips between the graph and the last workspace; Alt+1–9 go straight to a workspace. */
+function installWorkspaceKeys() {
+  window.addEventListener(
+    'keydown',
+    (e) => {
+      if (!e.altKey || e.ctrlKey || e.metaKey || e.shiftKey) return
+      if (e.code === 'Backquote') {
+        e.preventDefault()
+        e.stopPropagation()
+        toggleWorkspace()
+        return
+      }
+      const n = /^Digit([1-9])$/.exec(e.code)?.[1]
+      const target = n ? ws.list[Number(n) - 1] : undefined
+      if (!target) return
+      e.preventDefault()
+      e.stopPropagation()
+      activate(ws.active === target.id ? null : target.id)
+    },
+    true,
+  )
 }

@@ -65,7 +65,7 @@
 import { computed, inject, onBeforeUnmount, onMounted, ref } from 'vue'
 import { ZenIcon } from '@nynxz/zenkit-ui'
 import { STORE_KEY, type Panel, type PanelStore } from '../panelStore'
-import { computeDockLayout, dockLayoutVersion, type ZoneLayout } from '../tiling'
+import { computeDockLayout, dockLayout, dockLayoutVersion, type ZoneLayout } from '../tiling'
 import { startDockTabDrag } from '../dockDrag'
 import { detachPanel } from '../detach'
 import type { Rect } from '../types'
@@ -89,10 +89,11 @@ onBeforeUnmount(() => {
   if (tabMenu.value) closeTabMenu()
 })
 
+// Draw what the last re-layout settled on; measuring here again would force another layout.
 const zones = computed<ZoneLayout[]>(() => {
   void vpTick.value
   void dockLayoutVersion.value
-  const layout = computeDockLayout(store)
+  const layout = dockLayout.value ?? computeDockLayout(store)
   return (['left', 'right', 'bottom'] as const)
     .map((s) => layout[s])
     .filter((z) => z.rail || z.body)

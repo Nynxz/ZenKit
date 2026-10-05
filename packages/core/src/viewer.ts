@@ -5,13 +5,15 @@
 // lives in @nynxz/zenkit-client (openViewer → new tab).
 import { createApp, h, reactive, type App } from 'vue'
 import { ZenLightbox } from '@nynxz/zenkit-ui'
-import type { ViewerHandle, ViewerItem, ViewerOpenOptions, ZenViewer } from '@nynxz/zenkit-types'
+import type { ViewerHandle, ViewerItem, ViewerOpenOptions, ZenViewer } from '@nynxz/zenkit-client'
 
 export function createViewer(): ZenViewer {
   const state = reactive<{ items: ViewerItem[]; index: number }>({ items: [], index: 0 })
   let appInst: App | null = null
   let mountEl: HTMLElement | null = null
   let onClose: (() => void) | undefined
+  // Each open() is one viewer; a handle acts only while its viewer is the one showing.
+  let current = 0
 
   function close(): void {
     const notify = onClose
@@ -33,6 +35,8 @@ export function createViewer(): ZenViewer {
 
   function open(items: ViewerItem[], opts: ViewerOpenOptions = {}): ViewerHandle {
     close() // single instance — replace any open viewer
+    const self = ++current
+    const mine = () => self === current && appInst !== null
     onClose = opts.onClose
     state.items = Array.isArray(items) ? items : []
     state.index = Math.max(0, Math.min(opts.index ?? 0, state.items.length - 1))
@@ -52,8 +56,11 @@ export function createViewer(): ZenViewer {
     })
     appInst.mount(mountEl)
     return {
-      close,
+      close: () => {
+        if (mine()) close()
+      },
       setIndex: (i: number) => {
+        if (!mine()) return
         state.index = i
         opts.onIndex?.(i)
       },

@@ -5,7 +5,7 @@
 // that key in step with the theme. It takes effect from the next load.
 
 import { getPack, resolveTokens } from '@nynxz/zenkit-theme'
-import type { ThemePack } from '@nynxz/zenkit-types'
+import type { ThemePack } from '@nynxz/zenkit-client'
 import { theme } from './theme'
 
 const SEQUENCE_KEY = 'comfy-splash-sequence'
@@ -15,6 +15,23 @@ const HEART =
   'M12 21.2c-.4 0-.8-.13-1.1-.38C6.4 17.2 2 13.6 2 8.9 2 5.9 4.3 3.5 7.2 3.5c1.9 0 3.7 1 4.8 2.6 1.1-1.6 2.9-2.6 4.8-2.6 2.9 0 5.2 2.4 5.2 5.4 0 4.7-4.4 8.3-8.9 11.92-.3.25-.7.38-1.1.38z'
 const heart = (cls: string) =>
   `<svg class="${cls}" viewBox="0 0 24 24" aria-hidden="true"><path d="${HEART}"/></svg>`
+
+// ZenKit's lotus (docs/assets/render/brand.mjs): a petal points up from (0,0). Petals are
+// [height, width, angle, opacity, delay] — the back pair opens first, the front one last.
+const petal = (h: number, w: number) =>
+  `M0,0 C${w},${-h * 0.3} ${w * 0.7},${-h * 0.78} 0,${-h} C${-w * 0.7},${-h * 0.78} ${-w},${-h * 0.3} 0,0Z`
+const LOTUS_PETALS: [number, number, number, number, number][] = [
+  [54, 24, -70, 0.55, 0.59],
+  [54, 24, 70, 0.55, 0.59],
+  [66, 26, -36, 0.8, 0.37],
+  [66, 26, 36, 0.8, 0.37],
+  [78, 28, 0, 1, 0.15],
+]
+// Fixed glyph columns for the rain behind it; the splash is static HTML, so no runtime random.
+const KANA = 'ｱｲｳｴｵｶｷｸｹｺｻｼｽｾｿﾀﾁﾂﾃﾄﾅﾆﾇﾈﾉ0123456789'
+const RAIN = Array.from({ length: 14 }, (_, c) =>
+  Array.from({ length: 22 }, (_, r) => KANA[(c * 7 + r * 13 + c * r) % KANA.length]).join(''),
+)
 
 const PRESETS: Record<string, { html: string; css: string }> = {
   hearts: {
@@ -43,6 +60,39 @@ const PRESETS: Record<string, { html: string; css: string }> = {
 @media (prefers-reduced-motion: reduce) {
   #splash-loader .zs-beat, #splash-loader .zs-float { animation: none; }
   #splash-loader .zs-float { display: none; }
+}`,
+  },
+  lotus: {
+    html:
+      `<div class="zs-rain">${RAIN.map((col) => `<span>${col}</span>`).join('')}</div>` +
+      `<svg class="zs-lotus" viewBox="0 0 120 106" aria-hidden="true">` +
+      `<ellipse class="zs-ripple" cx="60" cy="98" rx="46" ry="6"/>` +
+      `<ellipse class="zs-ripple" cx="60" cy="98" rx="46" ry="6" style="animation-delay:2.2s"/>` +
+      LOTUS_PETALS.map(
+        ([h, w, r, o, delay], i) =>
+          `<path class="zs-petal${i === LOTUS_PETALS.length - 1 ? ' zs-front' : ''}" d="${petal(h, w)}" style="--r:${r}deg;--o:${o};animation-delay:${delay}s"/>`,
+      ).join('') +
+      `</svg>`,
+    css: `
+#splash-loader .zs-rain { position: absolute; inset: 0; display: flex; justify-content: space-around; overflow: hidden; mask-image: linear-gradient(transparent, #000 25%, #000 70%, transparent); }
+#splash-loader .zs-rain span { font: 500 13px/1.15 ui-monospace, monospace; color: var(--splash-accent); writing-mode: vertical-rl; text-orientation: upright; opacity: 0.3; animation: zs-fall 3.6s linear infinite; }
+#splash-loader .zs-rain span:nth-child(odd) { animation-duration: 4.6s; }
+#splash-loader .zs-rain span:nth-child(3n) { animation-delay: -1.7s; }
+#splash-loader .zs-rain span:nth-child(4n+1) { animation-delay: -0.6s; }
+#splash-loader .zs-rain span:nth-child(5n) { animation-delay: -2.6s; }
+#splash-loader .zs-lotus { position: relative; width: min(150px, 40vw); overflow: visible; }
+#splash-loader .zs-petal { fill: var(--splash-accent); transform-box: view-box; transform-origin: 0 0; opacity: 0; animation: zs-open 1.2s cubic-bezier(.2,.8,.2,1) forwards; }
+#splash-loader .zs-front { fill: color-mix(in srgb, var(--splash-accent) 65%, #fff); }
+#splash-loader .zs-ripple { fill: none; stroke: var(--splash-accent); stroke-width: 1.5; transform-box: fill-box; transform-origin: center; opacity: 0; animation: zs-ripple 2.4s ease-out 1s infinite; }
+@keyframes zs-fall { from { transform: translateY(-60%); } to { transform: translateY(60%); } }
+@keyframes zs-open {
+  from { opacity: 0; transform: translate(60px, 88px) rotate(var(--r)) scale(0.15); }
+  to { opacity: var(--o); transform: translate(60px, 88px) rotate(var(--r)) scale(1); }
+}
+@keyframes zs-ripple { from { opacity: 0.7; transform: scale(0.6); } to { opacity: 0; transform: scale(1.6); } }
+@media (prefers-reduced-motion: reduce) {
+  #splash-loader .zs-rain span, #splash-loader .zs-ripple { animation: none; }
+  #splash-loader .zs-petal { animation: none; opacity: var(--o); transform: translate(60px, 88px) rotate(var(--r)); }
 }`,
   },
 }

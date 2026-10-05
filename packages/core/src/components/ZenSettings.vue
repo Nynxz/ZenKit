@@ -6,7 +6,7 @@ import { ZenIcon, ZenInput, ZenSelect, ZenSwitch } from '@nynxz/zenkit-ui'
 import { COMFY_BRAND, STORE_KEY, type PanelStore } from '../panelStore'
 import { APP_STORE_KEY, type AppStore } from '../appStore'
 import { theme } from '../theme'
-import { logEntries, onLog, setDebug, type LogEntry } from '../log'
+import { debugOn, logEntries, onLog, setDebug, type LogEntry } from '../log'
 import {
   CANVAS_CONTROLS_WIDGET,
   orderedWidgets,
@@ -64,10 +64,12 @@ function fmtTime(ts: number) {
 }
 
 // --- settings ---
-const packOptions = theme.packs().map((id) => ({ value: id, label: theme.packLabel(id) }))
+// computed: a pack a plugin registers while this is open still joins the list
+const packOptions = computed(() =>
+  theme.packs().map((id) => ({ value: id, label: theme.packLabel(id) })),
+)
 const curPack = ref(theme.current())
 const dark = ref(theme.currentMode() === 'dark')
-const debug = ref(false)
 // keep in sync when the theme changes from elsewhere (the taskbar footer, etc.)
 const offTheme = theme.onChange(() => {
   curPack.value = theme.current()
@@ -81,10 +83,6 @@ function pickPack(id: string) {
 function setDark(on: boolean) {
   dark.value = on
   theme.setMode(on ? 'dark' : 'light')
-}
-function setDebugOn(on: boolean) {
-  debug.value = on
-  setDebug(on)
 }
 
 onMounted(() => {
@@ -279,7 +277,7 @@ onBeforeUnmount(() => offLog?.())
           <span class="zse-slbl">Themed startup</span>
           <small>
             ComfyUI's loading screen uses the active theme — its colours, and its own sequence when it
-            has one (Cute Hearts). Shows from the next load.
+            has one (Cute Hearts, Lotus). Shows from the next load.
           </small>
         </div>
         <ZenSwitch
@@ -340,7 +338,7 @@ onBeforeUnmount(() => offLog?.())
           <span class="zse-slbl">Debug logging</span>
           <small>verbose zdebug output</small>
         </div>
-        <ZenSwitch :model-value="debug" @update:model-value="setDebugOn" />
+        <ZenSwitch :model-value="debugOn" @update:model-value="(v) => setDebug(v)" />
       </div>
 
       <div class="zse-widgets">

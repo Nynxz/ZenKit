@@ -15,6 +15,7 @@ import { zlog } from './log'
 interface SidebarMgr {
   registerSidebarTab(tab: unknown): void
   unregisterSidebarTab(id: string): void
+  command?: { commands?: { id: string }[] }
   sidebarTab?: {
     activeSidebarTabId: string | null
     sidebarTabs?: { id: string; icon?: unknown }[]
@@ -69,6 +70,9 @@ const STYLE = `
 .zk-sb-bar { flex: 0 0 auto; display: flex; align-items: center; gap: 8px; padding: 0 1rem; min-height: calc(var(--panel-header-inset, 0.5rem) * 2 + 2rem); cursor: grab; touch-action: none; border-bottom: 1px solid var(--color-interface-stroke, var(--zen-border, #3a3a44)); background: transparent; }
 .zk-sb-title { flex: 1; min-width: 0; font-size: 1rem; font-weight: 700; color: var(--color-base-foreground, inherit); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .zk-sb-body { flex: 1 1 0; min-height: 0; }
+/* The panel header's own button (ZenPanel's .b), so the pop-out reads as part of the header. */
+.zk-sb-pop { flex: 0 0 auto; display: inline-flex; align-items: center; justify-content: center; width: 24px; height: 24px; padding: 0; border: none; border-radius: var(--zen-radius, 6px); background: none; color: var(--zen-muted, #9aa0aa); font-size: 15px; cursor: pointer; }
+.zk-sb-pop:hover { background: color-mix(in srgb, var(--zen-text, #fff) 10%, transparent); color: var(--zen-text, #e5e5ea); }
 .zk-rail-drop { position: fixed; z-index: 100000; height: 2px; border-radius: 2px; pointer-events: none; background: var(--zen-accent, #3b82f6); }
 .zk-rail-drag { position: fixed; z-index: 100001; pointer-events: none; opacity: .85; }
 .zk-rail-dragging { opacity: .4; }
@@ -92,12 +96,24 @@ export function startSidebar(store: PanelStore, bus: ZenBus): void {
 
   function mount(p: Panel, container: HTMLElement, rec: { cleanup: (() => void) | null }) {
     container.classList.add('zenkit-sidebar-tab')
+    // Same hook the overlay's panels carry, so `getRect` measures the panel here too.
+    container.dataset.zenPanelId = p.id
     const bar = document.createElement('div')
     bar.className = 'zk-sb-bar'
     const title = document.createElement('span')
     title.className = 'zk-sb-title'
     title.textContent = p.title
-    bar.append(title)
+    // Pop out: the way back to a floating panel on every frontend. (Dragging the bar out works
+    // too, but only where the frontend lets a drag start inside its sidebar.)
+    const pop = document.createElement('button')
+    pop.type = 'button'
+    pop.className = 'zk-sb-pop zenkit-panel-button'
+    pop.title = 'Pop out — float this panel'
+    pop.setAttribute('aria-label', 'Pop out')
+    pop.innerHTML = '<i class="mdi mdi-dock-window"></i>'
+    pop.onpointerdown = (e) => e.stopPropagation()
+    pop.onclick = () => store._ops.setDock(p.id, null)
+    bar.append(title, pop)
     bar.title = 'Drag out to float this panel'
     bar.onpointerdown = (e) => startDockTabDrag(e, store, p.id, () => {})
     const body = document.createElement('div')
@@ -113,6 +129,7 @@ export function startSidebar(store: PanelStore, bus: ZenBus): void {
         }
       }
       container.replaceChildren()
+      delete container.dataset.zenPanelId
     }
   }
 
@@ -120,7 +137,7 @@ export function startSidebar(store: PanelStore, bus: ZenBus): void {
     if (tabs.has(p.id)) return
     const rec: { cleanup: (() => void) | null } = { cleanup: null }
     tabs.set(p.id, rec)
-    mgr!.registerSidebarTab({
+    const tab = {
       id: tabIdFor(p.id),
       title: p.title,
       icon: railIcon(p.icon),
@@ -141,7 +158,15 @@ export function startSidebar(store: PanelStore, bus: ZenBus): void {
         rec.cleanup?.()
         rec.cleanup = null
       },
-    })
+    }
+    // Registering a tab also registers its toggle command, and unregistering it leaves that
+    // command behind — so pinning the same panel a second time would register it twice (the
+    // frontend warns). The command toggles the tab by id, so a re-pin only puts the tab back.
+    const sidebar = mgr!.sidebarTab
+    const command = `Workspace.ToggleSidebarTab.${tab.id}`
+    if (mgr!.command?.commands?.some((c) => c.id === command) && sidebar?.sidebarTabs)
+      sidebar.sidebarTabs = [...sidebar.sidebarTabs, tab]
+    else mgr!.registerSidebarTab(tab)
     zlog(`pinned "${p.id}" to the sidebar`)
   }
 

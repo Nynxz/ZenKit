@@ -1,9 +1,24 @@
 // Styled console badge; zdebug gated by setDebug. Also keeps a small in-memory ring
 // buffer of entries (+ window errors) so the Zen Settings "Logs" tab can show them.
+import { ref } from 'vue'
 
-let DEBUG = false
+const DEBUG_LS = 'zenkit.debug.v1'
+/** Verbose logging (`chrome.debug`). Persisted; a ref so settings views follow it. */
+export const debugOn = ref(readDebug())
+function readDebug(): boolean {
+  try {
+    return localStorage.getItem(DEBUG_LS) === '1'
+  } catch {
+    return false
+  }
+}
 export function setDebug(v: boolean): void {
-  DEBUG = !!v
+  debugOn.value = !!v
+  try {
+    localStorage.setItem(DEBUG_LS, v ? '1' : '0')
+  } catch {
+    /* ignore */
+  }
 }
 
 const INFO = 'background:#3b82f6;color:#fff;border-radius:3px;padding:1px 6px;font-weight:700'
@@ -52,7 +67,7 @@ export function zlog(msg: string, ...args: unknown[]): void {
 }
 export function zdebug(msg: string, ...args: unknown[]): void {
   record('debug', msg, args)
-  if (DEBUG) console.debug('%cZenKit%c ' + msg, INFO, DIM, ...args)
+  if (debugOn.value) console.debug('%cZenKit%c ' + msg, INFO, DIM, ...args)
 }
 export function zwarn(msg: string, ...args: unknown[]): void {
   record('warn', msg, args)

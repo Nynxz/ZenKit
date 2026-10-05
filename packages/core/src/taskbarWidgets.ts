@@ -1,5 +1,5 @@
 // Permanent-taskbar widget registry. Consumers register orderable/toggleable widgets via
-// window.ZenKit.taskbar.register (or @nynxz/zenkit-client's registerTaskbarWidget). ZenTaskbar
+// window.ZenKit.taskbar.register (or a ZenPluginDef's `taskbarWidgets`). ZenTaskbar
 // renders the enabled ones in order; Zen Settings drives the on/off + ordering. Built-ins
 // (clock, and later the hide-panels toggle + canvas controls) register here too.
 import { reactive } from 'vue'

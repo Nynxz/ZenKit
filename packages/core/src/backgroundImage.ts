@@ -12,7 +12,7 @@ import type {
   BackgroundFit,
   BackgroundImageOptions,
   ZenBackground,
-} from '@nynxz/zenkit-types'
+} from '@nynxz/zenkit-client'
 
 /** How often (in frames) to re-resolve the theme colour behind the picture. Reading a computed
  *  style forces a style flush, so we sample it about twice a second rather than every frame. */

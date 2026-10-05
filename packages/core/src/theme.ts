@@ -12,7 +12,8 @@ import {
   registerPack as registerThemePack,
   zenAliases,
 } from '@nynxz/zenkit-theme'
-import type { ThemeMode, ThemePack } from '@nynxz/zenkit-types'
+import { ref } from 'vue'
+import type { ThemeMode, ThemePack } from '@nynxz/zenkit-client'
 import { ensureStyle } from './dom'
 
 export const ZEN_TOKENS = [
@@ -519,8 +520,12 @@ html[data-zen-theme-pack] .minimap-viewport {
 }
 `
 
-/** All registered pack ids, 'comfy' first. */
+/** Bumped whenever a pack registers (the registry itself isn't reactive). */
+const packsRevision = ref(0)
+/** All registered pack ids, 'comfy' first. Reading it inside a computed or watch tracks
+ *  registration, so a pack a plugin registers later shows up in the pickers. */
 export function themePackIds(): string[] {
+  void packsRevision.value
   return ['comfy', ...registeredPacks().map((p) => p.id)]
 }
 const LS_PACK = 'zenkit.theme.pack'
@@ -801,6 +806,7 @@ export const theme = {
   },
   registerPack(pack: ThemePack): boolean {
     const stored = registerThemePack(pack)
+    if (stored) packsRevision.value++
     if (stored && stored.id === currentPack) applyTheme()
     return !!stored
   },

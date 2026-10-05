@@ -390,10 +390,16 @@ export function createAppStore(bus: ZenBus) {
   }
 
   function register(reg: AppRegistration): () => void {
-    const fresh = !state.registry.some((r) => keyOf(r) === keyOf(reg))
-    if (fresh) state.registry.push(markRaw(reg))
-    if (fresh)
+    // Re-registering a key replaces it, like panels.register; each registration's unregister
+    // only removes its own entry.
+    const entry = markRaw(reg)
+    const existing = state.registry.findIndex((r) => keyOf(r) === keyOf(reg))
+    if (existing === -1) {
+      state.registry.push(entry)
       zlog(`registered app "${reg.title}" — ${keyOf(reg)}` + (reg.plugin ? ` · ${reg.plugin}` : ''))
+    } else {
+      state.registry.splice(existing, 1, entry)
+    }
     bus.emit('app:registry')
 
     // Restore: a saved/pending location targeting this app resolves now that it's here.
@@ -406,8 +412,9 @@ export function createAppStore(bus: ZenBus) {
       }
     }
     return () => {
-      const i = state.registry.findIndex((r) => keyOf(r) === keyOf(reg))
-      if (i >= 0) state.registry.splice(i, 1)
+      const i = state.registry.indexOf(entry)
+      if (i < 0) return // already replaced by a newer registration of the same key
+      state.registry.splice(i, 1)
       bus.emit('app:registry')
       if (state.active.app === keyOf(reg)) close()
       if (state.minimized?.app === keyOf(reg)) state.minimized = null

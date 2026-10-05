@@ -7,25 +7,40 @@
 //   { channel, url }                                                 — publish
 //   { channel }                          (no image)                  — declare only
 import { reactive } from 'vue'
+import { api } from '@comfy/api'
 import { zdebug } from './log'
 import { onChannelEvent } from './wsEvents'
 import type { ZenBus } from './bus'
-import type { ChannelImage, ChannelInput } from '@nynxz/zenkit-types'
+import type { ChannelImage, ChannelInput, ZenMedia } from '@nynxz/zenkit-client'
 
 export const LAST = '$last' // subscribe/get the most recently published image (any channel)
 
 export type ChannelsStore = ReturnType<typeof createChannels>
 
+// A ComfyUI file, through ComfyUI's API base like zen.media's URLs; `r` defeats the cache when a
+// node overwrites the same filename.
 function viewUrl(p: { filename?: unknown; subfolder?: unknown; type?: unknown }): string {
   const q = new URLSearchParams({
     filename: String(p.filename ?? ''),
     subfolder: String(p.subfolder ?? ''),
     type: String(p.type ?? 'temp'),
   })
-  return `/view?${q.toString()}&r=${Date.now()}`
+  return api.apiURL(`/view?${q.toString()}&r=${Date.now()}`)
 }
 
-export function createChannels(bus: ZenBus) {
+const COMFY_TYPES = ['output', 'input', 'temp']
+
+export function createChannels(bus: ZenBus, media: ZenMedia) {
+  // The media ref for what was published: the producer's own, else the ComfyUI file it names,
+  // else its URL (a URL is a ref too).
+  function refOf(img: ChannelInput): string | undefined {
+    if (img.ref) return img.ref
+    const type = img.type ?? 'temp'
+    if (!img.url && img.filename && COMFY_TYPES.includes(type))
+      return media.fromComfyFile({ filename: img.filename, subfolder: img.subfolder, type })
+    return img.url || undefined
+  }
+
   // declared = known channel names (may be empty); byName = the latest image per channel.
   const state = reactive({
     declared: {} as Record<string, { label?: string }>,
@@ -50,6 +65,7 @@ export function createChannels(bus: ZenBus) {
     const rec: ChannelImage = {
       channel: name,
       url: img.url || viewUrl(img),
+      ref: refOf(img),
       filename: img.filename,
       label: img.label,
       kind: img.kind,

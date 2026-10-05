@@ -11,6 +11,8 @@
     <div v-if="dockDropStyle" class="dockprev" :style="dockDropStyle" />
     <!-- full-screen app (covers the graph + graph-edge chrome; panels/toasts/taskbar stay above) -->
     <ZenApp v-if="appStore.state.active.app" />
+    <!-- the active workspace: covers the graph and tiles panels; null = the graph itself -->
+    <ZenWorkspace v-if="ws.active" />
     <ZenPanel v-for="p in hostPanels" :key="p.id" :panel="p" />
     <ZenDock />
     <ZenTaskbar />
@@ -20,6 +22,7 @@
 <script setup lang="ts">
 import { computed, inject, onMounted, onBeforeUnmount, ref } from 'vue'
 import ZenApp from './ZenApp.vue'
+import ZenWorkspace from './ZenWorkspace.vue'
 import ZenPanel from './ZenPanel.vue'
 import ZenDock from './ZenDock.vue'
 import ZenTaskbar from './ZenTaskbar.vue'
@@ -27,6 +30,7 @@ import { STORE_KEY, type PanelStore } from '../panelStore'
 import { APP_STORE_KEY, type AppStore } from '../appStore'
 import { dockBounds, RAIL } from '../tiling'
 import { sidebarRail } from '../dockDrop'
+import { ws } from '../workspaces'
 
 const store = inject(STORE_KEY) as PanelStore
 const appStore = inject(APP_STORE_KEY) as AppStore

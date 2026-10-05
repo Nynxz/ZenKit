@@ -4,8 +4,9 @@
 import { api } from '@comfy/api'
 import type { MediaInfo, MediaRef, MediaSource, ZenMedia } from './types'
 
-const VIDEO = /\.(mp4|webm|mov|mkv|gif)$/i
-const AUDIO = /\.(mp3|wav|flac|ogg|m4a)$/i
+// Same extensions as @nynxz/zenkit-client's mediaKindOf. GIF is an image: <img> plays it.
+const VIDEO = /\.(mp4|webm|mov|mkv|avi|m4v)$/i
+const AUDIO = /\.(mp3|wav|flac|ogg|oga|m4a|aac|opus)$/i
 export const kindOf = (name: string): MediaInfo['kind'] =>
   VIDEO.test(name) ? 'video' : AUDIO.test(name) ? 'audio' : 'image'
 

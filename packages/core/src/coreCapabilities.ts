@@ -58,9 +58,9 @@ export function registerCoreCapabilities(zen: ZenKitApi): void {
     description: 'Open a panel of a type from panels.list (a new one for multi types). Returns its panel_id.',
     params: { type: 'object', properties: { type: { type: 'string' }, title: { type: 'string' } }, required: ['type'] },
     run: ({ type, title }) => {
-      const registration = zen.panels.registered().find((p) => p.id === type)
-      if (!registration) throw new Error(`No panel type "${String(type)}". panels.list shows the types.`)
-      const handle = registration.open()
+      const registered = zen.panels.registered().some((p) => p.id === type)
+      const handle = registered ? zen.panels.open(String(type)) : null
+      if (!handle) throw new Error(`No panel type "${String(type)}". panels.list shows the types.`)
       if (str(title)) handle.setTitle(str(title)!)
       return { panel_id: handle.id }
     },
@@ -79,7 +79,7 @@ export function registerCoreCapabilities(zen: ZenKitApi): void {
         y: { type: 'number' },
         width: { type: 'number' },
         height: { type: 'number' },
-        dock: { type: 'string', enum: ['left', 'right', 'bottom', 'float'] },
+        dock: { type: 'string', enum: ['left', 'right', 'bottom', 'sidebar', 'float'] },
         action: { type: 'string', enum: ['focus', 'minimize', 'maximize', 'close'] },
       },
       required: ['panel_id'],
