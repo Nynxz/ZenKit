@@ -1,6 +1,6 @@
 import { getCurrentScope, onScopeDispose, readonly, ref } from 'vue'
 import type { DeepReadonly, Ref } from 'vue'
-import type { Job } from '@nynxz/zenkit-types'
+import type { Job } from './contract'
 import { whenZen } from './index'
 
 /**

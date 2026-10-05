@@ -1,24 +1,17 @@
 // @nynxz/zenkit-client — typed SDK for window.ZenKit; self-contained, no-ops when ZenKit is absent.
-// The ZenKit contract lives here now (folded in from the old @nynxz/zenkit-types) — consumers
-// import every ZenKit type from @nynxz/zenkit-client.
-export * from '@nynxz/zenkit-types'
+// It owns the ZenKit contract (./contract, types only): consumers import every ZenKit type from
+// here, with `import type`.
+export type * from './contract'
 import type {
   Capability,
-  AppHandle,
-  AppLocation,
   AppRegistration,
-  BusHandler,
-  ChannelImage,
-  ChannelInput,
-  Job,
   JobHandle,
   JobStartOptions,
+  PanelContext,
   PanelHandle,
-  PanelRegistration,
   PanelSpec,
   RegisteredPlugin,
   SlotMatch,
-  SlotMiddleClickCtx,
   TaskbarWidget,
   ThemePack,
   ViewerHandle,
@@ -26,7 +19,12 @@ import type {
   ViewerOpenOptions,
   ZenBackground,
   ZenKitApi,
-} from '@nynxz/zenkit-types'
+} from './contract'
+
+// What this package adds over `window.ZenKit`: graceful fallback when ZenKit is absent
+// (whenZen, startJob, openViewer), the one-call plugin registration, Vue integration and DOM
+// helpers. Everything else is the runtime itself — call it directly:
+//   (await whenZen())?.bus.emit('x')   or, in sync code once ZenKit is up,   getZenKit()?.bus.emit('x')
 
 // Styled console badge so ZenKit logs are easy to spot.
 const BADGE_INFO = 'background:#3b82f6;color:#fff;border-radius:3px;padding:1px 6px;font-weight:700'
@@ -67,8 +65,14 @@ export function hasZenKit(): boolean {
 /** ms to wait for ZenKit before deciding it's absent, when the host never announced itself. */
 export const ZEN_CONNECT_TIMEOUT = 6000
 
+// Set once a wait has timed out with no host in sight, so later calls answer null at once instead
+// of each waiting out the timeout again. A ZenKit that turns up after all is still found: the
+// `getZenKit()` and `ZenKitPending` checks come first.
+let _absent = false
+
 /** Resolve ZenKit when ready. When the host has announced itself (`window.ZenKitPending`)
- *  this waits as long as installing takes; otherwise it gives up with null after `timeout`. */
+ *  this waits as long as installing takes; otherwise it gives up with null after `timeout`.
+ *  Once one call has given up, later calls resolve null immediately. */
 export function whenZen(timeout = ZEN_CONNECT_TIMEOUT): Promise<ZenKitApi | null> {
   const now = getZenKit()
   if (now) return now.ready ?? Promise.resolve(now)
@@ -78,13 +82,17 @@ export function whenZen(timeout = ZEN_CONNECT_TIMEOUT): Promise<ZenKitApi | null
       window.addEventListener('zen:ready', () => resolve(getZenKit()), { once: true }),
     )
   }
+  if (_absent) return Promise.resolve(null)
   return new Promise((resolve) => {
     let done = false
     const finish = (v: ZenKitApi | null) => {
       if (done) return
       done = true
       window.removeEventListener('zen:ready', onReady)
-      if (!v) warnAbsentOnce()
+      if (!v) {
+        _absent = true
+        warnAbsentOnce()
+      }
       resolve(v)
     }
     const onReady = () => finish(getZenKit())
@@ -102,37 +110,17 @@ function warnAbsentOnce(): void {
   )
 }
 
-/** Open a panel if ZenKit is present, else null. */
-export async function openPanel(spec: PanelSpec): Promise<PanelHandle | null> {
-  const zen = await whenZen()
-  return zen ? zen.panels.open(spec) : null
-}
-
-/** Register a reusable panel (shows in the ZenBar) if ZenKit is present. Returns
- *  an unregister fn, or a no-op when ZenKit is absent. */
-export async function registerPanel(reg: PanelRegistration): Promise<() => void> {
-  const zen = await whenZen()
-  return zen ? zen.panels.register(reg) : () => {}
-}
-
-/** Register a full-screen app (shows in the ZenBar launcher) if ZenKit is present.
- *  Returns an unregister fn, or a no-op when ZenKit is absent. */
-export async function registerZenApp(reg: AppRegistration): Promise<() => void> {
-  const zen = await whenZen()
-  return zen ? zen.apps.register(reg) : () => {}
-}
-
 /** One app a plugin contributes — an {@link AppRegistration} minus the fields the plugin
  *  supplies (`plugin` / `logo` / `version`), mirroring how {@link ZenPanelDef} relates to a
  *  panel registration. */
 export type ZenAppDef = Omit<AppRegistration, 'plugin' | 'namespace' | 'logo' | 'version'>
 
-/** One panel a plugin contributes — a panel spec plus ZenBar capability flags. */
+/** One panel a plugin contributes — a panel spec plus Start-menu flags. */
 export interface ZenPanelDef extends Omit<PanelSpec, 'id' | 'instanceOf'> {
   id: string
-  /** Allow multiple live instances (ZenBar shows open-new + an instance list). */
+  /** Allow multiple live instances (the Start menu shows open-new + an instance list). */
   multi?: boolean
-  /** Hide from the ZenBar; opened only programmatically (popup/action-spawned). */
+  /** Hide from the Start menu; opened only programmatically (popup/action-spawned). */
   spawnOnly?: boolean
   /** Icon for the sidebar-tab fallback when ZenKit is absent (defaults to `icon`). */
   sidebarIcon?: string
@@ -142,17 +130,22 @@ export interface ZenPanelDef extends Omit<PanelSpec, 'id' | 'instanceOf'> {
 
 /** A plugin's whole ZenKit integration — the single registration point. One call wires up
  *  every client surface (panels, apps, taskbar widgets, themes, backgrounds,
- *  channels, slot-links, node-widget views), reports the plugin to the introspection registry
+ *  channels, slot-links, capabilities), reports the plugin to the introspection registry
  *  (so the Zen Inspector can see it), and handles graceful fallback when ZenKit is absent.
- *  Passed to {@link registerZenPlugin}. */
+ *  Passed to {@link registerZenPlugin}.
+ *
+ *  Ids follow one rule. What a plugin owns is namespaced by its `id` when given short: panels
+ *  and taskbar widgets as `<id>:<short>`, capabilities as `<id>.<short>`; an id that already
+ *  contains the separator is kept as given. Channels, themes and backgrounds are global by
+ *  design and never prefixed — plugins share them on purpose. */
 export interface ZenPluginDef {
-  /** Canonical kebab id — the single identity that derives the app `namespace`, the `<id>:`
-   *  panel-id prefix (for short panel ids), and joins this plugin's client surfaces to its
-   *  Python nodes/routes in the Inspector. Defaults to a slug of `plugin` ("ZenSuite" →
+  /** Canonical kebab id — the single identity that derives the app `namespace`, the id prefix
+   *  of short panel / taskbar-widget / capability ids, and joins this plugin's client surfaces
+   *  to its Python pack in the Inspector. Defaults to a slug of `plugin` ("ZenSuite" →
    *  "zensuite"). Set it (and the matching `[tool.zenkit] id` in pyproject.toml) to pin a
    *  stable identity across both runtimes. */
   id?: string
-  /** Display/group name shown in the ZenBar. */
+  /** Display/group name shown in the Start menu. */
   plugin: string
   /** Route namespace for this plugin's apps — each app's routing key becomes
    *  '<namespace>/<id>'. Defaults to `id` (a slug of `plugin`). Set it explicitly to pin a
@@ -168,20 +161,21 @@ export interface ZenPluginDef {
   panels?: ZenPanelDef[]
   /** Full-screen apps this plugin contributes (each a route namespace; covers the graph). */
   apps?: ZenAppDef[]
-  /** Permanent-taskbar widgets (orderable/toggleable in Zen Settings). */
+  /** Permanent-taskbar widgets (orderable/toggleable in Zen Settings). A short widget id is
+   *  auto-prefixed to `<id>:<widgetId>`, like panels. */
   taskbarWidgets?: TaskbarWidget[]
-  /** Theme packs to register (semantic token packs; data, not code). */
+  /** Theme packs to register (semantic token packs; data, not code). Ids are global and never
+   *  prefixed: a theme is picked by name, whichever plugin brought it. */
   themes?: ThemePack[]
-  /** Canvas backgrounds rendered behind the node graph (register only; activate via the API). */
+  /** Canvas backgrounds rendered behind the node graph (register only; activate via the API).
+   *  Ids are global and never prefixed, like themes. */
   backgrounds?: ZenBackground[]
   /** Channels to declare up front on the named media bus (so they're listed before any
-   *  publish). A bare name, or `{ name, label }`. */
+   *  publish). A bare name, or `{ name, label }`. Names are global and never prefixed: a
+   *  channel is how plugins share media, so every plugin addresses it by the same name. */
   channels?: (string | { name: string; label?: string })[]
   /** Canvas slot-link compositions: middle-click the matched slot → spawn + wire the node. */
   slotLinks?: { on: SlotMatch; spawn: string }[]
-  /** Node-widget renderers, keyed by widget `type` — registered cross-bundle so any node's
-   *  matching widget renders through it. */
-  widgetViews?: Record<string, WidgetView>
   /** Actions this plugin offers other plugins and agents (agents see each one as a tool). A
    *  short id ('search') becomes '<id>.search'; an id with a '.' is kept as given. */
   capabilities?: Capability[]
@@ -192,7 +186,7 @@ export interface ZenPluginDef {
    *  to register the sidebar tabs. */
   app?: unknown
   /** When ZenKit is absent, register ComfyUI sidebar tabs for the panels (needs
-   *  `app`). OFF by default — ZenKit's ZenBar is the launcher, and we don't clutter
+   *  `app`). OFF by default — ZenKit's Start menu is the launcher, and we don't clutter
    *  ComfyUI's sidebar otherwise. Ignored if `fallback` is given. */
   sidebarFallback?: boolean
   /** Custom fallback when ZenKit is absent (e.g. your own floating panel). Takes
@@ -222,16 +216,17 @@ function slug(s: string): string {
   return (s || '').toLowerCase().replace(/[^a-z0-9]+/g, '')
 }
 
-/** Auto-prefix a SHORT panel id with the plugin id (`viewer` → `zensuite:viewer`); leave an
- *  already-namespaced id (one containing ':') untouched, so existing full ids never shift. */
+/** Auto-prefix a SHORT panel or taskbar-widget id with the plugin id (`viewer` →
+ *  `zensuite:viewer`); leave an already-namespaced id (one containing ':') untouched. */
 function prefixId(pluginId: string, id: string): string {
   return id.includes(':') ? id : `${pluginId}:${id}`
 }
 
-/** Build the flat introspection record reported to `zen.plugins.register` (the Inspector's
- *  client-side half; Python nodes/routes are merged in by the Inspector via /zenkit/manifest). */
+/** The same rule for capabilities, with a '.' (`search` → `stash.search`). */
 const capabilityId = (plugin: string, id: string) => (id.includes('.') ? id : `${plugin}.${id}`)
 
+/** Build the flat introspection record reported to `zen.plugins.register` — the Inspector's
+ *  client-side half. It joins this to the pack on disk (`/zeninspector/inspect`) by `id`. */
 function buildRecord(def: ZenPluginDef, id: string, namespace: string): RegisteredPlugin {
   return {
     id,
@@ -252,7 +247,10 @@ function buildRecord(def: ZenPluginDef, id: string, namespace: string): Register
       namespace,
       routes: (a.routes ?? []).map((r) => r.path),
     })),
-    taskbarWidgets: (def.taskbarWidgets ?? []).map((w) => ({ id: w.id, label: w.label })),
+    taskbarWidgets: (def.taskbarWidgets ?? []).map((w) => ({
+      id: prefixId(id, w.id),
+      label: w.label,
+    })),
     themes: (def.themes ?? []).map((t) => ({ id: t.id, name: t.name })),
     backgrounds: (def.backgrounds ?? []).map((b) => ({ id: b.id, label: b.label })),
     channels: (def.channels ?? []).map((c) => (typeof c === 'string' ? c : c.name)),
@@ -261,9 +259,35 @@ function buildRecord(def: ZenPluginDef, id: string, namespace: string): Register
       slot: s.on.output ?? s.on.input ?? '',
       spawn: s.spawn,
     })),
-    widgetViews: Object.keys(def.widgetViews ?? {}),
     capabilities: (def.capabilities ?? []).map((c) => capabilityId(id, c.id)),
   }
+}
+
+/** The PanelContext a sidebar-tab fallback hands to `render`, so a panel behaves the same with or
+ *  without ZenKit: its state persists in localStorage under the panel id, and `expose` is
+ *  accepted but goes nowhere (there is no ZenKit to drive the panel through). */
+function fallbackContext(id: string): PanelContext {
+  const key = `zenkit:fallback:${id}`
+  let state: unknown = null
+  try {
+    state = JSON.parse(localStorage.getItem(key) ?? 'null')
+  } catch {
+    /* unreadable or blocked storage: start empty */
+  }
+  const ctx: PanelContext = {
+    id,
+    state,
+    setState: (next) => {
+      ctx.state = next
+      try {
+        localStorage.setItem(key, JSON.stringify(next))
+      } catch {
+        /* storage full or blocked: keep it for this session only */
+      }
+    },
+    expose: () => () => {},
+  }
+  return ctx
 }
 
 function registerSidebarTabs(appLike: unknown, panels: ZenPanelDef[]): void {
@@ -273,6 +297,7 @@ function registerSidebarTabs(appLike: unknown, panels: ZenPanelDef[]): void {
   if (!mgr?.registerSidebarTab) return
   for (const p of panels) {
     if (p.spawnOnly) continue // not user-openable on its own
+    let cleanup: void | (() => void)
     mgr.registerSidebarTab({
       id: p.id.replace(/[^a-z0-9]/gi, '-'),
       icon: p.sidebarIcon || p.icon || 'mdi mdi-application-outline',
@@ -280,7 +305,12 @@ function registerSidebarTabs(appLike: unknown, panels: ZenPanelDef[]): void {
       tooltip: p.title,
       type: 'custom',
       render: (el: HTMLElement) => {
-        p.render(el)
+        cleanup = p.render(el, fallbackContext(p.id))
+      },
+      // ComfyUI calls this when the tab's content is torn down.
+      destroy: () => {
+        if (typeof cleanup === 'function') cleanup()
+        cleanup = undefined
       },
     })
   }
@@ -288,7 +318,7 @@ function registerSidebarTabs(appLike: unknown, panels: ZenPanelDef[]): void {
 
 /** Plug a plugin into ZenKit in ONE call — the single registration point. Resolves ZenKit in
  *  either load order, then wires up every surface the def declares (panels, apps, taskbar
- *  widgets, themes, backgrounds, channels, slot-links, node-widget views),
+ *  widgets, themes, backgrounds, channels, slot-links, capabilities),
  *  reports the plugin to the introspection registry (so the Inspector sees it), logs a clean
  *  "<plugin> → connected (…)" line, and runs `setup` for anything imperative. If ZenKit never
  *  appears, runs the fallback (custom `fallback`, else auto sidebar tabs when `app` is given).
@@ -297,15 +327,11 @@ export async function registerZenPlugin(def: ZenPluginDef): Promise<ZenPluginHan
   const id = def.id ?? def.namespace ?? slug(def.plugin)
   const namespace = def.namespace ?? id
 
-  // Widget-view renderers live in a cross-bundle window global — register them regardless of
-  // ZenKit, since a node's widget needs its renderer even while the runtime is still connecting.
-  for (const [type, view] of Object.entries(def.widgetViews ?? {})) registerWidgetView(type, view)
-
   const zen = await whenZen(def.timeout ?? ZEN_CONNECT_TIMEOUT)
   if (zen) {
     const offs: Array<() => void> = []
 
-    // Panels — auto-prefix short ids; thread plugin identity for the ZenBar grouping.
+    // Panels — auto-prefix short ids; thread plugin identity for the Start-menu grouping.
     for (const p of def.panels ?? []) {
       const pid = prefixId(id, p.id)
       const pp: ZenPanelDef = { ...p, id: pid }
@@ -338,8 +364,9 @@ export async function registerZenPlugin(def: ZenPluginDef): Promise<ZenPluginHan
         }),
       )
     }
-    // Taskbar widgets (returns an unregister fn).
-    for (const w of def.taskbarWidgets ?? []) offs.push(zen.taskbar.register(w))
+    // Taskbar widgets — short ids prefixed like panels.
+    for (const w of def.taskbarWidgets ?? [])
+      offs.push(zen.taskbar.register({ ...w, id: prefixId(id, w.id) }))
     // Themes / backgrounds / channels register-only (no unregister in the contract — they're
     // process-lifetime by nature; the introspection record still tracks them).
     for (const t of def.themes ?? []) zen.theme.registerPack(t)
@@ -406,56 +433,6 @@ export async function registerZenPlugin(def: ZenPluginDef): Promise<ZenPluginHan
   return { connected: false, zen: null, unregister: () => {} }
 }
 
-export async function onBus(event: string, cb: BusHandler): Promise<() => void> {
-  const zen = await whenZen()
-  return zen ? zen.bus.on(event, cb) : () => {}
-}
-
-export async function emitBus(event: string, payload?: unknown): Promise<void> {
-  const zen = await whenZen()
-  zen?.bus.emit(event, payload)
-}
-
-/** White-label the taskbar Start button if ZenKit is present (no-op otherwise). `logo` takes an
- *  image URL/data URI or an MDI class ("mdi mdi-rocket-launch"); '' restores the default. A
- *  local override set in Zen Settings wins over this. */
-export async function setBranding(branding: { logo?: string; title?: string }): Promise<void> {
-  const zen = await whenZen()
-  zen?.setBranding(branding)
-}
-
-/** Register a permanent-taskbar widget (orderable/toggleable in Zen Settings). Returns an
- *  unregister fn; a no-op unregister if ZenKit isn't present. */
-export async function registerTaskbarWidget(widget: TaskbarWidget): Promise<() => void> {
-  const zen = await whenZen()
-  return zen ? zen.taskbar.register(widget) : () => {}
-}
-
-/** Override middle-click on a node slot → create `spawn` and auto-connect it to that slot.
- *  Returns an unregister fn; no-op if ZenKit isn't installed. */
-export async function registerSlotLink(spec: {
-  on: SlotMatch
-  spawn: string
-}): Promise<() => void> {
-  const zen = await whenZen()
-  return zen ? zen.graph.slotLink(spec) : () => {}
-}
-
-/** Override middle-click on a node slot with custom compose logic (build + wire nodes). */
-export async function onSlotMiddleClick(
-  match: SlotMatch,
-  handler: (ctx: SlotMiddleClickCtx) => void,
-): Promise<() => void> {
-  const zen = await whenZen()
-  return zen ? zen.graph.onSlotMiddleClick(match, handler) : () => {}
-}
-
-/** Subscribe to backend job updates if ZenKit is present (no-op otherwise). */
-export async function onJob(cb: (job: Job) => void): Promise<() => void> {
-  const zen = await whenZen()
-  return zen ? zen.jobs.on(cb) : () => {}
-}
-
 const NO_JOB: JobHandle = { id: '', update: () => {}, done: () => {}, fail: () => {} }
 
 /** Report progress for frontend work; it shows in the taskbar's Jobs widget. Resolves to a
@@ -483,53 +460,6 @@ export async function openViewer(
 export { mountVue } from './mountVue'
 export { useLightbox } from './useLightbox'
 export type { Lightbox } from './useLightbox'
-
-/** Launch a full-screen app (optionally at a route) if ZenKit is present, else null. */
-export async function openApp(
-  id: string,
-  opts?: { path?: string; query?: Record<string, string> },
-): Promise<AppHandle | null> {
-  const zen = await whenZen()
-  return zen ? zen.apps.open(id, opts) : null
-}
-
-/** Navigate the global app router by full path ('datasets/item/42'); '' = the graph.
- *  No-op when ZenKit is absent. */
-export async function navigateApp(
-  path: string,
-  opts?: { query?: Record<string, string>; replace?: boolean },
-): Promise<void> {
-  const zen = await whenZen()
-  zen?.apps.navigate(path, opts)
-}
-
-/** Subscribe to app/route changes if ZenKit is present. Returns an unsubscribe fn (no-op
- *  unsubscribe when ZenKit is absent). */
-export async function onAppChange(cb: (loc: AppLocation) => void): Promise<() => void> {
-  const zen = await whenZen()
-  return zen ? zen.apps.on(cb) : () => {}
-}
-
-/** Publish an image to a named channel (no-op when ZenKit is absent). */
-export async function publishChannel(channel: string, img: ChannelInput): Promise<void> {
-  const zen = await whenZen()
-  zen?.channels.publish(channel, img)
-}
-
-/** Declare a channel up front so it's visible (empty) before any image. No-op without ZenKit. */
-export async function declareChannel(channel: string, opts?: { label?: string }): Promise<void> {
-  const zen = await whenZen()
-  zen?.channels.declare(channel, opts)
-}
-
-/** Subscribe to a channel (or LAST_CHANNEL for the most recent). Returns an unsubscribe fn. */
-export async function onChannel(
-  channel: string,
-  cb: (img: ChannelImage) => void,
-): Promise<() => void> {
-  const zen = await whenZen()
-  return zen ? zen.channels.subscribe(channel, cb) : () => {}
-}
 
 /** MIME type carrying a draggable image for ZenKit's drag-to-graph bridge. */
 export const ZEN_IMAGE_MIME = 'application/x-zenkit-image'
@@ -629,10 +559,11 @@ export interface DroppedImage {
 }
 
 const VIDEO_EXT = /\.(mp4|webm|mov|mkv|avi|m4v)(\?|#|$)/i
-const AUDIO_EXT = /\.(mp3|wav|flac|ogg|oga|m4a|aac)(\?|#|$)/i
+const AUDIO_EXT = /\.(mp3|wav|flac|ogg|oga|m4a|aac|opus)(\?|#|$)/i
 
 /** Guess the media kind from a filename or url. A `data:` URI is read from its media type,
- *  since it has no extension to go on. Defaults to 'image', matching ChannelImage. */
+ *  since it has no extension to go on. Anything else, GIF included, is an image (the default,
+ *  matching ChannelImage). */
 export function mediaKindOf(nameOrUrl: string): 'image' | 'video' | 'audio' {
   const s = nameOrUrl || ''
   const data = /^data:(image|video|audio)\//i.exec(s)
@@ -758,7 +689,7 @@ export function setMediaListDragData(e: DragEvent, list: MediaListRef): void {
  *  as `readImageDragData`. The drop's data is read before anything is awaited — a DataTransfer
  *  goes blank once its event returns — so call this from the drop handler itself. If the list
  *  can't be fetched, the drop's single picture (if any) is returned instead. */
-export async function readMediaDrop(
+export async function readMediaListDrop(
   e: DragEvent,
 ): Promise<{ title?: string; items: DroppedImage[] }> {
   const single = readImageDragData(e)
@@ -803,21 +734,4 @@ function safeJson(raw: string): Record<string, unknown> | null {
   } catch {
     return null
   }
-}
-
-// Cross-plugin widget renderer registry (window-global so it spans separate bundles).
-export type WidgetViewCtx = { widget: any; node: any }
-export type WidgetView = (container: HTMLElement, ctx: WidgetViewCtx) => (() => void) | void
-
-function widgetViewRegistry(): Map<string, WidgetView> {
-  const w = window as any
-  return (w.__zenkitWidgetViews ??= new Map<string, WidgetView>())
-}
-/** Register a renderer for a widget `type` (e.g. a custom node's widget). */
-export function registerWidgetView(type: string, view: WidgetView): void {
-  if (type && typeof view === 'function') widgetViewRegistry().set(type, view)
-}
-/** Get a registered widget renderer, or null. */
-export function getWidgetView(type: string): WidgetView | null {
-  return widgetViewRegistry().get(type) ?? null
 }

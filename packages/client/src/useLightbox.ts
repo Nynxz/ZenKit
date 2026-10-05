@@ -1,7 +1,7 @@
 import { getCurrentScope, onScopeDispose, readonly, ref } from 'vue'
 import type { DeepReadonly, Ref } from 'vue'
 
-import type { ViewerHandle, ViewerItem } from '@nynxz/zenkit-types'
+import type { ViewerHandle, ViewerItem } from './contract'
 import { openViewer } from './index'
 
 export interface Lightbox {

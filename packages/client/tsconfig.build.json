@@ -7,5 +7,5 @@
     "outDir": "dist",
     "rootDir": "src"
   },
-  "include": ["src", "../types/src/comfy.d.ts"]
+  "include": ["src", "../client/comfy.d.ts"]
 }

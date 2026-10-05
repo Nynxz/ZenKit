@@ -15,8 +15,8 @@ export default defineConfig({
     },
     rollupOptions: {
       // @comfy/app is provided by ComfyUI's page and re-externalised by the consuming
-      // pack's build. zenkit-types is pure types — nothing to emit at runtime.
-      external: ['@comfy/app', '@nynxz/zenkit-types'],
+      // pack's build. vue is a peer: bundling it would give the pack a second Vue next to its own.
+      external: ['vue', '@comfy/app'],
     },
   },
 })

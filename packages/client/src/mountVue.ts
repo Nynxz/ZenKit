@@ -1,6 +1,6 @@
 import { createApp } from 'vue'
 import type { Component } from 'vue'
-import type { PanelContext } from '@nynxz/zenkit-types'
+import type { PanelContext } from './contract'
 
 function declaresCtx(component: Component): boolean {
   const props = (component as { props?: unknown }).props
