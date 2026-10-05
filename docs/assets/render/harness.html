@@ -1,0 +1,254 @@
+<!doctype html>
+<meta charset="utf-8" />
+<body style="margin: 0; background: #000">
+  <canvas id="c"></canvas>
+  <script>
+    // Seeded RNG so every render is identical.
+    let seed = 1337
+    Math.random = () => {
+      seed = (seed * 1664525 + 1013904223) >>> 0
+      return seed / 4294967296
+    }
+    const GLYPHS = 'ｱｲｳｴｵｶｷｸｹｺｻｼｽｾｿﾀﾁﾂﾃﾄﾅﾆﾇﾈﾉﾊﾋﾌﾍﾎﾏﾐﾑﾒﾓﾔﾕﾖﾗﾘﾙﾚﾛﾜﾝ0123456789:+=*<>'
+    const rg = () => GLYPHS[(Math.random() * GLYPHS.length) | 0]
+    const petal = (h, w) =>
+      `M0,0 C${w},${-h * 0.3} ${w * 0.7},${-h * 0.78} 0,${-h} C${-w * 0.7},${-h * 0.78} ${-w},${-h * 0.3} 0,0Z`
+    const hex = (h) => [1, 3, 5].map((i) => parseInt(h.slice(i, i + 2), 16))
+    const mix = (a, b, k) => a.map((v, i) => Math.round(v + (b[i] - v) * k))
+    const rgba = (c, a) => `rgba(${c[0]},${c[1]},${c[2]},${a})`
+    const clamp = (v, a = 0, b = 1) => Math.max(a, Math.min(b, v))
+    const WORD_FONT = '700 84px "JetBrains Mono"'
+
+    function palette(mode, rain) {
+      const d = mode === 'dark'
+      const P = d
+        ? {
+            bg: '#0c0a13',
+            glow: '#2a1740',
+            ink: '#f1ecfa',
+            sub: '#a99cc2',
+            back: '#7d55b8',
+            mid: '#a875e6',
+            front: '#b680f2',
+            tip: '#f4abd4',
+            water: '#5d7fe6',
+            head: '#ffffff',
+          }
+        : {
+            bg: '#f8f5fc',
+            glow: '#ead9f6',
+            ink: '#251c38',
+            sub: '#6a5d82',
+            back: '#c3a6ea',
+            mid: '#9c63da',
+            front: '#8a4dd2',
+            tip: '#e27cb4',
+            water: '#5677d8',
+            head: '#14101e',
+          }
+      P.rain = rain === 'matrix' ? (d ? '#3dff86' : '#14894a') : d ? '#8f6cd0' : '#9b7bd0'
+      for (const k in P) P[k] = hex(P[k])
+      return P
+    }
+    const CFG = {
+      banner: {
+        W: 1280,
+        H: 320,
+        cell: 10,
+        lotus: { x: 250, y: 236, s: 2.05 },
+        ripples: [
+          [130, 12, 8],
+          [210, 20, 18],
+        ],
+        word: { x: 500, y: 168 },
+        tagline: 'the calm UX layer for ComfyUI',
+      },
+      // GitHub social preview (1280×640): lotus left, wordmark right, a little larger.
+      social: {
+        W: 1280,
+        H: 640,
+        cell: 12,
+        lotus: { x: 330, y: 452, s: 3.25 },
+        ripples: [
+          [170, 14, 10],
+          [260, 24, 24],
+        ],
+        word: { x: 610, y: 330 },
+        wordFont: '700 116px "JetBrains Mono"',
+        tagSize: 28,
+        tagline: 'the calm UX layer for ComfyUI',
+      },
+      mark: {
+        W: 512,
+        H: 512,
+        cell: 12,
+        lotus: { x: 256, y: 352, s: 3.3 },
+        ripples: [
+          [150, 12, 12],
+          [220, 20, 30],
+        ],
+        word: null,
+      },
+    }
+    const TRAIL = 14,
+      END = 11.5,
+      FADE = 0.9
+    window.TOTAL = END + FADE + 0.3
+
+    let S
+    window.setup = (name, mode, rain, scale) => {
+      seed = 1337
+      const cfg = CFG[name],
+        { W, H, cell } = cfg
+      const canvas = document.getElementById('c')
+      canvas.width = W * scale
+      canvas.height = H * scale
+      const ctx = canvas.getContext('2d')
+      const cols = Math.ceil(W / cell),
+        rows = Math.ceil(H / cell)
+      const off = document.createElement('canvas')
+      off.width = W
+      off.height = H
+      const o = off.getContext('2d')
+      const { x, y, s } = cfg.lotus
+      const paint = (layer, d, rot) => {
+        o.setTransform(s, 0, 0, s, x, y)
+        o.rotate((rot * Math.PI) / 180)
+        o.fillStyle = `rgb(${layer * 50},0,0)`
+        o.fill(new Path2D(d))
+      }
+      o.lineWidth = 2
+      o.strokeStyle = 'rgb(200,0,0)'
+      for (const [rx, ry, dy] of cfg.ripples) {
+        o.beginPath()
+        o.ellipse(x, y + dy, rx, ry, 0, 0, Math.PI * 2)
+        o.stroke()
+      }
+      paint(1, petal(54, 24), -70)
+      paint(1, petal(54, 24), 70)
+      paint(2, petal(66, 26), -36)
+      paint(2, petal(66, 26), 36)
+      paint(3, petal(78, 28), 0)
+      const px = o.getImageData(0, 0, W, H).data
+      const top = y - 78 * s
+      const cells = []
+      for (let r = 0; r < rows; r++)
+        for (let c = 0; c < cols; c++) {
+          let m = 0
+          for (let yy = r * cell; yy < Math.min(H, (r + 1) * cell); yy += 2)
+            for (let xx = c * cell; xx < Math.min(W, (c + 1) * cell); xx += 2)
+              m = Math.max(m, px[(yy * W + xx) * 4])
+          cells.push({
+            layer: Math.round(m / 50),
+            g: rg(),
+            locked: -1,
+            k: clamp((y - (r + 0.5) * cell) / (y - top)),
+          })
+        }
+      const colState = Array.from({ length: cols }, () => ({
+        delay: Math.random() * 1.3,
+        speed: 16 + Math.random() * 14,
+        ambient: false,
+      }))
+      let xs = []
+      if (cfg.word) {
+        ctx.font = cfg.wordFont || WORD_FONT
+        for (let i = 0; i < 6; i++) xs.push(ctx.measureText('ZenKit'.slice(0, i)).width)
+      }
+      S = { cfg, ctx, cols, rows, cells, colState, P: palette(mode, rain), scale, xs }
+    }
+
+    window.frame = (t, settled) => {
+      const { cfg, ctx, cols, rows, cells, colState, P, scale, xs } = S
+      const { W, H, cell } = cfg,
+        { x, y, s } = cfg.lotus
+      ctx.setTransform(scale, 0, 0, scale, 0, 0)
+      ctx.globalAlpha = 1
+      ctx.fillStyle = rgba(P.bg, 1)
+      ctx.fillRect(0, 0, W, H)
+      const g = ctx.createRadialGradient(x, y - 40 * s, 10, x, y - 40 * s, 120 * s)
+      g.addColorStop(0, rgba(P.glow, 1))
+      g.addColorStop(1, rgba(P.glow, 0))
+      ctx.fillStyle = g
+      ctx.fillRect(0, 0, W, H)
+      ctx.globalAlpha = settled ? 1 : 1 - clamp((t - END) / FADE)
+      ctx.font = `500 ${cell * 1.02}px "JetBrains Mono", "Noto Sans CJK JP", monospace`
+      ctx.textBaseline = 'top'
+      ctx.textAlign = 'center'
+      for (let c = 0; c < cols; c++) {
+        const col = colState[c]
+        const head = (t - col.delay) * col.speed
+        if (head - TRAIL > rows) {
+          col.delay = t + 0.4 + Math.random() * 5
+          col.speed = 7 + Math.random() * 9
+          col.ambient = true
+        }
+        for (let r = 0; r < rows; r++) {
+          const cl = cells[r * cols + c]
+          const d = head - r
+          const inRain = !settled && d >= 0 && d < TRAIL
+          if (cl.layer && cl.locked < 0 && (d >= 0 || settled)) cl.locked = settled ? -10 : t
+          if (!settled && Math.random() < (inRain ? 0.08 : 0.004)) cl.g = rg()
+          const cx = c * cell + cell / 2,
+            cy = r * cell
+          if ((cl.layer && cl.locked > -2) || cl.locked === -10) {
+            if (!cl.layer) continue
+            const k = clamp((t - cl.locked) / 0.7)
+            const target =
+              cl.layer === 4
+                ? P.water
+                : cl.layer === 1
+                  ? P.back
+                  : cl.layer === 2
+                    ? P.mid
+                    : mix(P.front, P.tip, cl.k * cl.k)
+            let c3 = mix(P.rain, target, k)
+            if (inRain && d < 2) c3 = mix(c3, P.head, 0.55)
+            ctx.fillStyle = rgba(
+              c3,
+              cl.layer === 4 ? 0.55 : cl.layer === 1 ? 0.62 : cl.layer === 2 ? 0.85 : 1,
+            )
+            ctx.fillText(cl.g, cx, cy)
+          } else if (inRain) {
+            ctx.fillStyle = rgba(
+              d < 1 ? mix(P.rain, P.head, 0.7) : P.rain,
+              (1 - d / TRAIL) * (col.ambient ? 0.2 : 0.9),
+            )
+            ctx.fillText(cl.g, cx, cy)
+          }
+        }
+      }
+      if (cfg.word) {
+        const w = cfg.word,
+          start = 2.6,
+          text = 'ZenKit'
+        ctx.textAlign = 'left'
+        ctx.textBaseline = 'alphabetic'
+        ctx.font = cfg.wordFont || WORD_FONT
+        for (let i = 0; i < 6; i++) {
+          const lockAt = start + 0.35 + i * 0.13
+          if (!settled && t < start + i * 0.05) continue
+          const done = settled || t >= lockAt
+          ctx.fillStyle = rgba(done ? P.ink : P.rain, done ? 1 : 0.85)
+          ctx.fillText(done ? text[i] : rg(), w.x + xs[i], w.y)
+        }
+        const tag = cfg.tagline,
+          tStart = start + 1.3
+        const n = settled ? tag.length : clamp(Math.floor((t - tStart) * 34), 0, tag.length)
+        const ts = cfg.tagSize || 21 // tagline size; offsets below scale with it
+        ctx.font = `400 ${ts}px "JetBrains Mono", monospace`
+        ctx.fillStyle = rgba(P.sub, 1)
+        const shown = '> ' + tag.slice(0, n)
+        if (settled || t > tStart - 0.3) {
+          ctx.fillText(shown, w.x + 4, w.y + ts * 2.2)
+          if (settled || Math.floor(t * 2.2) % 2 === 0) {
+            const cw = ctx.measureText(shown).width
+            ctx.fillStyle = rgba(P.rain, 0.9)
+            ctx.fillRect(w.x + 8 + cw, w.y + ts * 1.43, ts * 0.52, ts * 0.95)
+          }
+        }
+      }
+      return document.getElementById('c').toDataURL('image/png')
+    }
+  </script>
+</body>
