@@ -3,6 +3,7 @@ node_modules
 dist
 web
 js
+plugins/ComfyUI-ZenKit/runtime
 .vite
 pnpm-lock.yaml
 *.tsbuildinfo

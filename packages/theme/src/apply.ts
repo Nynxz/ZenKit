@@ -1,4 +1,4 @@
-import type { ThemeMode, ThemePack } from '@nynxz/zenkit-types'
+import type { ThemeMode, ThemePack } from '@nynxz/zenkit-client'
 import { getPack } from './registry'
 import { BASE_TOKENS } from './base'
 

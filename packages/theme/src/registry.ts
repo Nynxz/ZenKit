@@ -1,4 +1,4 @@
-import type { ThemePack } from '@nynxz/zenkit-types'
+import type { ThemePack } from '@nynxz/zenkit-client'
 import { parsePack } from './pack'
 
 // Packs are registered at runtime (loaded from theme JSON files / user themes),

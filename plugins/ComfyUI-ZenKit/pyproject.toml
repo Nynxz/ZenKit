@@ -15,8 +15,9 @@ Repository = "https://github.com/Nynxz/ZenKit"
 PublisherId = "nynxz"
 DisplayName = "ComfyUI-ZenKit"
 # The built frontend must ship in the registry package. It is gitignored, so CI
-# builds and stages it — see .github/workflows/publish-registry.yml.
-includes = ["js"]
+# builds and stages it — see .github/workflows/publish-registry.yml. `runtime/` is the shared
+# vue / client / ui bundle every other Zen plugin loads, so ZenKit ships it too.
+includes = ["js", "runtime"]
 
 [tool.setuptools.package-data]
 "*" = ["*.*"]

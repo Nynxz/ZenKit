@@ -1,6 +1,6 @@
 name: publish-npm
 
-# The four published packages. Manual: a version bump is a decision.
+# The three published packages. Manual: a version bump is a decision.
 on:
   workflow_dispatch:
     inputs:
@@ -39,19 +39,17 @@ jobs:
       # pnpm packs, npm publishes. pnpm rewrites `workspace:*` to real versions in the tarball
       # (npm would ship them verbatim and publish something nobody can install), but pnpm has no
       # OIDC support — trusted publishing lives in the npm CLI. So each half does what only it can.
-      #
-      # Order matters: zenkit-types before zenkit-client, which depends on it.
       - name: Pack
         run: |
           mkdir -p dist-tarballs
-          for p in types ui nodekit client; do
+          for p in ui nodekit client; do
             (cd "packages/$p" && pnpm pack --pack-destination "$GITHUB_WORKSPACE/dist-tarballs")
           done
           ls -la dist-tarballs
 
       - name: Publish
         run: |
-          for p in types ui nodekit client; do
+          for p in ui nodekit client; do
             tgz=$(ls dist-tarballs/nynxz-zenkit-$p-*.tgz)
             if [ "${{ inputs.dry-run }}" = "true" ]; then
               npm publish "$tgz" --access public --dry-run

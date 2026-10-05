@@ -2,21 +2,25 @@
   "name": "@nynxz/zenkit-nodekit",
   "version": "0.2.0",
   "type": "module",
-  "description": "Everything a ComfyUI node pack's frontend needs: node declaration, widget mounting, the Vite build preset, and the ambient @comfy/* types.",
+  "description": "Everything a ComfyUI node pack needs from ZenKit: node declaration, widget mounting, the Vite build preset, the ambient @comfy/* types, and the vendored Python helpers (zenkit-nodekit sync).",
   "exports": {
     ".": {
-      "types": "./dist/index.d.ts",
+      "types": "./dist/types/nodekit/src/index.d.ts",
       "import": "./dist/index.js"
     },
     "./vite": {
-      "types": "./dist/vite.d.ts",
+      "types": "./dist/types/nodekit/src/vite.d.ts",
       "import": "./dist/vite.js"
     },
     "./comfy.d.ts": "./comfy.d.ts",
     "./tsconfig.pack.json": "./tsconfig.pack.json"
   },
+  "bin": {
+    "zenkit-nodekit": "./dist/cli.js"
+  },
   "scripts": {
-    "build": "vite build && vue-tsc -p tsconfig.build.json",
+    "build": "pnpm run comfy-types && vite build && vue-tsc -p tsconfig.build.json",
+    "comfy-types": "node -e \"require('fs').copyFileSync('../client/comfy.d.ts', 'comfy.d.ts')\"",
     "typecheck": "vue-tsc --noEmit",
     "prepublishOnly": "pnpm build"
   },
@@ -27,19 +31,19 @@
   },
   "devDependencies": {
     "@vitejs/plugin-vue": "^5.2.4",
-    "vite": "^6.4.3",
-    "@nynxz/zenkit-types": "workspace:*"
+    "vite": "^6.4.3"
   },
   "license": "MIT",
   "files": [
     "dist",
+    "python",
     "comfy.d.ts",
     "tsconfig.pack.json",
     "README.md"
   ],
   "main": "./dist/index.js",
   "module": "./dist/index.js",
-  "types": "./dist/index.d.ts",
+  "types": "./dist/types/nodekit/src/index.d.ts",
   "publishConfig": {
     "access": "public"
   },

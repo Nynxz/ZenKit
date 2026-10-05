@@ -8,7 +8,15 @@ on:
       plugin:
         description: Which plugin to publish
         type: choice
-        options: [all, ComfyUI-ZenKit, ComfyUI-ZenSuite, ComfyUI-ZenInspector]
+        options:
+          [
+            all,
+            ComfyUI-ZenKit,
+            ComfyUI-ZenSuite,
+            ComfyUI-ZenInspector,
+            ComfyUI-ZenAgent,
+            ComfyUI-ZenExample,
+          ]
         default: all
 
 jobs:
@@ -24,7 +32,7 @@ jobs:
           PLUGIN: ${{ inputs.plugin }}
         run: |
           if [ "$PLUGIN" = all ]; then
-            echo 'plugins=["ComfyUI-ZenKit","ComfyUI-ZenSuite","ComfyUI-ZenInspector"]' >> "$GITHUB_OUTPUT"
+            echo 'plugins=["ComfyUI-ZenKit","ComfyUI-ZenSuite","ComfyUI-ZenInspector","ComfyUI-ZenAgent","ComfyUI-ZenExample"]' >> "$GITHUB_OUTPUT"
           else
             echo "plugins=[\"$PLUGIN\"]" >> "$GITHUB_OUTPUT"
           fi
@@ -65,8 +73,11 @@ jobs:
 
       # comfy-cli archives git-TRACKED files only, and js/ is gitignored. Staging is enough —
       # `git ls-files` lists the index, so nothing is committed or pushed.
+      # ComfyUI-ZenKit also builds runtime/, the shared bundle the other plugins import.
       - name: Stage the built bundle so the archive includes it
-        run: git add -f "plugins/$PLUGIN/js"
+        run: |
+          git add -f "plugins/$PLUGIN/js"
+          if [ -d "plugins/$PLUGIN/runtime" ]; then git add -f "plugins/$PLUGIN/runtime"; fi
 
       - run: pip install comfy-cli
 

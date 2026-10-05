@@ -3,7 +3,6 @@
   "compilerOptions": {
     "types": [],
     "paths": {
-      "@nynxz/zenkit-types": ["../../packages/types/src/index.ts"],
       "@nynxz/zenkit-theme": ["../../packages/theme/src/index.ts"],
       "@nynxz/zenkit-ui": ["../../packages/ui/src/index.ts"],
       "@nynxz/zenkit-core": ["../../packages/core/src/index.ts"],
@@ -12,5 +11,5 @@
       "@/*": ["./src/*"]
     }
   },
-  "include": ["src", "../../packages/types/src/comfy.d.ts"]
+  "include": ["src", "../../packages/client/comfy.d.ts"]
 }

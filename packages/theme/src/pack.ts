@@ -1,4 +1,4 @@
-import type { ThemePack } from '@nynxz/zenkit-types'
+import type { ThemePack } from '@nynxz/zenkit-client'
 
 export type { ThemePack }
 

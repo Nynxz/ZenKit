@@ -11,9 +11,11 @@
     "typecheck": "vue-tsc --noEmit"
   },
   "dependencies": {
-    "@nynxz/zenkit-types": "workspace:*",
     "@nynxz/zenkit-theme": "workspace:*",
     "@nynxz/zenkit-ui": "workspace:*"
+  },
+  "devDependencies": {
+    "@nynxz/zenkit-client": "workspace:*"
   },
   "peerDependencies": {
     "vue": "^3.5.0"

@@ -22,6 +22,8 @@ export default defineConfig(
     '**/dist/**',
     '**/web/**',
     '**/js/**',
+    // ComfyUI-ZenKit's shared runtime bundles (vue / client / ui) that the other plugins load.
+    'plugins/ComfyUI-ZenKit/runtime/**',
     '**/.vite/**',
     'themes/**',
     'plugins/*/themes/**',

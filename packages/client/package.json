@@ -14,9 +14,6 @@
     "typecheck": "tsc --noEmit",
     "prepublishOnly": "pnpm build"
   },
-  "dependencies": {
-    "@nynxz/zenkit-types": "workspace:*"
-  },
   "publishConfig": {
     "access": "public"
   },
