@@ -36,10 +36,9 @@
 
     <div class="body">
       <div class="ob-scroll" ref="scrollEl" @scroll="onScroll">
-        <div v-if="!filtered.length" class="empty">
-          <i class="mdi mdi-image-multiple-outline"></i>
-          <p>{{ loading ? 'scanning ' + root + '…' : 'no ' + root + ' assets found' }}</p>
-        </div>
+        <ZenEmpty v-if="!filtered.length" class="empty">
+          {{ loading ? 'scanning ' + root + '…' : 'no ' + root + ' assets found' }}
+        </ZenEmpty>
         <div v-else class="ob-pad" :style="{ height: totalH + 'px' }">
           <div class="ob-grid" :style="gridStyle">
             <button
@@ -137,6 +136,7 @@ import {
   ZenIconButton,
   ZenPopover,
   ZenMenuItem,
+  ZenEmpty,
 } from '@nynxz/zenkit-ui'
 import { setImageDragData, openViewer, useJob, type ViewerItem } from '@nynxz/zenkit-client'
 import { app } from '@comfy/app'
@@ -794,20 +794,6 @@ function openSelectedThenClose() {
   pointer-events: none;
 }
 .empty {
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  justify-content: center;
-  gap: 8px;
   min-height: 240px;
-  color: var(--zen-muted, #9aa0aa);
-}
-.empty .mdi {
-  font-size: 30px;
-  opacity: 0.5;
-}
-.empty p {
-  margin: 0;
-  font-size: 12px;
 }
 </style>

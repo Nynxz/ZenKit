@@ -1,12 +1,15 @@
 import { app } from '@comfy/app'
 // The pack version, read from package.json so it cannot drift from what ships.
 import { version } from '../package.json'
+// The family tile from docs/assets/render/brand.mjs; the build inlines it as a data URI.
+import logo from './logo.svg'
 import { getZenKit, mountVue, registerZenPlugin, type ZenPanelDef } from '@nynxz/zenkit-client'
 import { viewerCapabilities } from '@/lib/viewerCapabilities'
 import MediaViewer from '@/components/MediaViewer.vue'
 import AssetBrowser from '@/components/AssetBrowser.vue'
 import TimerPanel from '@/components/TimerPanel.vue'
 import SyncControls from '@/components/SyncControls.vue'
+import { mountHeaderPopover } from '@/lib/headerPopover'
 import ChannelPreview from '@/components/ChannelPreview.vue'
 import { mountNodeControls } from '@/lib/mountControls'
 
@@ -62,6 +65,7 @@ app.registerExtension({
       id: 'zensuite',
       plugin: 'ZenSuite',
       version,
+      logo,
       panels: PANELS,
       capabilities: viewerCapabilities(() => getZenKit()!),
     })
@@ -72,7 +76,11 @@ app.registerExtension({
   // and fires nodeCreated afterwards, so this.widgets is ready here.
   nodeCreated(node: any) {
     const cls = node?.comfyClass ?? node?.type
-    if (cls === 'zen.Channel.SyncImage') {
+    if (
+      cls === 'zen.Channel.SyncImage' ||
+      cls === 'zen.Channel.Sync' ||
+      cls === 'zen.Channel.Save'
+    ) {
       try {
         const channelW = node.widgets?.find((w: any) => w.name === 'channel')
         const enableW = node.widgets?.find((w: any) => w.name === 'enable')
@@ -81,10 +89,14 @@ app.registerExtension({
         hideWidget(channelW)
         hideWidget(enableW)
         if (channelW && enableW) {
-          mountNodeControls(node, 'zsync_controls', SyncControls, {
-            channelWidget: channelW,
-            enableWidget: enableW,
-          })
+          // In a popover from the header cog: a widget in the body would take a share of the
+          // node's height, which the media preview should have to itself.
+          mountHeaderPopover(
+            node,
+            SyncControls,
+            { channelWidget: channelW, enableWidget: enableW },
+            { icon: 'mdi mdi-cog', text: '⚙', title: 'Sync settings (channel / publish)' },
+          )
         }
       } catch (e) {
         console.error('[ZenSuite] ZenSyncImage widget setup failed', e)

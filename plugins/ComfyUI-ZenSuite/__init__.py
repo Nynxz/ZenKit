@@ -15,7 +15,7 @@ from __future__ import annotations
 
 from comfy_api.latest import ComfyExtension, io
 
-from .channel_node import ZenSyncImage
+from .channel_node import ZenSave, ZenSync, ZenSyncImage
 from .preview_node import ZenChannelPreview
 
 # Importing registers the Asset Browser's routes on PromptServer.
@@ -27,7 +27,7 @@ except Exception as e:  # noqa: BLE001 - optional; never block loading
 
 class ZenSuiteExtension(ComfyExtension):
     async def get_node_list(self) -> list[type[io.ComfyNode]]:
-        return [ZenChannelPreview, ZenSyncImage]
+        return [ZenChannelPreview, ZenSave, ZenSync, ZenSyncImage]
 
 
 async def comfy_entrypoint() -> ComfyExtension:

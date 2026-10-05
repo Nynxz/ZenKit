@@ -1,31 +1,32 @@
 <template>
-  <div ref="rootEl" class="zsync">
-    <div v-if="showOpts" class="zsync-panel">
-      <!-- compact: channel + publish on one row -->
-      <div class="zsync-row">
-        <ZenInput
-          class="zsync-channel"
-          :model-value="channel"
-          placeholder="channel"
-          sm
-          @update:model-value="setChannel(String($event))"
-        />
-        <ZenSwitch
-          :model-value="enable"
-          title="Publish to this channel"
-          on-icon="mdi mdi-access-point"
-          off-icon="mdi mdi-access-point-off"
-          @update:model-value="setEnable"
-        />
-      </div>
+  <div class="zsync">
+    <div class="zsync-row">
+      <ZenInput
+        class="zsync-channel"
+        :model-value="channel"
+        placeholder="channel"
+        sm
+        @update:model-value="setChannel(String($event))"
+      />
+      <ZenSwitch
+        :model-value="enable"
+        title="Publish to this channel"
+        on-icon="mdi mdi-access-point"
+        off-icon="mdi mdi-access-point-off"
+        @update:model-value="setEnable"
+      />
     </div>
+    <p class="zsync-hint">
+      {{ enable ? 'Publishing to' : 'Not publishing to' }} channel “{{ channel || 'default' }}”.
+    </p>
   </div>
 </template>
 
 <script setup lang="ts">
-import { onBeforeUnmount, onMounted, ref, watch } from 'vue'
+// A Sync / Save node's channel and publish switch, shown in a popover from the node's header
+// cog (see lib/headerPopover.ts). The values live in the node's hidden widgets.
+import { onMounted, ref } from 'vue'
 import { ZenInput, ZenSwitch } from '@nynxz/zenkit-ui'
-import { addNodeHeaderButton, type NodeHeaderButtonHandle } from '@/lib/headerButton'
 
 interface Widget {
   value: unknown
@@ -37,8 +38,6 @@ interface NodeLike {
 }
 const props = defineProps<{ node: NodeLike; channelWidget: Widget; enableWidget: Widget }>()
 
-const rootEl = ref<HTMLElement | null>(null)
-const showOpts = ref(false)
 const channel = ref(
   typeof props.channelWidget.value === 'string' ? props.channelWidget.value : 'default',
 )
@@ -72,22 +71,10 @@ function resync() {
   enable.value = props.enableWidget.value !== false
 }
 
-let cog: NodeHeaderButtonHandle | null = null
 onMounted(() => {
   resync()
   requestAnimationFrame(resync)
-  cog = addNodeHeaderButton(props.node, rootEl.value, {
-    icon: 'mdi mdi-cog',
-    text: '⚙',
-    title: 'Sync settings (channel / publish)',
-    onClick: () => {
-      showOpts.value = !showOpts.value
-    },
-  })
-  cog.setActive(showOpts.value)
 })
-watch(showOpts, (v) => cog?.setActive(v))
-onBeforeUnmount(() => cog?.destroy())
 </script>
 
 <style scoped>
@@ -97,11 +84,15 @@ onBeforeUnmount(() => cog?.destroy())
   font-size: 12px;
   color: var(--zen-text, #e5e5ea);
 }
-.zsync-panel {
+.zsync {
   display: flex;
   flex-direction: column;
   gap: 6px;
-  padding: 6px 4px 4px;
+}
+.zsync-hint {
+  margin: 0;
+  color: var(--zen-muted, #9aa0aa);
+  font-size: 11px;
 }
 .zsync-row {
   display: flex;

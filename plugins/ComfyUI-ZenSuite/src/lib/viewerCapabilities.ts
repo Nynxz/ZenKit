@@ -20,8 +20,8 @@ async function command(handle: PanelHandle, name: string, args: Record<string, u
 
 export function viewerCapabilities(zen: () => ZenKitApi): Capability[] {
   const openViewer = (title?: string) => {
-    const type = zen().panels.registered().find((p) => p.id === VIEWER)!
-    const handle = type.open()
+    const handle = zen().panels.open(VIEWER)
+    if (!handle) throw new Error('The Media Viewer is not registered.')
     if (title) handle.setTitle(title)
     return handle
   }

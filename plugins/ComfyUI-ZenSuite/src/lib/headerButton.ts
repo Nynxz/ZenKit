@@ -15,13 +15,17 @@
  * `title_buttons`; Nodes 1.0 is the reverse (canvas title buttons, no header DOM).
  * We register both, so the right one shows on each — and the DOM side self-heals
  * across 1.0<->2.0 switches (the header DOM is destroyed/recreated).
+ *
+ * On 2.0 the button joins the header's own row of buttons (just before ComfyUI's
+ * advanced-inputs toggle), so it never sits on top of them. `onClick` is told where
+ * the button is — its element on 2.0, the pointer on 1.0 — to anchor a popover to.
  */
 
 export interface NodeHeaderButtonOptions {
   icon: string // mdi class for the Nodes 2.0 DOM button
   text?: string // glyph for the Nodes 1.0 canvas title button (default cog)
   title?: string
-  onClick: () => void
+  onClick: (at: HTMLElement | { x: number; y: number }) => void
   /** Background for the active state on the 1.0 canvas button. */
   activeColor?: string
 }
@@ -31,7 +35,24 @@ export interface NodeHeaderButtonHandle {
   setActive(on: boolean): void
 }
 
+/** Where the pointer last went down — the 1.0 canvas button has no element to anchor to. */
+const lastPointer = { x: 0, y: 0 }
+let tracking = false
+function trackPointer() {
+  if (tracking) return
+  tracking = true
+  window.addEventListener(
+    'pointerdown',
+    (e) => {
+      lastPointer.x = e.clientX
+      lastPointer.y = e.clientY
+    },
+    { capture: true, passive: true },
+  )
+}
+
 interface LiteNode {
+  id?: number | string
   addTitleButton?: (o: Record<string, unknown>) => { bgColor?: string; fgColor?: string }
   onTitleButtonClick?: (b: unknown, c: unknown) => void
   title_buttons?: { bgColor?: string; fgColor?: string }[]
@@ -42,14 +63,17 @@ interface LiteNode {
 const ACCENT = '#6366f1'
 const LG_IDLE_BG = '#2a2a30'
 
-function findHeader(start: HTMLElement | null): HTMLElement | null {
+function findHeader(start: HTMLElement | null, node: LiteNode): HTMLElement | null {
   let el: HTMLElement | null = start
   for (let i = 0; el && i < 12; i++) {
     const h = el.querySelector?.('.lg-node-header') as HTMLElement | null
     if (h) return h
     el = el.parentElement
   }
-  return null
+  if (node.id === undefined) return null
+  return document.querySelector<HTMLElement>(
+    `[data-node-id="${CSS.escape(String(node.id))}"] .lg-node-header`,
+  )
 }
 
 export function addNodeHeaderButton(
@@ -59,7 +83,9 @@ export function addNodeHeaderButton(
 ): NodeHeaderButtonHandle {
   let active = false
 
-  // --- Nodes 2.0: absolutely-positioned DOM button in the header (inline, far right) ---
+  trackPointer()
+  const n = node as LiteNode
+  // --- Nodes 2.0: a DOM button in the header's row of buttons ---
   const btn = document.createElement('button')
   btn.type = 'button'
   btn.className = 'zen-hdr-btn'
@@ -68,11 +94,9 @@ export function addNodeHeaderButton(
   icon.className = opts.icon
   btn.appendChild(icon)
   Object.assign(btn.style, {
-    position: 'absolute',
-    right: '10px',
-    top: '50%',
-    transform: 'translateY(-50%)',
-    zIndex: '2',
+    position: 'relative',
+    zIndex: '1',
+    flex: 'none',
     background: 'none',
     border: 'none',
     cursor: 'pointer',
@@ -89,7 +113,7 @@ export function addNodeHeaderButton(
   btn.addEventListener('pointerup', (e) => e.stopPropagation())
   btn.addEventListener('click', (e) => {
     e.stopPropagation()
-    opts.onClick()
+    opts.onClick(btn)
   })
   // Absorb double-click so it never reaches the header → litegraph would otherwise
   // start the node-title rename when the cog is clicked twice quickly.
@@ -99,19 +123,21 @@ export function addNodeHeaderButton(
   })
 
   const ensure = () => {
-    const header = findHeader(widgetEl)
+    const header = findHeader(widgetEl, n)
     if (!header) {
       if (btn.parentElement) btn.remove()
       return
     }
-    if (getComputedStyle(header).position === 'static') header.style.position = 'relative'
-    if (btn.parentElement !== header) header.appendChild(btn)
+    // The row holding the title and ComfyUI's own header buttons.
+    const row = (header.firstElementChild as HTMLElement | null) ?? header
+    const advanced = row.querySelector(':scope > [data-testid="node-header-advanced-button"]')
+    if (btn.parentElement !== row || (advanced && btn.nextElementSibling !== advanced))
+      row.insertBefore(btn, advanced)
   }
   ensure()
   const interval = window.setInterval(ensure, 500)
 
   // --- Nodes 1.0: a litegraph canvas title button ---
-  const n = node as LiteNode
   const redraw = () => (n.setDirtyCanvas ?? n.graph?.setDirtyCanvas)?.(true, true)
   let lgBtn: { bgColor?: string; fgColor?: string } | null = null
   if (typeof n.addTitleButton === 'function') {
@@ -121,7 +147,7 @@ export function addNodeHeaderButton(
       const prev = n.onTitleButtonClick
       n.onTitleButtonClick = function (this: unknown, button: unknown, canvas: unknown) {
         prev?.call(this, button, canvas)
-        if (button === lgBtn) opts.onClick()
+        if (button === lgBtn) opts.onClick({ ...lastPointer })
       }
     } catch {
       lgBtn = null

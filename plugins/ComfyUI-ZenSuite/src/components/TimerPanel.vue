@@ -2,7 +2,7 @@
 // Devtools-style execution waterfall: each node a row with a duration bar, live as the
 // run progresses. Order view = execution order (the waterfall); Slowest = sorted desc.
 import { computed, onBeforeUnmount, onMounted, ref } from 'vue'
-import { ZenIconButton, ZenToggleGroup } from '@nynxz/zenkit-ui'
+import { ZenEmpty, ZenIconButton, ZenToggleGroup } from '@nynxz/zenkit-ui'
 import { createTimer, type NodeTiming } from '@/lib/timing'
 
 const timer = createTimer()
@@ -162,10 +162,9 @@ onBeforeUnmount(() => {
     </div>
 
     <div class="zt-body">
-      <div v-if="!state.rows.length" class="zt-empty">
-        <i class="mdi mdi-timer-outline" />
-        <p>Queue a workflow — each node will appear here with its run time as it executes.</p>
-      </div>
+      <ZenEmpty v-if="!state.rows.length">
+        Queue a workflow — each node will appear here with its run time as it executes.
+      </ZenEmpty>
       <template v-for="item in tree" :key="item.key">
         <!-- subgraph group: collapsible -->
         <div v-if="item.kind === 'group'" class="zt-group">
@@ -312,23 +311,6 @@ onBeforeUnmount(() => {
   gap: 5px;
   scrollbar-gutter: stable;
 }
-.zt-empty {
-  margin: auto;
-  text-align: center;
-  color: var(--zen-muted, #76767e);
-  max-width: 240px;
-  padding: 20px;
-}
-.zt-empty .mdi {
-  font-size: 36px;
-  opacity: 0.4;
-}
-.zt-empty p {
-  margin: 8px 0 0;
-  font-size: 12px;
-  line-height: 1.5;
-}
-
 .zt-group {
   display: flex;
   flex-direction: column;

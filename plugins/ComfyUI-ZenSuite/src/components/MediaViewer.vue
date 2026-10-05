@@ -7,12 +7,18 @@
 // Multi-instance: open several viewers, each watching a different channel. Per-
 // instance state (mode, channels, thumbs, slideshow) is persisted via PanelContext.
 import { computed, onBeforeUnmount, onMounted, ref, watch } from 'vue'
-import { ZenLightbox, ZenSelect, ZenToggleGroup, type LightboxItem } from '@nynxz/zenkit-ui'
+import {
+  ZenLightbox,
+  ZenMediaControls,
+  ZenSelect,
+  ZenToggleGroup,
+  type LightboxItem,
+} from '@nynxz/zenkit-ui'
 import {
   getZenKit,
   hasImageDragData,
   readImageDragData,
-  readMediaDrop,
+  readMediaListDrop,
   setImageDragData,
   ZEN_MEDIA_LIST_MIME,
   type ChannelImage,
@@ -37,6 +43,8 @@ const chanA = ref<string>(typeof saved.chanA === 'string' ? saved.chanA : '')
 const chanB = ref<string>(typeof saved.chanB === 'string' ? saved.chanB : '')
 const showThumbs = ref<boolean>(saved.showThumbs !== false)
 const slideMs = ref<number>(typeof saved.slideMs === 'number' ? saved.slideMs : 3000)
+/** In a slideshow, videos and audio play to the end; the interval is for pictures. */
+const slideToEnd = ref<boolean>(saved.slideToEnd !== false)
 // Full-panel: the media alone, no header / footer / strip. Per-instance, so one viewer can be
 // full while another stays chromed.
 const full = ref<boolean>(saved.full === true)
@@ -92,7 +100,7 @@ const selectedN = ref<number | null>(
   history.value[typeof saved.selected === 'number' ? saved.selected : 0]?.n ?? null,
 )
 
-watch([mode, chan, chanA, chanB, showThumbs, slideMs, full, history, selectedN], () => {
+watch([mode, chan, chanA, chanB, showThumbs, slideMs, slideToEnd, full, history, selectedN], () => {
   const kept = history.value.filter((it) => !it.url.startsWith('blob:'))
   props.ctx?.setState({
     mode: mode.value,
@@ -101,9 +109,13 @@ watch([mode, chan, chanA, chanB, showThumbs, slideMs, full, history, selectedN],
     chanB: chanB.value,
     showThumbs: showThumbs.value,
     slideMs: slideMs.value,
+    slideToEnd: slideToEnd.value,
     full: full.value,
     history: kept.map(({ n: _n, ...it }) => it),
-    selected: Math.max(0, kept.findIndex((it) => it.n === selectedN.value)),
+    selected: Math.max(
+      0,
+      kept.findIndex((it) => it.n === selectedN.value),
+    ),
   })
 })
 
@@ -218,12 +230,14 @@ function pick(it: HItem) {
 
 /** Zone width: a generous edge, but never so wide it eats the middle on a narrow panel. */
 const NAV_ZONE = 'clamp(64px, 22%, 160px)'
-/** Native video controls own a strip along the bottom; keep the zones clear of it. */
+/** The lightbox's video/audio control bar owns a strip along the bottom; keep the zones clear of it. */
 const VIDEO_CONTROLS_H = 56
 
 const canPrev = computed(() => lbIndex.value > 0)
 const canNext = computed(() => lbIndex.value < history.value.length - 1)
-const navBottom = computed(() => (current.value?.kind === 'video' ? VIDEO_CONTROLS_H : 0))
+const navBottom = computed(() =>
+  current.value?.kind === 'video' || current.value?.kind === 'audio' ? VIDEO_CONTROLS_H : 0,
+)
 const showNav = computed(() => full.value && mode.value === 'view' && history.value.length > 1)
 
 function toggleFull() {
@@ -303,7 +317,13 @@ function clearHistory() {
 }
 
 // What other plugins (and the agent) can read and do with this viewer while it is mounted.
-type SentItem = { url?: unknown; ref?: unknown; label?: unknown; filename?: unknown; kind?: unknown }
+type SentItem = {
+  url?: unknown
+  ref?: unknown
+  label?: unknown
+  filename?: unknown
+  kind?: unknown
+}
 const asChannelImage = (it: SentItem): ChannelImage | null =>
   typeof it.url === 'string'
     ? {
@@ -316,13 +336,22 @@ const asChannelImage = (it: SentItem): ChannelImage | null =>
         ts: Date.now(),
       }
     : null
-const indexList = (v: unknown) => (Array.isArray(v) ? v.filter((i): i is number => typeof i === 'number') : [])
+const indexList = (v: unknown) =>
+  Array.isArray(v) ? v.filter((i): i is number => typeof i === 'number') : []
 onBeforeUnmount(
   props.ctx?.expose({
     describe: () => ({
       mode: mode.value,
-      following: feedOf() === null ? 'nothing (only items sent here)' : feedOf() === '$last' ? 'most recent on any channel' : feedOf(),
-      selected: Math.max(0, history.value.findIndex((it) => it.n === selectedN.value)),
+      following:
+        feedOf() === null
+          ? 'nothing (only items sent here)'
+          : feedOf() === '$last'
+            ? 'most recent on any channel'
+            : feedOf(),
+      selected: Math.max(
+        0,
+        history.value.findIndex((it) => it.n === selectedN.value),
+      ),
       items: history.value.map((it, index) => ({
         index,
         label: it.label ?? it.filename ?? it.channel,
@@ -336,7 +365,9 @@ onBeforeUnmount(
         description:
           'Add media: {items: [{url, ref?, label?, kind?}], replace?: boolean (clear first), follow?: boolean (keep following a channel; default false)}',
         run: ({ items, replace, follow }) => {
-          const media = (Array.isArray(items) ? (items as SentItem[]) : []).map(asChannelImage).filter((it) => it !== null)
+          const media = (Array.isArray(items) ? (items as SentItem[]) : [])
+            .map(asChannelImage)
+            .filter((it) => it !== null)
           if (!media.length) throw new Error('No items with a url to show.')
           mode.value = 'view'
           if (follow !== true) chan.value = NO_FEED
@@ -394,7 +425,11 @@ function forget(it: Pick<HItem, 'url'>) {
 let draggingOwn = false
 function onThumbDrag(e: DragEvent, it: HItem) {
   draggingOwn = true
-  setImageDragData(e, { url: it.url, filename: it.filename, ref: it.ref }, (e.currentTarget as HTMLElement).querySelector('img'))
+  setImageDragData(
+    e,
+    { url: it.url, filename: it.filename, ref: it.ref },
+    (e.currentTarget as HTMLElement).querySelector('img'),
+  )
 }
 
 function onDragOver(e: DragEvent) {
@@ -418,7 +453,7 @@ async function onDrop(e: DragEvent) {
   e.preventDefault()
   e.stopPropagation()
   mode.value = 'view' // compare mode has no history strip; show what they just dropped
-  const dropped = readMediaDrop(e) // reads the drop now; a gallery's items are fetched after
+  const dropped = readMediaListDrop(e) // reads the drop now; a gallery's items are fetched after
   loadingDrop.value = isList
   const { items } = await dropped
   loadingDrop.value = false
@@ -446,6 +481,32 @@ function resolve(name: string): ChannelImage | null {
 }
 const itemA = computed(() => resolve(chanA.value))
 const itemB = computed(() => resolve(chanB.value))
+// Two videos compared play as one: A leads (B when only B is a video), with the shared control bar
+// driving it, and the other follows its clock — muted, so there is one soundtrack.
+const vidA = ref<HTMLVideoElement | null>(null)
+const vidB = ref<HTMLVideoElement | null>(null)
+const asVideo = (el: unknown) => (el instanceof HTMLVideoElement ? el : null)
+const setVidA = (el: unknown) => (vidA.value = asVideo(el))
+const setVidB = (el: unknown) => (vidB.value = asVideo(el))
+const leader = computed(() => vidA.value ?? vidB.value)
+const follower = computed(() => (vidA.value && vidB.value ? vidB.value : null))
+const FOLLOW_EVENTS = ['play', 'pause', 'seeked', 'seeking', 'ratechange', 'timeupdate'] as const
+function follow() {
+  const [lead, f] = [leader.value, follower.value]
+  if (!lead || !f) return
+  if (f.playbackRate !== lead.playbackRate) f.playbackRate = lead.playbackRate
+  if (Math.abs(f.currentTime - lead.currentTime) > 0.06) f.currentTime = lead.currentTime
+  if (lead.paused !== f.paused) void (lead.paused ? f.pause() : f.play().catch(() => {}))
+}
+watch(leader, (lead, old) => {
+  for (const ev of FOLLOW_EVENTS) old?.removeEventListener(ev, follow)
+  for (const ev of FOLLOW_EVENTS) lead?.addEventListener(ev, follow)
+})
+watch(follower, () => follow())
+onBeforeUnmount(() => {
+  for (const ev of FOLLOW_EVENTS) leader.value?.removeEventListener(ev, follow)
+})
+
 const urlA = computed(() => itemA.value?.url || '')
 const urlB = computed(() => itemB.value?.url || '')
 const kindA = computed(() => itemA.value?.kind || 'image')
@@ -600,6 +661,7 @@ function startDrag(e: PointerEvent) {
           :items="lbItems"
           :index="lbIndex"
           :slideshow-ms="slideMs"
+          :slideshow-to-end="slideToEnd"
           @update:index="onIndex"
         />
         <div v-else class="mv-empty">
@@ -617,10 +679,11 @@ function startDrag(e: PointerEvent) {
         <template v-if="urlB">
           <video
             v-if="kindB === 'video'"
-            :src="urlB + '#t=0.1'"
+            :ref="setVidB"
+            :src="urlB"
             class="layer"
             muted
-            preload="metadata"
+            loop
             playsinline
           />
           <img v-else :src="urlB" class="layer" draggable="false" alt="" />
@@ -629,11 +692,11 @@ function startDrag(e: PointerEvent) {
           <template v-if="urlA">
             <video
               v-if="kindA === 'video'"
-              :src="urlA + '#t=0.1'"
+              :ref="setVidA"
+              :src="urlA"
               class="layer"
               :style="{ width: stageW + 'px' }"
-              muted
-              preload="metadata"
+              loop
               playsinline
             />
             <img
@@ -647,6 +710,7 @@ function startDrag(e: PointerEvent) {
           </template>
         </div>
         <div v-show="dragging && (urlA || urlB)" class="divider" :style="{ left: pos + '%' }"></div>
+        <ZenMediaControls v-if="leader" class="cmp-mc" :media="leader" :compact="stageW < 420" />
         <div v-if="urlA || urlB" class="cmp-notch" :style="{ left: pos + '%' }">
           <span class="nt top" />
           <span class="nt bottom" />
@@ -701,11 +765,11 @@ function startDrag(e: PointerEvent) {
           <button class="tb" :class="{ on: playing }" title="Slideshow" @click="lb?.togglePlay()">
             <i class="mdi" :class="playing ? 'mdi-pause' : 'mdi-play'" />
           </button>
-          <button class="tb caret" title="Slideshow interval" @click="ddOpen = !ddOpen">
+          <button class="tb caret" title="Slideshow settings" @click="ddOpen = !ddOpen">
             <i class="mdi mdi-menu-up" />
           </button>
           <div v-if="ddOpen" class="mv-dd-menu up">
-            <div class="mv-dd-h">Slideshow interval</div>
+            <div class="mv-dd-h">Time per picture</div>
             <button
               v-for="ms in INTERVALS"
               :key="ms"
@@ -713,6 +777,15 @@ function startDrag(e: PointerEvent) {
               @click="setInterval(ms)"
             >
               {{ ms / 1000 }}s
+            </button>
+            <div class="mv-dd-sep" />
+            <button
+              class="mv-dd-check"
+              title="Off: videos and audio get the same time as pictures"
+              @click="slideToEnd = !slideToEnd"
+            >
+              <i class="mdi" :class="slideToEnd ? 'mdi-checkbox-marked' : 'mdi-checkbox-blank-outline'" />
+              Play videos to the end
             </button>
           </div>
         </div>
@@ -942,6 +1015,21 @@ function startDrag(e: PointerEvent) {
   background: var(--zen-accent, #3b82f6);
   color: var(--zen-accent-text, #fff);
 }
+.mv-dd-sep {
+  height: 1px;
+  margin: 3px 0;
+  background: var(--zen-border, rgba(255, 255, 255, 0.14));
+}
+.mv-dd-menu .mv-dd-check {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  white-space: nowrap;
+}
+.mv-dd-check .mdi {
+  color: var(--zen-accent, #3b82f6);
+  font-size: 15px;
+}
 .mv-dd-backdrop {
   position: fixed;
   inset: 0;
@@ -1042,6 +1130,16 @@ function startDrag(e: PointerEvent) {
   pointer-events: none;
 }
 /* always-visible split hint: triangles at top + bottom pointing inward */
+.cmp-mc {
+  position: absolute;
+  right: 12px;
+  bottom: 10px;
+  left: 12px;
+  z-index: 4;
+  max-width: 760px;
+  margin: 0 auto;
+  cursor: default;
+}
 .cmp-notch {
   position: absolute;
   top: 0;
