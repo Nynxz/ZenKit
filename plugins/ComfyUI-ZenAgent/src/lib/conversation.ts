@@ -38,7 +38,8 @@ function itemsFrom(messages: StoredMessage[]): Item[] {
   const items: Item[] = []
   const tools = new Map<string, Extract<Item, { kind: 'tool' }>>()
   for (const message of messages) {
-    if (message.role === 'user') items.push({ kind: 'user', text: message.content, attachments: message.attachments })
+    if (message.role === 'user')
+      items.push({ kind: 'user', text: message.content, attachments: message.attachments })
     else if (message.role === 'assistant') {
       if (message.content) items.push({ kind: 'text', text: message.content })
       for (const call of message.tool_calls ?? []) {
@@ -71,7 +72,11 @@ function itemsFrom(messages: StoredMessage[]): Item[] {
 /** The runs a queue_prompt step started, so a reopened thread shows their cards again. */
 function promptIdsOf(item: Extract<Item, { kind: 'tool' }>): string[] {
   if (item.name !== 'queue_prompt' || !item.result?.ok) return []
-  const result = item.result.result as { prompt_id?: string; runs?: { prompt_id?: string }[]; queued?: { prompt_id?: string }[] }
+  const result = item.result.result as {
+    prompt_id?: string
+    runs?: { prompt_id?: string }[]
+    queued?: { prompt_id?: string }[]
+  }
   const ids = [result.prompt_id, ...(result.runs ?? result.queued ?? []).map((r) => r.prompt_id)]
   return ids.filter((id): id is string => typeof id === 'string')
 }
@@ -102,9 +107,17 @@ function createConversation() {
     if (event.type === 'text' || event.type === 'thinking') appendStream(event.type, event.delta)
     else if (event.type === 'tool') {
       const existing = items.value.find(
-        (item): item is Extract<Item, { kind: 'tool' }> => item.kind === 'tool' && item.callId === event.call_id,
+        (item): item is Extract<Item, { kind: 'tool' }> =>
+          item.kind === 'tool' && item.callId === event.call_id,
       )
-      const next = { kind: 'tool' as const, callId: event.call_id, name: event.name, args: event.args, status: event.status, result: event.result }
+      const next = {
+        kind: 'tool' as const,
+        callId: event.call_id,
+        name: event.name,
+        args: event.args,
+        status: event.status,
+        result: event.result,
+      }
       if (existing) Object.assign(existing, next)
       else items.value.push(next)
     } else if (event.type === 'notice') {
@@ -146,25 +159,38 @@ function createConversation() {
     const workflow = (app.graph as { serialize(): unknown }).serialize()
     try {
       // Pictures for a vision model; whether it gets them is the server's call.
-      const images = await Promise.all(attached.filter((a) => a.kind !== 'audio').map((a) => snapshot(a).catch(() => null)))
+      const images = await Promise.all(
+        attached.filter((a) => a.kind !== 'audio').map((a) => snapshot(a).catch(() => null)),
+      )
       const sent = await agentApi.send(
         threadId.value,
         turnId.value,
-        { content: content || 'See the attached media.', attachments: attached, images: images.filter((i) => i !== null) },
+        {
+          content: content || 'See the attached media.',
+          attachments: attached,
+          images: images.filter((i) => i !== null),
+        },
         workflow,
         capabilityTools(),
       )
-      if (!threadId.value) title.value = (content || attached[0]?.label || 'Attached media').slice(0, 80)
+      if (!threadId.value)
+        title.value = (content || attached[0]?.label || 'Attached media').slice(0, 80)
       threadId.value = sent.thread_id
     } catch (error) {
       turnId.value = null
-      items.value.push({ kind: 'error', text: error instanceof Error ? error.message : String(error) })
+      items.value.push({
+        kind: 'error',
+        text: error instanceof Error ? error.message : String(error),
+      })
     }
   }
 
   function attach(media: Attachment[]): void {
     const known = new Set(attachments.value.map((a) => a.ref))
-    attachments.value = [...attachments.value, ...media.filter((m) => !known.has(m.ref))].slice(0, 8)
+    attachments.value = [...attachments.value, ...media.filter((m) => !known.has(m.ref))].slice(
+      0,
+      8,
+    )
   }
 
   function detach(ref: string): void {
@@ -209,7 +235,23 @@ function createConversation() {
   void refreshThreads()
   const saved = savedThread()
   if (saved) void open(saved).catch(newChat)
-  return { threadId, title, draft, attachments, attach, detach, items, busy, threads, send, stop, open, newChat, remove, refreshThreads }
+  return {
+    threadId,
+    title,
+    draft,
+    attachments,
+    attach,
+    detach,
+    items,
+    busy,
+    threads,
+    send,
+    stop,
+    open,
+    newChat,
+    remove,
+    refreshThreads,
+  }
 }
 
 const THREAD_KEY = 'zenagent.thread'

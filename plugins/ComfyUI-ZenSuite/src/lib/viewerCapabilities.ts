@@ -13,7 +13,8 @@ interface ViewerState {
 
 async function command(handle: PanelHandle, name: string, args: Record<string, unknown>) {
   for (let attempt = 0; ; attempt++) {
-    if (handle.commands().some((c) => c.name === name) || attempt >= 30) return handle.run(name, args)
+    if (handle.commands().some((c) => c.name === name) || attempt >= 30)
+      return handle.run(name, args)
     await new Promise((resolve) => setTimeout(resolve, 100))
   }
 }
@@ -25,12 +26,19 @@ export function viewerCapabilities(zen: () => ZenKitApi): Capability[] {
     if (title) handle.setTitle(title)
     return handle
   }
-  const titleOf = (id: string) => zen().panels.instances(VIEWER).find((i) => i.id === id)?.title
+  const titleOf = (id: string) =>
+    zen()
+      .panels.instances(VIEWER)
+      .find((i) => i.id === id)?.title
 
-  async function show(refs: string[], opts: { panelId?: string; title?: string; replace?: boolean }) {
+  async function show(
+    refs: string[],
+    opts: { panelId?: string; title?: string; replace?: boolean },
+  ) {
     const items = await Promise.all(refs.map((ref) => zen().media.resolve(ref)))
     const existing = opts.panelId ? zen().panels.get(opts.panelId) : null
-    if (opts.panelId && !existing?.getRect()) throw new Error(`No open Media Viewer "${opts.panelId}".`)
+    if (opts.panelId && !existing?.getRect())
+      throw new Error(`No open Media Viewer "${opts.panelId}".`)
     const handle = existing ?? openViewer(opts.title)
     if (existing && opts.title) handle.setTitle(opts.title)
     handle.restore()
@@ -53,7 +61,11 @@ export function viewerCapabilities(zen: () => ZenKitApi): Capability[] {
       params: {
         type: 'object',
         properties: {
-          media: { type: 'array', items: { type: 'string' }, description: 'Media refs, e.g. output/ComfyUI_00012_.png' },
+          media: {
+            type: 'array',
+            items: { type: 'string' },
+            description: 'Media refs, e.g. output/ComfyUI_00012_.png',
+          },
           panel_id: { type: 'string' },
           title: { type: 'string', description: "A name for the viewer, e.g. 'Red variants'" },
           replace: { type: 'boolean' },
@@ -67,7 +79,11 @@ export function viewerCapabilities(zen: () => ZenKitApi): Capability[] {
         if (separate === true)
           return {
             viewers: await Promise.all(
-              refs.map((ref, i) => show([ref], { title: str(title) && refs.length > 1 ? `${str(title)} ${i + 1}` : str(title) })),
+              refs.map((ref, i) =>
+                show([ref], {
+                  title: str(title) && refs.length > 1 ? `${str(title)} ${i + 1}` : str(title),
+                }),
+              ),
             ),
           }
         return show(refs, { panelId: str(panel_id), title: str(title), replace: replace === true })
@@ -81,7 +97,10 @@ export function viewerCapabilities(zen: () => ZenKitApi): Capability[] {
         '(unless close_others is false).',
       params: {
         type: 'object',
-        properties: { into: { type: 'string', description: 'panel_id of the viewer to keep' }, close_others: { type: 'boolean' } },
+        properties: {
+          into: { type: 'string', description: 'panel_id of the viewer to keep' },
+          close_others: { type: 'boolean' },
+        },
       },
       run: async ({ into, close_others }) => {
         const ids = zen()
@@ -91,10 +110,15 @@ export function viewerCapabilities(zen: () => ZenKitApi): Capability[] {
         const target = str(into) ?? ids[0]
         if (!target) throw new Error('No Media Viewer is open.')
         const sources = ids.filter((id) => id !== target)
-        const itemsOf = (id: string) => (zen().panels.get(id)!.describe() as ViewerState | null)?.items ?? []
+        const itemsOf = (id: string) =>
+          (zen().panels.get(id)!.describe() as ViewerState | null)?.items ?? []
         const moved = sources.flatMap(itemsOf)
         // Rebuilt in viewer order: the kept viewer's items first, then each source's in turn.
-        if (moved.length) await command(zen().panels.get(target)!, 'show', { items: [...itemsOf(target), ...moved], replace: true })
+        if (moved.length)
+          await command(zen().panels.get(target)!, 'show', {
+            items: [...itemsOf(target), ...moved],
+            replace: true,
+          })
         if (close_others !== false) for (const id of sources) zen().panels.get(id)?.close()
         return { into: target, moved: moved.length, closed: close_others !== false ? sources : [] }
       },

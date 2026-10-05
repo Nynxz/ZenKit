@@ -19,8 +19,23 @@ import AgentRunCard from './AgentRunCard.vue'
 import AgentSettings from './AgentSettings.vue'
 import AgentSteps from './AgentSteps.vue'
 
-const { title, draft, attachments, attach, detach, items, busy, threads, threadId, send, stop, open, newChat, remove, refreshThreads } =
-  useConversation()
+const {
+  title,
+  draft,
+  attachments,
+  attach,
+  detach,
+  items,
+  busy,
+  threads,
+  threadId,
+  send,
+  stop,
+  open,
+  newChat,
+  remove,
+  refreshThreads,
+} = useConversation()
 
 type ToolItem = Extract<Item, { kind: 'tool' }>
 type Block = { key: string; steps: ToolItem[] } | { key: string; item: Exclude<Item, ToolItem> }
@@ -114,7 +129,13 @@ async function onDrop(e: DragEvent): Promise<void> {
   const media = await Promise.all(
     dropped.slice(0, 8).map(async (it): Promise<Attachment | null> => {
       try {
-        if (!it.objectUrl) return { ref: it.ref ?? it.url, url: it.url, kind: it.kind ?? 'image', label: it.filename }
+        if (!it.objectUrl)
+          return {
+            ref: it.ref ?? it.url,
+            url: it.url,
+            kind: it.kind ?? 'image',
+            label: it.filename,
+          }
         const ref = await uploadLocal(it.url, it.filename)
         URL.revokeObjectURL(it.url)
         return await resolveMedia(ref)
@@ -128,11 +149,22 @@ async function onDrop(e: DragEvent): Promise<void> {
 }
 
 const when = (iso: string) =>
-  new Date(iso).toLocaleString(undefined, { month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' })
+  new Date(iso).toLocaleString(undefined, {
+    month: 'short',
+    day: 'numeric',
+    hour: '2-digit',
+    minute: '2-digit',
+  })
 </script>
 
 <template>
-  <div class="za" :class="{ dropping }" @dragover="onDragOver" @dragleave="onDragLeave" @drop="onDrop">
+  <div
+    class="za"
+    :class="{ dropping }"
+    @dragover="onDragOver"
+    @dragleave="onDragLeave"
+    @drop="onDrop"
+  >
     <header class="za-head">
       <span class="za-title" :title="title">{{ title }}</span>
       <ZenPopover placement="bottom-end" @update:open="(o: boolean) => o && refreshThreads()">
@@ -150,7 +182,11 @@ const when = (iso: string) =>
             >
               <span class="za-history-title">{{ t.title }}</span>
               <span class="za-history-when">{{ when(t.updated_at) }}</span>
-              <ZenIconButton icon="mdi mdi-delete-outline" title="Delete" @click.stop="remove(t.id)" />
+              <ZenIconButton
+                icon="mdi mdi-delete-outline"
+                title="Delete"
+                @click.stop="remove(t.id)"
+              />
             </ZenMenuItem>
           </div>
         </template>
@@ -171,7 +207,9 @@ const when = (iso: string) =>
         <i class="mdi mdi-creation-outline za-welcome-icon" />
         <div class="za-welcome-title">What should we build?</div>
         <div class="za-welcome-sub">I can read, edit and run the workflow on your canvas.</div>
-        <button v-for="s in SUGGESTIONS" :key="s" class="za-suggestion" @click="submit(s)">{{ s }}</button>
+        <button v-for="s in SUGGESTIONS" :key="s" class="za-suggestion" @click="submit(s)">
+          {{ s }}
+        </button>
       </div>
       <TransitionGroup name="za-row">
         <div v-for="block in blocks" :key="block.key" class="za-block">
@@ -189,26 +227,37 @@ const when = (iso: string) =>
           />
           <details v-else-if="block.item.kind === 'thinking'" class="za-thinking">
             <summary :class="{ 'za-shimmer': isLive(block) }">
-              <i class="mdi mdi-brain" /> {{ isLive(block) ? 'Thinking…' : 'Thought process' }}
+              <i class="mdi mdi-brain" />
+              {{ isLive(block) ? 'Thinking…' : 'Thought process' }}
             </summary>
             <div>{{ block.item.text }}</div>
           </details>
           <AgentRunCard v-else-if="block.item.kind === 'run'" :prompt-ids="block.item.promptIds" />
           <div v-else-if="block.item.kind === 'notice'" class="za-notice">
-            <i class="mdi mdi-information-outline" /> {{ block.item.text }}
+            <i class="mdi mdi-information-outline" />
+            {{ block.item.text }}
           </div>
-          <div v-else class="za-error"><i class="mdi mdi-alert-circle-outline" /> {{ block.item.text }}</div>
+          <div v-else class="za-error">
+            <i class="mdi mdi-alert-circle-outline" />
+            {{ block.item.text }}
+          </div>
         </div>
       </TransitionGroup>
       <div v-if="busy && items.at(-1)?.kind === 'user'" class="za-pending">
-        <span class="za-dots"><i /><i /><i /></span>
+        <span class="za-dots">
+          <i />
+          <i />
+          <i />
+        </span>
       </div>
     </div>
 
     <TransitionGroup v-if="attachments.length" tag="div" name="za-chip" class="za-attached">
       <div v-for="a in attachments" :key="a.ref" class="za-chip" :title="a.ref">
         <AgentThumb :media="a" />
-        <button class="za-chip-x" title="Remove" @click="detach(a.ref)"><i class="mdi mdi-close" /></button>
+        <button class="za-chip-x" title="Remove" @click="detach(a.ref)">
+          <i class="mdi mdi-close" />
+        </button>
       </div>
     </TransitionGroup>
     <div class="za-composer">
@@ -220,13 +269,7 @@ const when = (iso: string) =>
         @input="resize"
         @keydown="onKey"
       />
-      <ZenIconButton
-        v-if="busy"
-        icon="mdi mdi-stop"
-        title="Stop"
-        class="za-send"
-        @click="stop"
-      />
+      <ZenIconButton v-if="busy" icon="mdi mdi-stop" title="Stop" class="za-send" @click="stop" />
       <ZenIconButton
         v-else
         icon="mdi mdi-arrow-up"
@@ -391,7 +434,9 @@ const when = (iso: string) =>
 }
 .za-chip-enter-active,
 .za-chip-leave-active {
-  transition: opacity 0.2s ease, transform 0.2s ease;
+  transition:
+    opacity 0.2s ease,
+    transform 0.2s ease;
 }
 .za-chip-enter-from,
 .za-chip-leave-to {
@@ -408,7 +453,9 @@ const when = (iso: string) =>
   overflow-wrap: anywhere;
 }
 .za-row-enter-active {
-  transition: opacity 0.25s ease, transform 0.25s ease;
+  transition:
+    opacity 0.25s ease,
+    transform 0.25s ease;
 }
 .za-row-enter-from {
   opacity: 0;
@@ -437,7 +484,13 @@ const when = (iso: string) =>
   display: none;
 }
 .za-shimmer {
-  background: linear-gradient(90deg, var(--zen-muted) 0%, var(--zen-text) 50%, var(--zen-muted) 100%) 0 0 / 200% 100%;
+  background: linear-gradient(
+      90deg,
+      var(--zen-muted) 0%,
+      var(--zen-text) 50%,
+      var(--zen-muted) 100%
+    )
+    0 0 / 200% 100%;
   -webkit-background-clip: text;
   background-clip: text;
   color: transparent;

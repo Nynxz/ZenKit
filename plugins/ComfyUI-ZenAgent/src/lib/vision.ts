@@ -21,7 +21,11 @@ export async function resolveMedia(ref: string): Promise<Attachment> {
   return { ref, url: info.url, kind: info.kind, label: info.label }
 }
 
-function load<T extends HTMLImageElement | HTMLVideoElement>(el: T, src: string, ready: string): Promise<T> {
+function load<T extends HTMLImageElement | HTMLVideoElement>(
+  el: T,
+  src: string,
+  ready: string,
+): Promise<T> {
   return new Promise((resolve, reject) => {
     el.addEventListener(ready, () => resolve(el), { once: true })
     el.addEventListener('error', () => reject(new Error(`Could not load ${src}.`)), { once: true })
@@ -30,8 +34,13 @@ function load<T extends HTMLImageElement | HTMLVideoElement>(el: T, src: string,
 }
 
 async function frameOf(media: Attachment): Promise<HTMLImageElement | HTMLVideoElement> {
-  if (media.kind === 'image') return load(Object.assign(new Image(), { crossOrigin: 'anonymous' }), media.url, 'load')
-  const video = Object.assign(document.createElement('video'), { muted: true, crossOrigin: 'anonymous', preload: 'auto' })
+  if (media.kind === 'image')
+    return load(Object.assign(new Image(), { crossOrigin: 'anonymous' }), media.url, 'load')
+  const video = Object.assign(document.createElement('video'), {
+    muted: true,
+    crossOrigin: 'anonymous',
+    preload: 'auto',
+  })
   await load(video, media.url, 'loadeddata')
   video.currentTime = Math.min(1, (video.duration || 2) / 2)
   await new Promise((resolve) => video.addEventListener('seeked', resolve, { once: true }))
@@ -45,7 +54,10 @@ export async function snapshot(media: Attachment): Promise<string> {
   const w = source instanceof HTMLVideoElement ? source.videoWidth : source.naturalWidth
   const h = source instanceof HTMLVideoElement ? source.videoHeight : source.naturalHeight
   const scale = Math.min(1, MAX_SIDE / Math.max(w, h))
-  const canvas = Object.assign(document.createElement('canvas'), { width: Math.round(w * scale), height: Math.round(h * scale) })
+  const canvas = Object.assign(document.createElement('canvas'), {
+    width: Math.round(w * scale),
+    height: Math.round(h * scale),
+  })
   canvas.getContext('2d')!.drawImage(source, 0, 0, canvas.width, canvas.height)
   return canvas.toDataURL('image/jpeg', 0.85)
 }
@@ -56,7 +68,9 @@ export async function uploadLocal(url: string, filename = 'dropped.png'): Promis
   const body = new FormData()
   body.append('image', new File([blob], filename, { type: blob.type }))
   body.append('subfolder', 'zenagent')
-  const res = await (api as { fetchApi(path: string, init: RequestInit): Promise<Response> }).fetchApi('/upload/image', { method: 'POST', body })
+  const res = await (
+    api as { fetchApi(path: string, init: RequestInit): Promise<Response> }
+  ).fetchApi('/upload/image', { method: 'POST', body })
   if (!res.ok) throw new Error(`Upload failed (${res.status}).`)
   const saved = (await res.json()) as { name: string; subfolder?: string }
   return ['input', saved.subfolder, saved.name].filter(Boolean).join('/')

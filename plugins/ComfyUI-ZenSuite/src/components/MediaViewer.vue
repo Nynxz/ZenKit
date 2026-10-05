@@ -784,7 +784,10 @@ function startDrag(e: PointerEvent) {
               title="Off: videos and audio get the same time as pictures"
               @click="slideToEnd = !slideToEnd"
             >
-              <i class="mdi" :class="slideToEnd ? 'mdi-checkbox-marked' : 'mdi-checkbox-blank-outline'" />
+              <i
+                class="mdi"
+                :class="slideToEnd ? 'mdi-checkbox-marked' : 'mdi-checkbox-blank-outline'"
+              />
               Play videos to the end
             </button>
           </div>

@@ -103,7 +103,12 @@ function toggle() {
 
 function onDoc(e: PointerEvent) {
   const t = e.target as Node
-  if (panelEl.value?.contains(t) || anchorEl.value?.contains(t) || inOtherLayer(e.target, panelEl.value)) return
+  if (
+    panelEl.value?.contains(t) ||
+    anchorEl.value?.contains(t) ||
+    inOtherLayer(e.target, panelEl.value)
+  )
+    return
   close()
 }
 let layer: Layer | null = null

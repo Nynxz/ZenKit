@@ -29,7 +29,11 @@ function gridStep(span: number): number {
   return 10000
 }
 
-export function renderSchematic(g: LayoutGraph, mine: Set<number>, only?: Set<number>): { image: string; bounds: number[] } {
+export function renderSchematic(
+  g: LayoutGraph,
+  mine: Set<number>,
+  only?: Set<number>,
+): { image: string; bounds: number[] } {
   const all = g.nodes().filter((n) => !only || only.has(n.id)) as SchematicNode[]
   if (!all.length) throw new Error('The workflow is empty.')
   const boxes = new Map(all.map((n) => [n.id, boxOf(n)]))
@@ -76,7 +80,12 @@ export function renderSchematic(g: LayoutGraph, mine: Set<number>, only?: Set<nu
       const from = l && boxes.get(l.origin_id)
       const to = boxes.get(node.id)!
       if (!l || !from) return
-      const [sx, sy, tx, ty] = [X(from.x + from.w), Y(slot(from, l.origin_slot)), X(to.x), Y(slot(to, i))]
+      const [sx, sy, tx, ty] = [
+        X(from.x + from.w),
+        Y(slot(from, l.origin_slot)),
+        X(to.x),
+        Y(slot(to, i)),
+      ]
       ctx.strokeStyle = WIRE[input.type ?? ''] ?? '#9e9e9e'
       ctx.lineWidth = 2
       ctx.beginPath()
@@ -94,7 +103,8 @@ export function renderSchematic(g: LayoutGraph, mine: Set<number>, only?: Set<nu
     for (let j = i + 1; j < list.length; j++) {
       const [ia, a] = list[i]!
       const [ib, b] = list[j]!
-      if (a.x < b.x + b.w && b.x < a.x + a.w && a.y < b.y + b.h && b.y < a.y + a.h) hit.add(ia).add(ib)
+      if (a.x < b.x + b.w && b.x < a.x + a.w && a.y < b.y + b.h && b.y < a.y + a.h)
+        hit.add(ia).add(ib)
     }
   ctx.lineWidth = 1.5
   for (const node of all) {

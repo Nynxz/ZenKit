@@ -11,7 +11,9 @@ for (const id of promptIds) void restoreRun(id).catch(() => null)
 const list = computed(() => promptIds.map((id) => runs[id]).filter((r): r is Run => !!r))
 const isActive = (r: Run) => r.status === 'queued' || r.status === 'running'
 const active = computed(() => list.value.filter(isActive))
-const failed = computed(() => list.value.filter((r) => r.status === 'error' || r.status === 'interrupted'))
+const failed = computed(() =>
+  list.value.filter((r) => r.status === 'error' || r.status === 'interrupted'),
+)
 const status = computed(() => {
   if (active.value.length) return 'running'
   return failed.value.length ? 'error' : 'done'
@@ -25,7 +27,9 @@ onBeforeUnmount(() => window.clearInterval(tick))
 const elapsed = computed(() => {
   if (!list.value.length) return ''
   const start = Math.min(...list.value.map((r) => r.startedAt))
-  const end = active.value.length ? now.value : Math.max(...list.value.map((r) => r.finishedAt ?? r.startedAt))
+  const end = active.value.length
+    ? now.value
+    : Math.max(...list.value.map((r) => r.finishedAt ?? r.startedAt))
   return `${((end - start) / 1000).toFixed(1)}s`
 })
 
@@ -44,7 +48,9 @@ const title = computed(() => {
     const head = `${finished} of ${total} done`
     return running?.node ? `${head} · ${running.node}` : head
   }
-  return failed.value.length ? `${total - failed.value.length} of ${total} finished · ${failed.value.length} failed` : `${total} runs finished`
+  return failed.value.length
+    ? `${total - failed.value.length} of ${total} finished · ${failed.value.length} failed`
+    : `${total} runs finished`
 })
 
 function fill(r: Run): number | null {
@@ -106,7 +112,13 @@ async function toViewer(): Promise<void> {
     </div>
     <div v-for="error in errors" :key="error!" class="zr-error">{{ error }}</div>
     <TransitionGroup v-if="media.length" tag="div" name="zr-thumb" class="zr-grid">
-      <button v-for="(o, i) in media" :key="o.url" class="zr-thumb" :title="o.filename" @click="view(i)">
+      <button
+        v-for="(o, i) in media"
+        :key="o.url"
+        class="zr-thumb"
+        :title="o.filename"
+        @click="view(i)"
+      >
         <video v-if="o.kind === 'video'" :src="o.url" muted loop autoplay playsinline />
         <img v-else :src="o.url" :alt="o.filename" loading="lazy" />
       </button>
@@ -236,7 +248,9 @@ async function toViewer(): Promise<void> {
   transform: scale(1.04);
 }
 .zr-thumb-enter-active {
-  transition: opacity 0.3s ease, transform 0.3s ease;
+  transition:
+    opacity 0.3s ease,
+    transform 0.3s ease;
 }
 .zr-thumb-enter-from {
   opacity: 0;
@@ -244,7 +258,9 @@ async function toViewer(): Promise<void> {
 }
 .zr-pop-enter-active,
 .zr-pop-leave-active {
-  transition: transform 0.18s ease, opacity 0.18s ease;
+  transition:
+    transform 0.18s ease,
+    opacity 0.18s ease;
 }
 .zr-pop-enter-from {
   transform: scale(0.4);

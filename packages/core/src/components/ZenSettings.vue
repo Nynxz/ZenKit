@@ -276,8 +276,8 @@ onBeforeUnmount(() => offLog?.())
         <div>
           <span class="zse-slbl">Themed startup</span>
           <small>
-            ComfyUI's loading screen uses the active theme — its colours, and its own sequence when it
-            has one (Cute Hearts, Lotus). Shows from the next load.
+            ComfyUI's loading screen uses the active theme — its colours, and its own sequence when
+            it has one (Cute Hearts, Lotus). Shows from the next load.
           </small>
         </div>
         <ZenSwitch

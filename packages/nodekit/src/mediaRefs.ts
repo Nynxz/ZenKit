@@ -12,7 +12,9 @@ import { COMFY_ASSET_MIME, mediaKindOf, ZEN_IMAGE_MIME } from './zenkit'
 const FOLDERS = ['input', 'output', 'temp']
 
 /** `output/sub/name.png` → its folder, subfolder and name; null for anything else. */
-export function parseMediaRef(ref: string): { type: string; subfolder: string; filename: string } | null {
+export function parseMediaRef(
+  ref: string,
+): { type: string; subfolder: string; filename: string } | null {
   const [type, ...rest] = ref.split('/')
   const filename = rest.pop()
   if (!type || !filename || !FOLDERS.includes(type)) return null
@@ -34,7 +36,9 @@ function refFromViewUrl(url: string): string | null {
     const u = new URL(url, location.href)
     const filename = u.searchParams.get('filename')
     if (!u.pathname.endsWith('/view') || !filename) return null
-    return [u.searchParams.get('type') || 'output', u.searchParams.get('subfolder'), filename].filter(Boolean).join('/')
+    return [u.searchParams.get('type') || 'output', u.searchParams.get('subfolder'), filename]
+      .filter(Boolean)
+      .join('/')
   } catch {
     return null
   }
@@ -54,10 +58,13 @@ export async function uploadMediaFile(file: File, subfolder = 'zenkit'): Promise
   const body = new FormData()
   body.append('image', file)
   body.append('subfolder', subfolder)
-  const res = await (api as { fetchApi(p: string, i: RequestInit): Promise<Response> }).fetchApi('/upload/image', {
-    method: 'POST',
-    body,
-  })
+  const res = await (api as { fetchApi(p: string, i: RequestInit): Promise<Response> }).fetchApi(
+    '/upload/image',
+    {
+      method: 'POST',
+      body,
+    },
+  )
   if (!res.ok) throw new Error(`Upload failed (${res.status}).`)
   const saved = (await res.json()) as { name: string; subfolder?: string }
   return ['input', saved.subfolder, saved.name].filter(Boolean).join('/')
@@ -66,7 +73,12 @@ export async function uploadMediaFile(file: File, subfolder = 'zenkit'): Promise
 /** Whether a dragover carries something `readMediaDrop` can use (only `types` is readable then). */
 export function hasMediaDrop(e: DragEvent): boolean {
   const types = e.dataTransfer?.types ?? []
-  return types.includes(ZEN_IMAGE_MIME) || types.includes(COMFY_ASSET_MIME) || types.includes('text/uri-list') || types.includes('Files')
+  return (
+    types.includes(ZEN_IMAGE_MIME) ||
+    types.includes(COMFY_ASSET_MIME) ||
+    types.includes('text/uri-list') ||
+    types.includes('Files')
+  )
 }
 
 /** The media refs a drop carries, uploading desktop files into `input/<subfolder>`. Reads the
@@ -86,11 +98,20 @@ export async function readMediaDrop(
   const files = Array.from(dt.files).filter((f) => /^(image|video|audio)\//.test(f.type))
 
   if (zen) {
-    const ref = typeof zen.ref === 'string' && parseMediaRef(zen.ref) ? zen.ref : typeof zen.url === 'string' ? refFromViewUrl(zen.url) : null
+    const ref =
+      typeof zen.ref === 'string' && parseMediaRef(zen.ref)
+        ? zen.ref
+        : typeof zen.url === 'string'
+          ? refFromViewUrl(zen.url)
+          : null
     if (ref) return [ref]
   }
   if (asset && typeof asset.filename === 'string')
-    return [[String(asset.type || 'input'), String(asset.subfolder || ''), asset.filename].filter(Boolean).join('/')]
+    return [
+      [String(asset.type || 'input'), String(asset.subfolder || ''), asset.filename]
+        .filter(Boolean)
+        .join('/'),
+    ]
   const fromUri = uri ? refFromViewUrl(uri) : null
   if (fromUri) return [fromUri]
   return Promise.all(files.map((f) => upload(f, subfolder)))

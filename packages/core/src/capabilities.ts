@@ -27,7 +27,11 @@ export function createCapabilities(bus: ZenBus): ZenCapabilities {
     }
   }
 
-  async function run(id: string, args: Record<string, unknown> = {}, opts: { signal?: AbortSignal } = {}) {
+  async function run(
+    id: string,
+    args: Record<string, unknown> = {},
+    opts: { signal?: AbortSignal } = {},
+  ) {
     const capability = byId.get(id)
     if (!capability) throw new Error(`No capability "${id}".`)
     const missing = (capability.params?.required ?? []).filter((name) => args[name] === undefined)

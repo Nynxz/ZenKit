@@ -231,7 +231,6 @@ export function startSidebar(store: PanelStore, bus: ZenBus): void {
   )
 }
 
-
 // A pinned panel's rail icon drags like a dock tab: within the rail it reorders (through the
 // rail's own moveTab, where the frontend has one), and off the rail the panel comes out and
 // follows the pointer. The rail's native drag-and-drop is cancelled for these icons so the
@@ -290,7 +289,8 @@ function startRailIconDrag(
             clone = item.cloneNode(true) as HTMLElement
             // The copy must not count as a rail item, or the slot math would follow it.
             clone.removeAttribute('data-rail-item-id')
-            for (const el of clone.querySelectorAll('[data-testid]')) el.removeAttribute('data-testid')
+            for (const el of clone.querySelectorAll('[data-testid]'))
+              el.removeAttribute('data-testid')
             clone.classList.add('zk-rail-drag')
             clone.style.width = `${grab.w}px`
             document.body.append(clone)

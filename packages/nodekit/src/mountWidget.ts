@@ -270,7 +270,11 @@ export function mountWidget(
         // shows up only on the content itself, or as a footer spacer growing.
         const watched = new Set<Element>()
         const watch = () => {
-          for (const el of [inner, ...inner.children, ...inner.querySelectorAll('[data-zen-spacer]')])
+          for (const el of [
+            inner,
+            ...inner.children,
+            ...inner.querySelectorAll('[data-zen-spacer]'),
+          ])
             if (!watched.has(el)) {
               watched.add(el)
               ro?.observe(el)

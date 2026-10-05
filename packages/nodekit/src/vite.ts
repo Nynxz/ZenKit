@@ -134,7 +134,11 @@ export interface ZenRuntimeOptions {
 }
 
 /** Builds the modules in ZENKIT_RUNTIME. Vue lands in vue.js and ui.js/client.js import it. */
-export function zenRuntimeConfig({ configUrl, alias = {}, outDir = 'runtime' }: ZenRuntimeOptions): UserConfig {
+export function zenRuntimeConfig({
+  configUrl,
+  alias = {},
+  outDir = 'runtime',
+}: ZenRuntimeOptions): UserConfig {
   const entries = Object.fromEntries(
     Object.entries(ZENKIT_RUNTIME).map(([specifier, path]) => [
       path.slice(path.lastIndexOf('/') + 1, -'.js'.length),
@@ -171,7 +175,10 @@ export function zenRuntimeConfig({ configUrl, alias = {}, outDir = 'runtime' }: 
       assetsInlineLimit: Infinity,
       lib: {
         entry: Object.fromEntries(
-          Object.entries(entries).map(([name, specifier]) => [name, `${RUNTIME_ENTRY}${specifier}`]),
+          Object.entries(entries).map(([name, specifier]) => [
+            name,
+            `${RUNTIME_ENTRY}${specifier}`,
+          ]),
         ),
         formats: ['es'],
         fileName: (_format, name) => `${name}.js`,

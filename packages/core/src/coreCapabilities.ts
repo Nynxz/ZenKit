@@ -9,16 +9,23 @@ const str = (v: unknown) => (typeof v === 'string' && v ? v : undefined)
 
 function openHandle(zen: ZenKitApi, id: unknown) {
   const handle = zen.panels.get(String(id))
-  if (!handle?.getRect()) throw new Error(`No open panel "${String(id)}". panels.list shows the open ones.`)
+  if (!handle?.getRect())
+    throw new Error(`No open panel "${String(id)}". panels.list shows the open ones.`)
   return handle
 }
 
 // A panel that has just opened (or been restored) mounts a frame or two later, so its
 // commands are retried briefly before giving up.
-async function runPanelCommand(zen: ZenKitApi, id: unknown, command: string, args: Record<string, unknown>) {
+async function runPanelCommand(
+  zen: ZenKitApi,
+  id: unknown,
+  command: string,
+  args: Record<string, unknown>,
+) {
   const handle = openHandle(zen, id)
   for (let attempt = 0; ; attempt++) {
-    if (handle.commands().some((c) => c.name === command) || attempt >= 30) return handle.run(command, args)
+    if (handle.commands().some((c) => c.name === command) || attempt >= 30)
+      return handle.run(command, args)
     if (attempt === 0) handle.restore()
     await new Promise((resolve) => setTimeout(resolve, 100))
   }
@@ -30,7 +37,7 @@ export function registerCoreCapabilities(zen: ZenKitApi): void {
   register({
     id: 'panels.list',
     description:
-      'List the panel types that can be opened and the panels open right now: each open panel\'s panel_id, ' +
+      "List the panel types that can be opened and the panels open right now: each open panel's panel_id, " +
       'title, position/size, its own summary of what it shows (`state`) and the `commands` it accepts.',
     run: () => {
       const open = new Set(zen.panels.list())
@@ -46,7 +53,13 @@ export function registerCoreCapabilities(zen: ZenKitApi): void {
             .filter((i) => open.has(i.id))
             .map((i) => {
               const handle = zen.panels.get(i.id)!
-              return { panel_id: i.id, title: i.title, rect: handle.getRect(), state: handle.describe(), commands: handle.commands() }
+              return {
+                panel_id: i.id,
+                title: i.title,
+                rect: handle.getRect(),
+                state: handle.describe(),
+                commands: handle.commands(),
+              }
             }),
         }))
     },
@@ -55,8 +68,13 @@ export function registerCoreCapabilities(zen: ZenKitApi): void {
   register({
     id: 'panels.open',
     effect: 'write',
-    description: 'Open a panel of a type from panels.list (a new one for multi types). Returns its panel_id.',
-    params: { type: 'object', properties: { type: { type: 'string' }, title: { type: 'string' } }, required: ['type'] },
+    description:
+      'Open a panel of a type from panels.list (a new one for multi types). Returns its panel_id.',
+    params: {
+      type: 'object',
+      properties: { type: { type: 'string' }, title: { type: 'string' } },
+      required: ['type'],
+    },
     run: ({ type, title }) => {
       const registered = zen.panels.registered().some((p) => p.id === type)
       const handle = registered ? zen.panels.open(String(type)) : null
@@ -69,7 +87,8 @@ export function registerCoreCapabilities(zen: ZenKitApi): void {
   register({
     id: 'panels.arrange',
     effect: 'write',
-    description: 'Move, resize, dock, rename, focus, minimize, maximize or close an open panel. Coordinates are screen pixels.',
+    description:
+      'Move, resize, dock, rename, focus, minimize, maximize or close an open panel. Coordinates are screen pixels.',
     params: {
       type: 'object',
       properties: {
@@ -104,14 +123,24 @@ export function registerCoreCapabilities(zen: ZenKitApi): void {
   register({
     id: 'panels.command',
     effect: 'write',
-    description: 'Run one of an open panel\'s own commands (panels.list shows them under `commands`, with their args).',
+    description:
+      "Run one of an open panel's own commands (panels.list shows them under `commands`, with their args).",
     params: {
       type: 'object',
-      properties: { panel_id: { type: 'string' }, command: { type: 'string' }, args: { type: 'object' } },
+      properties: {
+        panel_id: { type: 'string' },
+        command: { type: 'string' },
+        args: { type: 'object' },
+      },
       required: ['panel_id', 'command'],
     },
     run: ({ panel_id, command, args }) =>
-      runPanelCommand(zen, panel_id, String(command), args && typeof args === 'object' ? (args as Record<string, unknown>) : {}),
+      runPanelCommand(
+        zen,
+        panel_id,
+        String(command),
+        args && typeof args === 'object' ? (args as Record<string, unknown>) : {},
+      ),
   })
 
   register({
@@ -138,16 +167,25 @@ export function registerCoreCapabilities(zen: ZenKitApi): void {
         .filter((n) => !kind || kindOf(n) === kind)
         .filter((n) => !needle || n.toLowerCase().includes(needle))
       const count = Math.max(1, Math.min(100, num(limit) ?? 10))
-      return { total: files.length, media: files.slice(0, count).map((n) => ({ media: `${dir}/${n}`, kind: kindOf(n) })) }
+      return {
+        total: files.length,
+        media: files.slice(0, count).map((n) => ({ media: `${dir}/${n}`, kind: kindOf(n) })),
+      }
     },
   })
 
   register({
     id: 'media.view',
     description: 'Show media full screen to the user (a lightbox over everything).',
-    params: { type: 'object', properties: { media: { type: 'array', items: { type: 'string' } } }, required: ['media'] },
+    params: {
+      type: 'object',
+      properties: { media: { type: 'array', items: { type: 'string' } } },
+      required: ['media'],
+    },
     run: async ({ media }) => {
-      const items = await Promise.all((Array.isArray(media) ? media : []).map((ref) => zen.media.resolve(String(ref))))
+      const items = await Promise.all(
+        (Array.isArray(media) ? media : []).map((ref) => zen.media.resolve(String(ref))),
+      )
       if (!items.length) throw new Error('Nothing to show.')
       zen.viewer.open(items.map((i) => ({ src: i.url, kind: i.kind, label: i.label })))
       return { shown: items.length }

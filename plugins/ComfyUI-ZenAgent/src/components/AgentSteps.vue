@@ -57,12 +57,19 @@ function runsDetail(list: unknown[]): string {
 /** One line saying what a step did, in the user's terms, from its arguments and result. */
 function phrase(step: ToolItem): { text: string; detail?: string } {
   const a = step.args ?? {}
-  const r = (step.result?.ok ? step.result.result : undefined) as Record<string, unknown> | undefined
+  const r = (step.result?.ok ? step.result.result : undefined) as
+    Record<string, unknown> | undefined
   switch (step.name) {
     case 'read_workflow':
-      return { text: 'Read the workflow', detail: Array.isArray(r?.nodes) ? `${r.nodes.length} nodes` : undefined }
+      return {
+        text: 'Read the workflow',
+        detail: Array.isArray(r?.nodes) ? `${r.nodes.length} nodes` : undefined,
+      }
     case 'find_node_types':
-      return { text: `Searched nodes for “${str(a.query)}”`, detail: Array.isArray(r) ? `${r.length} found` : undefined }
+      return {
+        text: `Searched nodes for “${str(a.query)}”`,
+        detail: Array.isArray(r) ? `${r.length} found` : undefined,
+      }
     case 'add_node':
       return { text: `Added ${str(a.type)}`, detail: r?.id != null ? `#${str(r.id)}` : undefined }
     case 'set_widget':
@@ -71,7 +78,10 @@ function phrase(step: ToolItem): { text: string; detail?: string } {
         detail: r ? `${short(r.from)} → ${short(r.to)}` : short(a.value),
       }
     case 'connect':
-      return { text: `Connected ${str(a.output)} → ${str(a.input)}`, detail: r ? `${str(r.from)} → ${str(r.to)}` : undefined }
+      return {
+        text: `Connected ${str(a.output)} → ${str(a.input)}`,
+        detail: r ? `${str(r.from)} → ${str(r.to)}` : undefined,
+      }
     case 'disconnect':
       return { text: `Disconnected ${str(a.input)}`, detail: `#${str(a.node_id)}` }
     case 'remove_node':
@@ -79,55 +89,114 @@ function phrase(step: ToolItem): { text: string; detail?: string } {
     case 'move_node':
       return { text: `Moved #${str(a.node_id)}`, detail: `${str(a.x)}, ${str(a.y)}` }
     case 'check_layout':
-      return { text: 'Checked the layout', detail: Array.isArray(r?.overlaps) ? `${r.overlaps.length} overlaps` : undefined }
+      return {
+        text: 'Checked the layout',
+        detail: Array.isArray(r?.overlaps) ? `${r.overlaps.length} overlaps` : undefined,
+      }
     case 'queue_prompt': {
       const count = Array.isArray(a.variations) && a.variations.length > 1 ? a.variations.length : 1
       const text = count > 1 ? `Ran ${count} variations` : 'Ran the workflow'
-      if (Array.isArray(r?.queued)) return { text: count > 1 ? `Queued ${count} variations` : 'Queued the workflow' }
+      if (Array.isArray(r?.queued))
+        return { text: count > 1 ? `Queued ${count} variations` : 'Queued the workflow' }
       if (Array.isArray(r?.runs)) return { text, detail: runsDetail(r.runs) }
       return { text, detail: r ? `${str(r.status)} · ${str(r.seconds)}s` : undefined }
     }
     case 'wait_for_runs':
-      return { text: 'Waited for the runs', detail: Array.isArray(r?.runs) ? runsDetail(r.runs) : undefined }
+      return {
+        text: 'Waited for the runs',
+        detail: Array.isArray(r?.runs) ? runsDetail(r.runs) : undefined,
+      }
     case 'resize_node':
-      return { text: `Resized ${r?.node ? str(r.node) : `#${str(a.node_id)}`}`, detail: Array.isArray(r?.size) ? r.size.join(' × ') : undefined }
+      return {
+        text: `Resized ${r?.node ? str(r.node) : `#${str(a.node_id)}`}`,
+        detail: Array.isArray(r?.size) ? r.size.join(' × ') : undefined,
+      }
     case 'view_layout':
-      return { text: 'Looked at the layout', detail: r?.nodes != null ? `${str(r.nodes)} nodes` : undefined }
+      return {
+        text: 'Looked at the layout',
+        detail: r?.nodes != null ? `${str(r.nodes)} nodes` : undefined,
+      }
     case 'tidy_layout':
-      return { text: 'Tidied the layout', detail: r?.arranged != null ? `${str(r.arranged)} nodes` : undefined }
+      return {
+        text: 'Tidied the layout',
+        detail: r?.arranged != null ? `${str(r.arranged)} nodes` : undefined,
+      }
     case 'look_at':
-      return { text: `Looked at ${Array.isArray(a.media) ? a.media.length : 1} image${Array.isArray(a.media) && a.media.length > 1 ? 's' : ''}`, detail: Array.isArray(a.media) ? a.media.map(short).join(', ') : short(a.media) }
+      return {
+        text: `Looked at ${Array.isArray(a.media) ? a.media.length : 1} image${Array.isArray(a.media) && a.media.length > 1 ? 's' : ''}`,
+        detail: Array.isArray(a.media) ? a.media.map(short).join(', ') : short(a.media),
+      }
     case 'use_as_input':
-      return { text: `Loaded ${r?.to ? short(r.to) : short(a.media)} into ${r?.node ? str(r.node) : `#${str(a.node_id)}`}` }
+      return {
+        text: `Loaded ${r?.to ? short(r.to) : short(a.media)} into ${r?.node ? str(r.node) : `#${str(a.node_id)}`}`,
+      }
     case 'viewer_show':
       if (Array.isArray(r?.viewers)) return { text: `Opened ${r.viewers.length} Media Viewers` }
-      return { text: `Showed media in ${r?.title ? str(r.title) : 'a Media Viewer'}`, detail: r?.shown != null ? `${str(r.shown)} items` : undefined }
+      return {
+        text: `Showed media in ${r?.title ? str(r.title) : 'a Media Viewer'}`,
+        detail: r?.shown != null ? `${str(r.shown)} items` : undefined,
+      }
     case 'viewer_merge':
-      return { text: 'Merged the Media Viewers', detail: r ? `${str(r.moved)} moved · ${Array.isArray(r.closed) ? r.closed.length : 0} closed` : undefined }
+      return {
+        text: 'Merged the Media Viewers',
+        detail: r
+          ? `${str(r.moved)} moved · ${Array.isArray(r.closed) ? r.closed.length : 0} closed`
+          : undefined,
+      }
     case 'workflows_list':
-      return { text: 'Looked at the workflows', detail: Array.isArray(r?.open) ? `${r.open.length} open` : undefined }
+      return {
+        text: 'Looked at the workflows',
+        detail: Array.isArray(r?.open) ? `${r.open.length} open` : undefined,
+      }
     case 'workflows_open':
-      return { text: `Switched to ${r?.active ? str(r.active) : str(a.workflow)}`, detail: r?.nodes != null ? `${str(r.nodes)} nodes` : undefined }
+      return {
+        text: `Switched to ${r?.active ? str(r.active) : str(a.workflow)}`,
+        detail: r?.nodes != null ? `${str(r.nodes)} nodes` : undefined,
+      }
     case 'workflows_new':
       return { text: `Opened a new workflow${r?.active ? `: ${str(r.active)}` : ''}` }
     case 'workflows_templates':
-      return { text: a.query ? `Searched templates for “${str(a.query)}”` : 'Browsed templates', detail: r ? `${str(r.total)} found` : undefined }
+      return {
+        text: a.query ? `Searched templates for “${str(a.query)}”` : 'Browsed templates',
+        detail: r ? `${str(r.total)} found` : undefined,
+      }
     case 'workflows_open_template':
-      return { text: `Opened template ${r?.active ? str(r.active) : str(a.template)}`, detail: r?.nodes != null ? `${str(r.nodes)} nodes` : undefined }
+      return {
+        text: `Opened template ${r?.active ? str(r.active) : str(a.template)}`,
+        detail: r?.nodes != null ? `${str(r.nodes)} nodes` : undefined,
+      }
     case 'media_list':
-      return { text: `Listed recent ${str(a.folder ?? 'output')} files`, detail: Array.isArray(r?.media) ? `${r.media.length} of ${str(r.total)}` : undefined }
+      return {
+        text: `Listed recent ${str(a.folder ?? 'output')} files`,
+        detail: Array.isArray(r?.media) ? `${r.media.length} of ${str(r.total)}` : undefined,
+      }
     case 'stash_search':
-      return { text: a.query ? `Searched Stash for “${str(a.query)}”` : `Browsed Stash ${str(a.kind ?? 'images')}`, detail: r ? `${str(r.total)} found` : undefined }
+      return {
+        text: a.query
+          ? `Searched Stash for “${str(a.query)}”`
+          : `Browsed Stash ${str(a.kind ?? 'images')}`,
+        detail: r ? `${str(r.total)} found` : undefined,
+      }
     case 'stash_show':
-      return { text: a.id ? `Opened ${str(a.kind ?? 'item')} ${str(a.id)} in Stash` : `Showed “${str(a.query ?? '')}” in Stash` }
+      return {
+        text: a.id
+          ? `Opened ${str(a.kind ?? 'item')} ${str(a.id)} in Stash`
+          : `Showed “${str(a.query ?? '')}” in Stash`,
+      }
     case 'media_view':
       return { text: 'Showed media full screen' }
     case 'panels_list':
       return { text: 'Looked at the panels' }
     case 'panels_open':
-      return { text: `Opened ${str(a.title ?? a.type)}`, detail: r?.panel_id ? str(r.panel_id) : undefined }
+      return {
+        text: `Opened ${str(a.title ?? a.type)}`,
+        detail: r?.panel_id ? str(r.panel_id) : undefined,
+      }
     case 'panels_arrange':
-      return { text: `${typeof a.action === 'string' ? a.action[0]!.toUpperCase() + a.action.slice(1) : 'Arranged'} ${str(a.panel_id)}`, detail: typeof a.dock === 'string' ? a.dock : undefined }
+      return {
+        text: `${typeof a.action === 'string' ? a.action[0]!.toUpperCase() + a.action.slice(1) : 'Arranged'} ${str(a.panel_id)}`,
+        detail: typeof a.dock === 'string' ? a.dock : undefined,
+      }
     case 'panels_command':
       return { text: `${str(a.command)} on ${str(a.panel_id)}` }
     default:
@@ -138,9 +207,14 @@ function phrase(step: ToolItem): { text: string; detail?: string } {
 /** The node a step is about, so clicking it can show the node on the canvas. */
 function nodeOf(step: ToolItem): number | null {
   const a = step.args ?? {}
-  const r = (step.result?.ok ? step.result.result : undefined) as Record<string, unknown> | undefined
+  const r = (step.result?.ok ? step.result.result : undefined) as
+    Record<string, unknown> | undefined
   const id = a.node_id ?? a.to_node ?? r?.id
-  return typeof id === 'number' ? id : typeof id === 'string' && /^\d+$/.test(id) ? Number(id) : null
+  return typeof id === 'number'
+    ? id
+    : typeof id === 'string' && /^\d+$/.test(id)
+      ? Number(id)
+      : null
 }
 
 function onClick(step: ToolItem): void {
@@ -154,7 +228,9 @@ function onClick(step: ToolItem): void {
   <ol class="zs">
     <li v-for="step in steps" :key="step.callId" class="zs-step" :class="step.status">
       <button class="zs-row" @click="onClick(step)">
-        <span class="zs-icon"><i class="mdi" :class="ICONS[step.name] ?? 'mdi-wrench-outline'" /></span>
+        <span class="zs-icon">
+          <i class="mdi" :class="ICONS[step.name] ?? 'mdi-wrench-outline'" />
+        </span>
         <span class="zs-text">{{ phrase(step).text }}</span>
         <span v-if="phrase(step).detail" class="zs-detail">{{ phrase(step).detail }}</span>
         <Transition name="zs-pop" mode="out-in">
@@ -168,7 +244,9 @@ function onClick(step: ToolItem): void {
       </div>
       <div v-if="open === step.callId" class="zs-body">
         <pre>{{ JSON.stringify(step.args, null, 2) }}</pre>
-        <pre v-if="step.result">{{ step.result.ok ? JSON.stringify(step.result.result, null, 2) : step.result.error }}</pre>
+        <pre v-if="step.result">{{
+          step.result.ok ? JSON.stringify(step.result.result, null, 2) : step.result.error
+        }}</pre>
       </div>
     </li>
   </ol>
@@ -226,7 +304,10 @@ function onClick(step: ToolItem): void {
   background: var(--zen-bg);
   color: var(--zen-muted);
   font-size: 14px;
-  transition: color 0.25s ease, border-color 0.25s ease, box-shadow 0.25s ease;
+  transition:
+    color 0.25s ease,
+    border-color 0.25s ease,
+    box-shadow 0.25s ease;
 }
 .zs-step.running .zs-icon {
   border-color: var(--zen-accent);
@@ -248,7 +329,13 @@ function onClick(step: ToolItem): void {
   text-overflow: ellipsis;
 }
 .zs-step.running .zs-text {
-  background: linear-gradient(90deg, var(--zen-muted) 0%, var(--zen-text) 50%, var(--zen-muted) 100%) 0 0 / 200% 100%;
+  background: linear-gradient(
+      90deg,
+      var(--zen-muted) 0%,
+      var(--zen-text) 50%,
+      var(--zen-muted) 100%
+    )
+    0 0 / 200% 100%;
   -webkit-background-clip: text;
   background-clip: text;
   color: transparent;
@@ -300,7 +387,9 @@ function onClick(step: ToolItem): void {
 }
 .zs-pop-enter-active,
 .zs-pop-leave-active {
-  transition: transform 0.18s ease, opacity 0.18s ease;
+  transition:
+    transform 0.18s ease,
+    opacity 0.18s ease;
 }
 .zs-pop-enter-from {
   transform: scale(0.4);

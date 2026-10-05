@@ -16,10 +16,14 @@ export interface LayoutNode {
 export interface LayoutGraph {
   nodes(): LayoutNode[]
   byId(id: number): LayoutNode | null
-  link(id: number): { origin_id: number; origin_slot: number; target_id: number; target_slot: number } | undefined
+  link(
+    id: number,
+  ): { origin_id: number; origin_slot: number; target_id: number; target_slot: number } | undefined
 }
 
-const LG = () => (window as unknown as { LiteGraph?: { NODE_TITLE_HEIGHT?: number; NODE_SLOT_HEIGHT?: number } }).LiteGraph
+const LG = () =>
+  (window as unknown as { LiteGraph?: { NODE_TITLE_HEIGHT?: number; NODE_SLOT_HEIGHT?: number } })
+    .LiteGraph
 const titleHeight = () => LG()?.NODE_TITLE_HEIGHT ?? 30
 const slotHeight = () => LG()?.NODE_SLOT_HEIGHT ?? 20
 const GAP_X = 80
@@ -50,7 +54,14 @@ const overlaps = (a: Box, b: Box, gap: number) =>
 /** Put the node at the free spot nearest `ideal` (its pos), keeping it within [minX, maxX] so wires
  *  still run left to right. Tried: the ideal spot, just above or below every other node, and
  *  lined up with the left or right edge of every column already there. */
-function placeNear(node: LayoutNode, ideal: [number, number], g: LayoutGraph, ignore: Set<number>, minX = -Infinity, maxX = Infinity): void {
+function placeNear(
+  node: LayoutNode,
+  ideal: [number, number],
+  g: LayoutGraph,
+  ignore: Set<number>,
+  minX = -Infinity,
+  maxX = Infinity,
+): void {
   const others = g
     .nodes()
     .filter((o) => o.id !== node.id && !ignore.has(o.id))
@@ -58,8 +69,11 @@ function placeNear(node: LayoutNode, ideal: [number, number], g: LayoutGraph, ig
   const t = titleHeight()
   const [w, inner] = sizeOf(node)
   const h = inner + t
-  const fits = (x: number, y: number) => !others.some((b) => overlaps({ x, y: y - t, w, h }, b, GAP_Y))
-  const xs = [ideal[0], ...others.flatMap((b) => [b.x, b.x + b.w - w])].filter((x) => x >= minX && x <= maxX)
+  const fits = (x: number, y: number) =>
+    !others.some((b) => overlaps({ x, y: y - t, w, h }, b, GAP_Y))
+  const xs = [ideal[0], ...others.flatMap((b) => [b.x, b.x + b.w - w])].filter(
+    (x) => x >= minX && x <= maxX,
+  )
   const ys = [ideal[1], ...others.flatMap((b) => [b.y + b.h + GAP_Y + t, b.y - h - GAP_Y + t])]
   let best: [number, number] = ideal
   let cost = Infinity
@@ -99,7 +113,10 @@ const waiting = new Set<number>()
 
 /** A new node's first spot, before it is wired: under everything, at the left edge. */
 export function parkNew(node: LayoutNode, g: LayoutGraph): void {
-  const others = g.nodes().filter((n) => n.id !== node.id && !waiting.has(n.id)).map(boxOf)
+  const others = g
+    .nodes()
+    .filter((n) => n.id !== node.id && !waiting.has(n.id))
+    .map(boxOf)
   const left = others.length ? Math.min(...others.map((b) => b.x)) : 0
   const bottom = others.length ? Math.max(...others.map((b) => b.y + b.h)) : 0
   placeNear(node, [left, bottom + GAP_Y * 2 + titleHeight()], g, new Set())
@@ -116,7 +133,7 @@ export const forget = pin
  *  ones go to their right. New nodes wired to nothing stay where they were parked. */
 export function settleAll(g: LayoutGraph): number {
   let placed = 0
-  for (let progress = true; progress && waiting.size; ) {
+  for (let progress = true; progress && waiting.size;) {
     progress = false
     for (const side of ['consumer', 'producer'] as const) {
       for (const id of [...waiting]) {
@@ -126,16 +143,32 @@ export function settleAll(g: LayoutGraph): number {
           continue
         }
         const { feeds, fedBy } = wiring(node, g)
-        const anchor = side === 'consumer' ? feeds.find((f) => !waiting.has(f.node.id)) : fedBy.find((f) => !waiting.has(f.node.id))
+        const anchor =
+          side === 'consumer'
+            ? feeds.find((f) => !waiting.has(f.node.id))
+            : fedBy.find((f) => !waiting.has(f.node.id))
         if (!anchor) continue
         waiting.delete(id)
         const a = anchor.node
         if (side === 'consumer') {
           const y = a.pos[1] + (anchor.inSlot - anchor.outSlot) * slotHeight()
-          placeNear(node, [a.pos[0] - sizeOf(node)[0] - GAP_X, y], g, waiting, -Infinity, a.pos[0] - sizeOf(node)[0] - GAP_X / 2)
+          placeNear(
+            node,
+            [a.pos[0] - sizeOf(node)[0] - GAP_X, y],
+            g,
+            waiting,
+            -Infinity,
+            a.pos[0] - sizeOf(node)[0] - GAP_X / 2,
+          )
         } else {
           const y = a.pos[1] + (anchor.outSlot - anchor.inSlot) * slotHeight()
-          placeNear(node, [a.pos[0] + sizeOf(a)[0] + GAP_X, y], g, waiting, a.pos[0] + sizeOf(a)[0] + GAP_X / 2)
+          placeNear(
+            node,
+            [a.pos[0] + sizeOf(a)[0] + GAP_X, y],
+            g,
+            waiting,
+            a.pos[0] + sizeOf(a)[0] + GAP_X / 2,
+          )
         }
         placed++
         progress = true
@@ -183,7 +216,8 @@ export function tidy(g: LayoutGraph, only?: Set<number>): number {
   for (const column of filled) column.sort((a, b) => a.pos[1] - b.pos[1])
   filled.forEach(index)
   // Two sweeps: order each column by where its inputs sit, then by where its outputs go.
-  const mean = (xs: number[], fallback: number) => (xs.length ? xs.reduce((a, b) => a + b, 0) / xs.length : fallback)
+  const mean = (xs: number[], fallback: number) =>
+    xs.length ? xs.reduce((a, b) => a + b, 0) / xs.length : fallback
   for (const pass of ['fedBy', 'feeds'] as const) {
     const sweep = pass === 'fedBy' ? filled : [...filled].reverse()
     // Where a node's neighbours sit, plus which of their slots it uses, so nodes feeding the same

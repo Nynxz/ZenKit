@@ -518,7 +518,9 @@ export function setImageDragData(
   // relative '/view?…' makes the whole drag a no-op with no error anywhere. Resolve it
   // against the page, exactly as ComfyUI's own asset cards do.
   const url = absoluteUrl(img.url)
-  const ref = img.ref ?? (img.filename && img.type ? comfyRef(img.type, img.subfolder, img.filename) : refFromUrl(url))
+  const ref =
+    img.ref ??
+    (img.filename && img.type ? comfyRef(img.type, img.subfolder, img.filename) : refFromUrl(url))
   dt.setData(ZEN_IMAGE_MIME, JSON.stringify({ ...img, url, ref }))
   // Native Comfy asset → let loader nodes reuse the server-side file as-is.
   if (img.filename && img.type) {
@@ -596,7 +598,11 @@ function refFromUrl(url: string): string | undefined {
     const u = new URL(url, window.location.href)
     const filename = u.searchParams.get('filename')
     if (!u.pathname.endsWith('/view') || !filename) return undefined
-    return comfyRef(u.searchParams.get('type') || 'output', u.searchParams.get('subfolder') ?? '', filename)
+    return comfyRef(
+      u.searchParams.get('type') || 'output',
+      u.searchParams.get('subfolder') ?? '',
+      filename,
+    )
   } catch {
     return undefined
   }
@@ -633,7 +639,11 @@ export function readImageDragData(e: DragEvent): DroppedImage[] {
       type: String(asset.type || 'output'),
     })
     const name = String(asset.display_name || asset.filename)
-    const ref = comfyRef(String(asset.type || 'output'), String(asset.subfolder || ''), String(asset.filename))
+    const ref = comfyRef(
+      String(asset.type || 'output'),
+      String(asset.subfolder || ''),
+      String(asset.filename),
+    )
     return [{ url: absoluteUrl(`/api/view?${q}`), ref, filename: name, kind: mediaKindOf(name) }]
   }
 

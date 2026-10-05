@@ -111,7 +111,8 @@ function padNewRows() {
 }
 
 /** Inside ZenKit's overlay, a node's DOM widget or the Vue node layer: never a chrome row. */
-const NOT_CHROME = '#zenkit-host, .dom-widget, [data-zen-layer], .lg-node, [data-testid="transform-pane"]'
+const NOT_CHROME =
+  '#zenkit-host, .dom-widget, [data-zen-layer], .lg-node, [data-testid="transform-pane"]'
 function mayMoveChrome(record: MutationRecord): boolean {
   const target = record.target as Element
   if (target.closest?.(NOT_CHROME)) return false

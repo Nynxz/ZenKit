@@ -87,7 +87,13 @@ export const agentApi = {
   ) =>
     call<{ thread_id: string; turn_id: string }>(`/threads/${threadId ?? 'new'}/messages`, {
       method: 'POST',
-      body: JSON.stringify({ ...message, workflow, tools, turn_id: turnId, client_id: api.clientId }),
+      body: JSON.stringify({
+        ...message,
+        workflow,
+        tools,
+        turn_id: turnId,
+        client_id: api.clientId,
+      }),
     }),
   cancel: (turnId: string) => call(`/turns/${turnId}/cancel`, { method: 'POST' }),
   toolResult: (callId: string, result: ToolResult) =>

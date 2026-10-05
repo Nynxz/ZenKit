@@ -55,11 +55,18 @@ async function save(): Promise<void> {
     <ZenField label="Model" stack>
       <ZenSelect
         v-model="model"
-        :options="[{ value: '', label: 'Loaded / first available' }, ...models.map((m) => ({ value: m, label: m }))]"
+        :options="[
+          { value: '', label: 'Loaded / first available' },
+          ...models.map((m) => ({ value: m, label: m })),
+        ]"
       />
     </ZenField>
     <ZenField label="API key" stack>
-      <ZenInput v-model="apiKey" type="password" :placeholder="hasKey ? 'Saved — type to replace' : 'Optional'" />
+      <ZenInput
+        v-model="apiKey"
+        type="password"
+        :placeholder="hasKey ? 'Saved — type to replace' : 'Optional'"
+      />
     </ZenField>
     <ZenField label="Max tokens" stack>
       <ZenInput v-model="maxTokens" type="number" :min="64" :step="256" />

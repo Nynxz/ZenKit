@@ -6,7 +6,9 @@ import type { Attachment } from '../lib/vision'
 const { media } = defineProps<{ media: Attachment }>()
 
 function view(): void {
-  void openViewer([{ src: media.url, kind: media.kind, label: media.label ?? media.ref }], { index: 0 })
+  void openViewer([{ src: media.url, kind: media.kind, label: media.label ?? media.ref }], {
+    index: 0,
+  })
 }
 </script>
 

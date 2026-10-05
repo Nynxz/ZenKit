@@ -43,13 +43,18 @@ interface PromptData {
 
 function nodeTitle(id: string | undefined): string | null {
   if (!id) return null
-  const node = (app.graph as { getNodeById(id: number): { title?: string; type?: string } | null })
-    .getNodeById(Number(id))
+  const node = (
+    app.graph as { getNodeById(id: number): { title?: string; type?: string } | null }
+  ).getNodeById(Number(id))
   return node?.title ?? node?.type ?? `#${id}`
 }
 
 function viewUrl(file: { filename: string; subfolder?: string; type?: string }): string {
-  const q = new URLSearchParams({ filename: file.filename, subfolder: file.subfolder ?? '', type: file.type ?? 'output' })
+  const q = new URLSearchParams({
+    filename: file.filename,
+    subfolder: file.subfolder ?? '',
+    type: file.type ?? 'output',
+  })
   return api.apiURL(`/view?${q.toString()}`)
 }
 
@@ -105,7 +110,15 @@ function addOutputs(run: Run, node: string, output: NodeOutput): void {
     for (const file of files ?? []) {
       if (!file?.filename) continue
       const kind = mediaKindOf(file.filename)
-      run.outputs.push({ ref: [file.type ?? 'output', file.subfolder, file.filename].filter(Boolean).join('/'), node, filename: file.filename, subfolder: file.subfolder ?? '', type: file.type ?? 'output', url: viewUrl(file), kind })
+      run.outputs.push({
+        ref: [file.type ?? 'output', file.subfolder, file.filename].filter(Boolean).join('/'),
+        node,
+        filename: file.filename,
+        subfolder: file.subfolder ?? '',
+        type: file.type ?? 'output',
+        url: viewUrl(file),
+        kind,
+      })
     }
   }
 }
@@ -113,7 +126,11 @@ function addOutputs(run: Run, node: string, output: NodeOutput): void {
 on('executed', (run, d) => addOutputs(run, d.node ?? '', d.output))
 on('execution_success', (run) => finish(run, 'done'))
 on('execution_error', (run, d) =>
-  finish(run, 'error', `${d.node_type ?? 'A node'} failed: ${d.exception_message ?? 'unknown error'}`.trim()),
+  finish(
+    run,
+    'error',
+    `${d.node_type ?? 'A node'} failed: ${d.exception_message ?? 'unknown error'}`.trim(),
+  ),
 )
 on('execution_interrupted', (run) => finish(run, 'interrupted', 'The run was interrupted.'))
 
@@ -130,20 +147,28 @@ function applyOverrides(output: ApiPrompt, overrides: Override[]): void {
   for (const { node_id, widget, value } of overrides) {
     const node = output[String(node_id)]
     if (!node) throw new Error(`Node ${String(node_id)} is not part of the queued workflow.`)
-    if (!(widget in node.inputs)) throw new Error(`${node.class_type} #${String(node_id)} has no input "${widget}".`)
-    if (Array.isArray(node.inputs[widget])) throw new Error(`"${widget}" on #${String(node_id)} is fed by a link, not a widget.`)
+    if (!(widget in node.inputs))
+      throw new Error(`${node.class_type} #${String(node_id)} has no input "${widget}".`)
+    if (Array.isArray(node.inputs[widget]))
+      throw new Error(`"${widget}" on #${String(node_id)} is fed by a link, not a widget.`)
     node.inputs[widget] = value
   }
 }
 
 /** Queue the current workflow (with any per-run overrides); returns its prompt id once queued. */
-export async function queueRun(onQueued: (promptId: string) => void, overrides: Override[] = []): Promise<string> {
-  const prompt = await (app as { graphToPrompt(): Promise<{ output: ApiPrompt; workflow: unknown }> }).graphToPrompt()
+export async function queueRun(
+  onQueued: (promptId: string) => void,
+  overrides: Override[] = [],
+): Promise<string> {
+  const prompt = await (
+    app as { graphToPrompt(): Promise<{ output: ApiPrompt; workflow: unknown }> }
+  ).graphToPrompt()
   applyOverrides(prompt.output, overrides)
   const res = await (
     api as { queuePrompt(n: number, p: unknown): Promise<{ prompt_id?: string; error?: unknown }> }
   ).queuePrompt(0, prompt)
-  if (!res.prompt_id) throw new Error(`The workflow was not queued: ${JSON.stringify(res.error ?? res)}`)
+  if (!res.prompt_id)
+    throw new Error(`The workflow was not queued: ${JSON.stringify(res.error ?? res)}`)
   const run: Run = {
     promptId: res.prompt_id,
     status: 'queued',
