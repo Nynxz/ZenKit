@@ -1,6 +1,8 @@
 import { app } from '@comfy/app'
 // The pack version, read from package.json so it cannot drift from what ships.
 import { version } from '../package.json'
+// The family tile from docs/assets/render/brand.mjs; the build inlines it as a data URI.
+import logo from './logo.svg'
 import { mountVue, registerZenPlugin, type ZenPanelDef } from '@nynxz/zenkit-client'
 import Inspector from '@/Inspector.vue'
 
@@ -28,6 +30,7 @@ app.registerExtension({
       id: 'zeninspector',
       plugin: 'Zen Inspector',
       version,
+      logo,
       panels: [PANEL],
     })
   },

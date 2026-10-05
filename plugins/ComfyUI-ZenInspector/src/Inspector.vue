@@ -10,7 +10,7 @@
 // plugin simply gains an extra tab. It re-scans on the 'plugins:change' bus event.
 import { computed, onBeforeUnmount, onMounted, ref } from 'vue'
 import { whenZen, type ZenKitApi } from '@nynxz/zenkit-client'
-import { ZenIconButton, ZenToolbar } from '@nynxz/zenkit-ui'
+import { ZenEmpty, ZenIconButton, ZenToolbar } from '@nynxz/zenkit-ui'
 import IssueList from '@/components/IssueList.vue'
 import NodeTable from '@/components/NodeTable.vue'
 import PackDetail from '@/components/PackDetail.vue'
@@ -297,10 +297,7 @@ const MODES: { id: Mode; label: string; icon: string }[] = [
     <div v-else-if="mode === 'packs'" class="zi-split">
       <PackList :packs="packs" :selected="current?.key ?? null" @select="selected = $event" />
       <PackDetail v-if="current" :pack="current" :sources="snap.sources" />
-      <div v-else class="zi-empty">
-        <i class="mdi mdi-package-variant" />
-        <span>No pack matches.</span>
-      </div>
+      <ZenEmpty v-else>No pack matches.</ZenEmpty>
     </div>
 
     <div v-else-if="mode === 'nodes'" class="zi-scroll zi-pad">
