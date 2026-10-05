@@ -13,10 +13,28 @@ export {
   type DragSurfaceOptions,
 } from './useDragSurface'
 export { viewUrl } from './viewUrl'
+export {
+  hasMediaDrop,
+  mediaKind,
+  mediaRefUrl,
+  parseMediaRef,
+  readMediaDrop,
+  uploadMediaFile,
+} from './mediaRefs'
+export {
+  createMediaLibrary,
+  type MediaKind,
+  type MediaLibrary,
+  type MediaLibraryItem,
+  type MediaRoot,
+} from './mediaLibrary'
+// thumbUrl / uploadOrReuse / mediaInfo come bound to the pack's routes from createNodekit.
+export { createPackMedia, type MediaInfo, type PackMedia } from './packMedia'
 
-// Optional ZenKit integration — each a no-op or fallback without the runtime.
+// Optional ZenKit integration — each a no-op or fallback without the runtime. openViewer is the
+// client's own (bundled, see zenkit.ts).
 export { registerSlotLink } from './zenGraph'
-export { openViewer, type ViewerItem } from './zenViewer'
+export { openViewer, type ViewerHandle, type ViewerItem, type ViewerOpenOptions } from './zenkit'
 export { openZenPanel, hasZenPanels, type ZenPanelSpec, type ZenPanelHandle } from './zenPanel'
 
 // Prefer the identity-bound versions from createNodekit over these.

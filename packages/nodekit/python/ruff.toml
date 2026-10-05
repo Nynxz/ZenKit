@@ -1,0 +1,12 @@
+# The packs run `ruff check` and `ruff format --check` over the vendored copies of these modules,
+# so the templates are kept clean under the packs' settings (ComfyUI-NynxzNodes / ComfyUI-ZenCut
+# pyproject.toml). Not copied by `zenkit-nodekit sync`.
+target-version = "py310"
+line-length = 100
+
+[lint]
+select = ["E", "W", "F", "I", "UP", "B", "C4", "SIM", "BLE", "RUF"]
+ignore = ["E501"]
+
+[format]
+docstring-code-format = true

@@ -9,6 +9,19 @@ export interface PackManifest {
   displayName: string
   /** Root ComfyUI menu category. */
   category: string
+  /** Read only by `zenkit-nodekit sync`, which vendors the Python half; every field is optional. */
+  python?: {
+    /** The node package, holding `__init__.py` and the node modules. Default `"nodes"`. */
+    package?: string
+    /** The vendored package's name inside it; must start with `_`. Default `"_zenkit"`. */
+    vendor?: string
+    /** The pack's own route modules, relative to `package` (`"server.api"`); `setup()` imports them. */
+    routes?: string[]
+    /** Python log-line prefix. Default `"[<displayName>]"`. */
+    logPrefix?: string
+    /** Where `check-widgets` looks for widget components. Default `"frontend/widgets"`. */
+    widgets?: string
+  }
 }
 
 export interface Identity {

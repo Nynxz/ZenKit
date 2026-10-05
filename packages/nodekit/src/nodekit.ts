@@ -16,11 +16,13 @@ import {
   type NodeHeaderButtonOptions,
 } from './nodeHeaderButton'
 import type { NodeDef } from './defineNode'
+import { createMediaLibrary, type MediaLibrary } from './mediaLibrary'
+import { createPackMedia, type PackMedia } from './packMedia'
 
-export interface Nodekit extends Identity {
+export interface Nodekit extends Identity, PackMedia {
   /** Turn per-node definitions into one ComfyUI extension. */
   registerNodes(defs: NodeDef[], extensionName?: string): void
-  /** Flatten globbed `widget.ts` modules into node defs. */
+  /** Flatten globbed node modules (`frontend/nodes/*.ts`) into node defs. */
   discoverNodes(modules: Record<string, unknown>): NodeDef[]
   /** Turn globbed `widgets/*.vue` files into node defs by filename convention. */
   discoverWidgets(modules: Record<string, unknown>): NodeDef[]
@@ -34,6 +36,9 @@ export interface Nodekit extends Identity {
     widgetEl: HTMLElement | null,
     opts: NodeHeaderButtonOptions,
   ): NodeHeaderButtonHandle
+  /** ComfyUI's media folders, listed by the pack's `media` route (see mediaLibrary.ts). */
+  mediaLibrary: MediaLibrary
+  // thumbUrl, uploadOrReuse, mediaInfo: the pack's other media routes (see packMedia.ts).
 }
 
 export function createNodekit(pack: PackManifest): Nodekit {
@@ -47,5 +52,7 @@ export function createNodekit(pack: PackManifest): Nodekit {
     widgetTypes: (modules) => _widgetTypes(modules, identity),
     mountWidget: (node, opts) => _mountWidget(node, opts, identity),
     addNodeHeaderButton: (node, el, opts) => _addNodeHeaderButton(node, el, opts, identity),
+    mediaLibrary: createMediaLibrary(identity.route('media')),
+    ...createPackMedia(identity.route('media')),
   }
 }

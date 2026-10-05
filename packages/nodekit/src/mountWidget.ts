@@ -85,11 +85,13 @@ const live = new WeakMap<DOMWidget, { app: VueApp; ro?: ResizeObserver }>()
 
 /** What counts as "a press here is aimed at a control, not at the node" — see the delegated
  *  pointerdown guard in mountWidget. Covers the native controls plus the ARIA roles the ZenKit
- *  inputs use (ZenNumber's stepper spans, ZenSwitch, ZenToggleGroup, ZenSelect's trigger), and
+ *  inputs use (ZenNumber's stepper spans, ZenSwitch, ZenToggleGroup, ZenSelect's trigger), HTML5
+ *  drag sources (a node-drag would swallow their dragstart), and
  *  `data-zen-drag` for a component's own custom drag surface. */
 const INTERACTIVE =
   'button, input, select, textarea, a[href], [contenteditable="true"], [data-zen-drag],' +
-  '[role="button"], [role="slider"], [role="switch"], [role="tab"], [role="combobox"], [role="checkbox"]'
+  '[draggable="true"], [role="button"], [role="slider"], [role="switch"], [role="tab"], [role="combobox"],' +
+  ' [role="checkbox"]'
 
 /** Marks a container with the widget slot it belongs to. Read back by {@link reclaimSlot}. */
 const SLOT = 'zenSlot'

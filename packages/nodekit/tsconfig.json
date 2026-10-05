@@ -3,5 +3,5 @@
   "compilerOptions": {
     "jsx": "preserve"
   },
-  "include": ["src", "../types/src/comfy.d.ts"]
+  "include": ["src", "cli", "../client/comfy.d.ts"]
 }

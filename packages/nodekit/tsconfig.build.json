@@ -4,8 +4,8 @@
     "noEmit": false,
     "declaration": true,
     "emitDeclarationOnly": true,
-    "outDir": "dist",
-    "rootDir": "src"
+    "outDir": "dist/types",
+    "rootDir": ".."
   },
-  "include": ["src", "../types/src/comfy.d.ts"]
+  "include": ["src", "../client/comfy.d.ts"]
 }

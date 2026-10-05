@@ -7,27 +7,28 @@ import { registerSlotLink } from './zenGraph'
 import type { Identity } from './identity'
 import type { NodeDef } from './defineNode'
 
-/** What a `widget.ts` is allowed to default-export: one node def, or several. */
-type WidgetModule = { default: NodeDef | NodeDef[] }
+/** What a node module is allowed to default-export: one node def, or several. */
+type NodeModule = { default: NodeDef | NodeDef[] }
 
 /**
- * Collect every node def from a set of `widget.ts` modules.
+ * Collect every node def from a set of node modules — by convention `frontend/nodes/*.ts`, each
+ * default-exporting `defineNode(...)` (or an array of them). These are the nodes widget discovery
+ * can't produce: a node that reuses another file's widget type, or one with no widget at all.
  *
- * The frontend mirror of `framework/discovery.py`: the caller hands us the result of globbing
- * every node folder's `widget.ts` (see `src/main.ts`) and we flatten it. Vite resolves that glob
- * at BUILD time into static imports, so a new node folder is picked up by the next build with no
- * shared file to edit — the same "make a folder" story as the Python side.
+ * The caller hands us the result of globbing them (see the pack's `main.ts`) and we flatten it.
+ * Vite resolves that glob at BUILD time into static imports, so a new file is picked up by the
+ * next build with no shared file to edit.
  *
  * It has to be passed in rather than globbed here: `import.meta.glob` patterns are resolved
- * relative to the file they appear in, so a glob written inside `framework/` could never see
- * `src/nodes/`. Keeping the pattern at the call site is also what leaves the framework with no
- * knowledge of where an app puts its nodes.
+ * relative to the file they appear in, so a glob written inside nodekit could never see the
+ * pack's files. Keeping the pattern at the call site is also what leaves nodekit with no
+ * knowledge of where a pack puts its nodes.
  */
 export function discoverNodes(modules: Record<string, unknown>, identity?: Identity): NodeDef[] {
   return Object.entries(modules)
     .sort(([a], [b]) => a.localeCompare(b)) // stable order regardless of filesystem listing
     .flatMap(([path, mod]) => {
-      const def = (mod as WidgetModule)?.default
+      const def = (mod as NodeModule)?.default
       if (!def) {
         console.warn(
           `[${identity?.DISPLAY_NAME ?? 'nodekit'}] ${path} has no default export — skipped`,
@@ -129,11 +130,12 @@ export function registerNodes(defs: NodeDef[], name: string, identity: Identity)
     },
   } as never)
 
-  // Slot-links: middle-click the matched slot → spawn + wire the companion. No-op without ZenKit.
+  // Slot-links: middle-click the matched slot → spawn + wire the companion. They register once
+  // ZenKit is up; no-op without it. They live as long as the page, so the unregister is dropped.
   for (const def of defs)
     for (const sl of def.slotLinks ?? [])
       for (const cls of asArray(def.is ?? []))
-        registerSlotLink({
+        void registerSlotLink({
           on:
             sl.input != null
               ? { node: cls, input: sl.input }

@@ -1,11 +1,13 @@
 // Mount a component in a ZenKit panel when the runtime is present, and report when it isn't so
-// the caller can fall back to its own dialog. Talks to `window.ZenKit` directly rather than
-// importing @nynxz/zenkit-client, so a pack has no runtime dependency on ZenKit.
+// the caller can fall back to its own dialog. A pack has no runtime dependency on ZenKit: the
+// client code this uses is bundled into nodekit (see zenkit.ts).
 //
 // A panel rather than a modal: it is dockable and survives clicking back onto a node, which is
 // what anything edited *while* looking at the graph needs.
 
 import { createApp, type Component } from 'vue'
+
+import { getZenKit } from './zenkit'
 
 export interface ZenPanelSpec {
   /** Stable id. Opening the same id again focuses the existing panel instead of duplicating. */
@@ -20,29 +22,17 @@ export interface ZenPanelSpec {
   persist?: boolean
   /** Props handed to the component. */
   props?: Record<string, unknown>
+  /** Called once when the panel closes — by its own ✕ or by `handle.close()`. For a caller
+   *  that keeps state about the panel being open, so that state can't outlive it. */
+  onClose?: () => void
 }
 
 export interface ZenPanelHandle {
-  close(): void
+  /** `keep`: remember its place (geometry, workspace tile) for when the same id opens again. */
+  close(opts?: { keep?: boolean }): void
   setTitle(title: string): void
-}
-
-interface PanelHandleLike {
-  close?: () => void
-  setTitle?: (title: string) => void
-}
-
-interface ZenKitLike {
-  panels?: {
-    open(spec: Record<string, unknown>): PanelHandleLike | null
-    get?(id: string): PanelHandleLike | null
-  }
-}
-
-function getZenKit(): ZenKitLike | null {
-  return (
-    (typeof window !== 'undefined' && (window as unknown as { ZenKit?: ZenKitLike }).ZenKit) || null
-  )
+  /** Bring the panel to the front (and out of a minimized state, where ZenKit supports it). */
+  focus(): void
 }
 
 /** Whether a ZenKit panel can be opened right now. Components use this to decide between a
@@ -80,9 +70,19 @@ export function openZenPanel(spec: ZenPanelSpec, component: Component): ZenPanel
         return () => app.unmount()
       },
     })
+    if (spec.onClose && handle?.on) {
+      let fired = false
+      const off = handle.on('close', () => {
+        if (fired) return
+        fired = true
+        off?.()
+        spec.onClose?.()
+      })
+    }
     return {
-      close: () => handle?.close?.(),
+      close: (opts) => handle?.close?.(opts),
       setTitle: (title) => handle?.setTitle?.(title),
+      focus: () => handle?.focus?.(),
     }
   } catch {
     return null
