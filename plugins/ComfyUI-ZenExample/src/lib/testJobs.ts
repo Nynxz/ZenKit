@@ -31,7 +31,8 @@ export function runInBrowser(kind: JobKind): void {
   else if (kind === 'open') void openEnded('Index library', 6)
   else if (kind === 'fail') void counted('Upload batch', 12, 300, 7)
   else
-    for (let n = 1; n <= 4; n++) void counted(`Thumbnail ${n}`, 6 + Math.floor(Math.random() * 9), 200)
+    for (let n = 1; n <= 4; n++)
+      void counted(`Thumbnail ${n}`, 6 + Math.floor(Math.random() * 9), 200)
 }
 
 /** Ask the server to run one (see jobs_api.py); its progress arrives as `zenkit.job` events. */
