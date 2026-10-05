@@ -23,7 +23,21 @@ TOOLS = [
     _tool(
         "read_workflow",
         "Read the current workflow: every node with its id, type, widget values, and the links between nodes. "
-        "Call this before editing and after edits you need to check.",
+        "Nodes whose model files aren't installed here are marked not_installed. Call this before editing, after "
+        "switching workflows, and after edits you need to check.",
+    ),
+    _tool(
+        "find_models",
+        "Find model files installed in this ComfyUI. With no arguments: the model folders and how many files each "
+        "holds. With a type (a folder or a word for it: lora, checkpoint, diffusion/unet, vae, text_encoder/clip, "
+        "upscale, controlnet, embedding, clip_vision…): that folder's files. With query: files whose path has those "
+        "words, in any order (across every folder if no type). Results say which loader inputs take them (set_on). "
+        "Use it to pick a model, or to replace one a workflow names that isn't installed.",
+        {
+            "type": {"type": "string", "description": "Model folder or a word for it, e.g. 'lora' or 'diffusion_models'."},
+            "query": {"type": "string", "description": "Words to match in the file path, e.g. 'flux dev fp8'."},
+            "limit": {"type": "integer", "description": "Most files to return (default 40, max 200)."},
+        },
     ),
     _tool(
         "find_node_types",
@@ -43,7 +57,9 @@ TOOLS = [
     ),
     _tool(
         "set_widget",
-        "Set a widget value on a node, e.g. steps, seed, a prompt's text, or a model file name.",
+        "Set a widget value on a node, e.g. steps, seed, a prompt's text, or a model file name. A file name that is "
+        "close to exactly one installed file (other case, no subfolder or extension) is matched to it; otherwise "
+        "the error lists the closest options.",
         {"node_id": NODE_ID, "name": {"type": "string"}, "value": {"description": "The new value."}},
         ["node_id", "name", "value"],
     ),

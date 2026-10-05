@@ -4,9 +4,20 @@ import { getZenKit } from '@nynxz/zenkit-client'
 
 import type { ToolResult } from './api'
 import { capabilityFor } from './capabilityTools'
+import { closest, filesIn, folderFor, folders, rank, resolveOption, usedBy } from './models'
 import { renderSchematic } from './schematic'
 import type { LayoutGraph } from './layout'
-import { boxOf, forget, parkNew, pin, resolveOverlaps, settleAll, sizeOf, tidy, unplaced } from './layout'
+import {
+  boxOf,
+  forget,
+  parkNew,
+  pin,
+  resolveOverlaps,
+  settleAll,
+  sizeOf,
+  tidy,
+  unplaced,
+} from './layout'
 import { resolveMedia, snapshot } from './vision'
 import type { Override, Run } from './runs'
 import { queueRun, runs, waitForRun } from './runs'
@@ -95,21 +106,50 @@ export function nodeLabel(node: GraphNode): string {
   return node.title && node.title !== node.type ? `${node.title} (${node.type})` : node.type
 }
 
-function setWidget(node: GraphNode, name: string, value: unknown): unknown {
+/** Set a widget; returns what it was and what it is now (a near-miss file name is resolved to the
+ *  one option it means, e.g. "detail" → "style/Detail.safetensors"). */
+function setWidget(node: GraphNode, name: string, value: unknown): { from: unknown; to: unknown } {
   const widget = node.widgets?.find((w) => w.name === name)
   if (!widget) {
     const names = node.widgets?.map((w) => w.name).join(', ') || 'none'
     throw new Error(`${node.type} #${node.id} has no widget "${name}". Its widgets: ${names}.`)
   }
   const options = comboValues(widget)
+  let to = value
   if (options && !options.includes(value)) {
-    const shown = options.slice(0, 30).map(String).join(', ')
-    throw new Error(`"${String(value)}" is not an option for ${name}. Options: ${shown}${options.length > 30 ? ', …' : ''}`)
+    const meant = resolveOption(options, value)
+    if (meant === null) {
+      const near = closest(options, value)
+      throw new Error(
+        `"${String(value)}" is not an option for ${name} (it has ${options.length}). ` +
+          (near.length ? `Closest: ${near.join(', ')}. ` : 'Nothing close. ') +
+          'For model files, find_models searches every installed file by type and words.',
+      )
+    }
+    to = meant
   }
   const previous = widget.value
-  widget.value = value
-  widget.callback?.(value)
-  return previous
+  widget.value = to
+  widget.callback?.(to)
+  return { from: previous, to }
+}
+
+/** Combo widgets (model files, mostly) set to something that isn't installed here. */
+function missingFiles(node: GraphNode) {
+  return (node.widgets ?? []).flatMap((w) => {
+    const options = comboValues(w)
+    return options?.length && typeof w.value === 'string' && w.value && !options.includes(w.value)
+      ? [
+          {
+            widget: w.name,
+            value: w.value,
+            ...(resolveOption(options, w.value)
+              ? { probably: resolveOption(options, w.value) }
+              : {}),
+          },
+        ]
+      : []
+  })
 }
 
 const round = (n: number) => Math.round(n)
@@ -130,10 +170,13 @@ function describe(node: GraphNode) {
       return {
         name: input.name,
         type: input.type,
-        ...(source ? { from: { node: source.id, output: source.outputs?.[from!.origin_slot]?.name } } : {}),
+        ...(source
+          ? { from: { node: source.id, output: source.outputs?.[from!.origin_slot]?.name } }
+          : {}),
       }
     }),
     outputs: (node.outputs ?? []).map((o) => ({ name: o.name, type: o.type })),
+    ...(missingFiles(node).length ? { not_installed: missingFiles(node) } : {}),
   }
 }
 
@@ -159,20 +202,77 @@ export function focusNode(id: number): boolean {
 export interface ToolHooks {
   /** A run the agent queued, so the chat can follow it live. */
   onRun(promptId: string): void
+  /** Aborted when the turn is stopped or ends; handed on to the capabilities a tool runs. */
+  signal?: AbortSignal
 }
 
 const TOOLS: Record<
   string,
   (args: Record<string, unknown>, hooks: ToolHooks) => Promise<unknown> | unknown
 > = {
-  read_workflow: () => ({
-    workflow: (app as { extensionManager?: { workflow?: { activeWorkflow?: { filename?: string } } } }).extensionManager
-      ?.workflow?.activeWorkflow?.filename,
-    nodes: nodes().map(describe),
-  }),
+  read_workflow: () => {
+    const described = nodes().map(describe)
+    const missing = described.filter((n) => n.not_installed)
+    return {
+      workflow: (
+        app as { extensionManager?: { workflow?: { activeWorkflow?: { filename?: string } } } }
+      ).extensionManager?.workflow?.activeWorkflow?.filename,
+      nodes: described,
+      ...(missing.length
+        ? {
+            not_installed:
+              `${missing.length} node(s) name files that aren't installed here (see each node's not_installed). ` +
+              'Find replacements with find_models, then set_widget; the run fails until they are fixed.',
+          }
+        : {}),
+    }
+  },
+
+  async find_models({ type, query, limit }) {
+    const available = await folders()
+    const max = Math.min(Math.max(Number(limit) || 40, 1), 200)
+    const q = typeof query === 'string' ? query : ''
+    if (!type && !q) {
+      const counts = await Promise.all(
+        available.map(async (f) => ({ type: f, count: (await filesIn(f)).length })),
+      )
+      return {
+        folders: counts.filter((c) => c.count).sort((a, b) => b.count - a.count),
+        hint: 'Call again with a type (and words in query) to list or search one folder.',
+      }
+    }
+    const folder = type ? folderFor(String(type), available) : null
+    if (type && !folder)
+      throw new Error(`No model folder "${String(type)}". Folders here: ${available.join(', ')}.`)
+    const searched = folder ? [folder] : available
+    const found: { type: string; file: string; all: boolean }[] = []
+    for (const f of searched)
+      for (const r of rank(await filesIn(f), q)) found.push({ type: f, ...r })
+    const exact = found.filter((r) => r.all)
+    const shown = (exact.length ? exact : found).slice(0, max)
+    nodeDefs ??= await (api as { getNodeDefs(): Promise<Record<string, NodeDef>> }).getNodeDefs()
+    const loaders = Object.fromEntries(
+      await Promise.all(
+        [...new Set(shown.map((r) => r.type))].map(async (f) => [
+          f,
+          usedBy(nodeDefs!, await filesIn(f)),
+        ]),
+      ),
+    )
+    return {
+      ...(folder ? { type: folder, installed: (await filesIn(folder)).length } : {}),
+      matches: shown.map((r) => (folder ? r.file : { type: r.type, file: r.file })),
+      total: exact.length || found.length,
+      ...(exact.length || !q
+        ? {}
+        : { note: `Nothing has every word of "${q}"; these have some of them.` }),
+      ...(Object.values(loaders).some((l) => (l as string[]).length) ? { set_on: loaders } : {}),
+      hint: 'Use a file exactly as listed (with its subfolder) as the value for set_widget on a loader in set_on.',
+    }
+  },
 
   async find_node_types({ query }) {
-    nodeDefs ??= (await (api as { getNodeDefs(): Promise<Record<string, NodeDef>> }).getNodeDefs())
+    nodeDefs ??= await (api as { getNodeDefs(): Promise<Record<string, NodeDef>> }).getNodeDefs()
     const words = lower(query).split(/\s+/).filter(Boolean)
     const scored = Object.values(nodeDefs)
       .map((def) => {
@@ -194,28 +294,40 @@ const TOOLS: Record<
   },
 
   add_node({ type, widgets }) {
-    const LiteGraph = (window as unknown as { LiteGraph: { createNode(t: string): GraphNode | null } }).LiteGraph
+    const LiteGraph = (
+      window as unknown as { LiteGraph: { createNode(t: string): GraphNode | null } }
+    ).LiteGraph
     const node = LiteGraph.createNode(String(type))
-    if (!node) throw new Error(`Unknown node type "${String(type)}". Use find_node_types to look it up.`)
+    if (!node)
+      throw new Error(`Unknown node type "${String(type)}". Use find_node_types to look it up.`)
     graph().add(node)
     parkNew(node, view)
     added.add(node.id)
     addedThisTurn.add(node.id)
     // A bad widget value fails the whole call, so the graph is left as it was.
+    const resolved: Record<string, unknown> = {}
     try {
-      for (const [name, value] of Object.entries((widgets as Record<string, unknown>) ?? {}))
-        setWidget(node, name, value)
+      for (const [name, value] of Object.entries((widgets as Record<string, unknown>) ?? {})) {
+        const { to } = setWidget(node, name, value)
+        if (to !== value) resolved[name] = to
+      }
     } catch (error) {
       graph().remove(node)
       throw error
     }
-    return { id: node.id, type: node.type }
+    return { id: node.id, type: node.type, ...(Object.keys(resolved).length ? { resolved } : {}) }
   },
 
   set_widget({ node_id, name, value }) {
     const node = nodeOrThrow(node_id)
-    const from = setWidget(node, String(name), value)
-    return { node: nodeLabel(node), name, from, to: value }
+    const { from, to } = setWidget(node, String(name), value)
+    return {
+      node: nodeLabel(node),
+      name,
+      from,
+      to,
+      ...(to !== value ? { resolved_from: value } : {}),
+    }
   },
 
   connect({ from_node, output, to_node, input }) {
@@ -225,17 +337,27 @@ const TOOLS: Record<
       (o) => lower(o.name) === lower(output) || lower(o.type) === lower(output),
     )
     if (outIndex === -1)
-      throw new Error(`${source.type} #${source.id} has no output "${String(output)}". Outputs: ${(source.outputs ?? []).map((o) => o.name).join(', ')}.`)
+      throw new Error(
+        `${source.type} #${source.id} has no output "${String(output)}". Outputs: ${(source.outputs ?? []).map((o) => o.name).join(', ')}.`,
+      )
     const inIndex = (target.inputs ?? []).findIndex((i) => lower(i.name) === lower(input))
     if (inIndex === -1)
-      throw new Error(`${target.type} #${target.id} has no input "${String(input)}". Inputs: ${(target.inputs ?? []).map((i) => i.name).join(', ')}.`)
+      throw new Error(
+        `${target.type} #${target.id} has no input "${String(input)}". Inputs: ${(target.inputs ?? []).map((i) => i.name).join(', ')}.`,
+      )
     const previous = target.inputs![inIndex]!.link
     const replaced = previous != null ? graph().getNodeById(link(previous)?.origin_id ?? -1) : null
     if (!source.connect(outIndex, target, inIndex))
-      throw new Error(`Could not connect ${source.outputs![outIndex].type} to ${target.inputs![inIndex].type}.`)
+      throw new Error(
+        `Could not connect ${source.outputs![outIndex].type} to ${target.inputs![inIndex].type}.`,
+      )
     const made = target.inputs![inIndex]!.link
     if (made != null) linksThisTurn.add(made)
-    return { from: nodeLabel(source), to: nodeLabel(target), ...(replaced && replaced !== source ? { replaced: nodeLabel(replaced) } : {}) }
+    return {
+      from: nodeLabel(source),
+      to: nodeLabel(target),
+      ...(replaced && replaced !== source ? { replaced: nodeLabel(replaced) } : {}),
+    }
   },
 
   disconnect({ node_id, input }) {
@@ -254,7 +376,8 @@ const TOOLS: Record<
 
   move_node({ node_id, x, y }) {
     const node = nodeOrThrow(node_id)
-    if (!Number.isFinite(Number(x)) || !Number.isFinite(Number(y))) throw new Error('x and y must be numbers.')
+    if (!Number.isFinite(Number(x)) || !Number.isFinite(Number(y)))
+      throw new Error('x and y must be numbers.')
     node.pos = [Number(x), Number(y)]
     pin(node.id)
     return { moved: nodeLabel(node), pos: [round(node.pos[0]), round(node.pos[1])] }
@@ -264,7 +387,13 @@ const TOOLS: Record<
     settleAll(view)
     const all = nodes()
     const boxes = all.map((node) => ({ node, ...boxOf(node) }))
-    const overlaps: { a: number; b: number; overlap: [number, number]; move_b_right_by: number; move_b_down_by: number }[] = []
+    const overlaps: {
+      a: number
+      b: number
+      overlap: [number, number]
+      move_b_right_by: number
+      move_b_down_by: number
+    }[] = []
     let others = 0
     for (let i = 0; i < boxes.length; i++) {
       for (let j = i + 1; j < boxes.length; j++) {
@@ -287,30 +416,55 @@ const TOOLS: Record<
     const ys = boxes.flatMap((b) => [b.y, b.y + b.h])
     return {
       nodes: all.length,
-      bounds: all.length ? [round(Math.min(...xs)), round(Math.min(...ys)), round(Math.max(...xs)), round(Math.max(...ys))] : null,
+      bounds: all.length
+        ? [
+            round(Math.min(...xs)),
+            round(Math.min(...ys)),
+            round(Math.max(...xs)),
+            round(Math.max(...ys)),
+          ]
+        : null,
       overlaps,
       ...(unplaced().length ? { added_but_unconnected: unplaced() } : {}),
-      ...(others ? { user_overlaps: `${others} overlap(s) between the user's own nodes; leave those unless asked to tidy.` } : {}),
+      ...(others
+        ? {
+            user_overlaps: `${others} overlap(s) between the user's own nodes; leave those unless asked to tidy.`,
+          }
+        : {}),
     }
   },
 
   resize_node({ node_id, width, height, fit }) {
-    const node = nodeOrThrow(node_id) as GraphNode & { computeSize?(): [number, number]; setSize?(s: [number, number]): void }
+    const node = nodeOrThrow(node_id) as GraphNode & {
+      computeSize?(): [number, number]
+      setSize?(s: [number, number]): void
+    }
     const min = node.computeSize?.() ?? [80, 40]
     const [w, h] =
       fit === true
         ? min
-        : [Number.isFinite(Number(width)) ? Number(width) : node.size[0], Number.isFinite(Number(height)) ? Number(height) : node.size[1]]
+        : [
+            Number.isFinite(Number(width)) ? Number(width) : node.size[0],
+            Number.isFinite(Number(height)) ? Number(height) : node.size[1],
+          ]
     const next: [number, number] = [Math.max(min[0], w), Math.max(min[1], h)]
     if (node.setSize) node.setSize(next)
     else node.size = next
     const moved = resolveOverlaps([node.id], view) > 0
-    return { node: nodeLabel(node), size: sizeOf(node).map(round), ...(moved ? { moved_to: node.pos.map(round) } : {}), ...(next[0] > w || next[1] > h ? { note: `Kept at least its minimum size ${min.map(round).join('×')}.` } : {}) }
+    return {
+      node: nodeLabel(node),
+      size: sizeOf(node).map(round),
+      ...(moved ? { moved_to: node.pos.map(round) } : {}),
+      ...(next[0] > w || next[1] > h
+        ? { note: `Kept at least its minimum size ${min.map(round).join('×')}.` }
+        : {}),
+    }
   },
 
   view_layout({ node_ids }) {
     settleAll(view)
-    const only = Array.isArray(node_ids) && node_ids.length ? new Set(node_ids.map(Number)) : undefined
+    const only =
+      Array.isArray(node_ids) && node_ids.length ? new Set(node_ids.map(Number)) : undefined
     const { image, bounds } = renderSchematic(view, added, only)
     return {
       nodes: (only ? [...only] : nodes().map((n) => n.id)).length,
@@ -321,7 +475,8 @@ const TOOLS: Record<
   },
 
   tidy_layout({ node_ids }) {
-    const only = Array.isArray(node_ids) && node_ids.length ? new Set(node_ids.map(Number)) : undefined
+    const only =
+      Array.isArray(node_ids) && node_ids.length ? new Set(node_ids.map(Number)) : undefined
     return { arranged: tidy(view, only) }
   },
 
@@ -352,13 +507,16 @@ const TOOLS: Record<
   },
 
   async wait_for_runs({ prompt_ids }) {
-    const ids = Array.isArray(prompt_ids) && prompt_ids.length ? prompt_ids.map(String) : pendingRuns()
+    const ids =
+      Array.isArray(prompt_ids) && prompt_ids.length ? prompt_ids.map(String) : pendingRuns()
     if (!ids.length) throw new Error('There are no runs to wait for.')
     return { runs: (await Promise.all(ids.map(waitForRun))).map(runSummary) }
   },
 
   async look_at({ media }) {
-    const refs = (Array.isArray(media) ? media : [media]).filter((m): m is string => typeof m === 'string').slice(0, 4)
+    const refs = (Array.isArray(media) ? media : [media])
+      .filter((m): m is string => typeof m === 'string')
+      .slice(0, 4)
     if (!refs.length) throw new Error('Give the media refs to look at.')
     const images = await Promise.all(refs.map(async (ref) => snapshot(await resolveMedia(ref))))
     return { seen: refs, images }
@@ -366,9 +524,16 @@ const TOOLS: Record<
 
   async use_as_input({ media, node_id, widget }) {
     const node = nodeOrThrow(node_id)
-    const files = (node.widgets ?? []).filter((w) => Array.isArray(w.options?.values) || typeof w.options?.values === 'function')
-    const target = widget ? node.widgets?.find((w) => w.name === widget) : (files.find((w) => FILE_WIDGET.test(w.name)) ?? files[0])
-    if (!target) throw new Error(`${nodeLabel(node)} has no file widget${widget ? ` "${String(widget)}"` : ''}.`)
+    const files = (node.widgets ?? []).filter(
+      (w) => Array.isArray(w.options?.values) || typeof w.options?.values === 'function',
+    )
+    const target = widget
+      ? node.widgets?.find((w) => w.name === widget)
+      : (files.find((w) => FILE_WIDGET.test(w.name)) ?? files[0])
+    if (!target)
+      throw new Error(
+        `${nodeLabel(node)} has no file widget${widget ? ` "${String(widget)}"` : ''}.`,
+      )
     const value = await zenKit().media.toInput(String(media))
     const from = target.value
     target.value = value
@@ -424,14 +589,16 @@ const isOverride = (v: unknown): v is Override =>
 function overridesFrom(variation: unknown, index: number): Override[] {
   if (Array.isArray(variation)) {
     const bad = variation.findIndex((o) => !isOverride(o))
-    if (bad !== -1) throw new Error(`Variation ${index + 1}, item ${bad + 1} needs node_id, widget and value.`)
+    if (bad !== -1)
+      throw new Error(`Variation ${index + 1}, item ${bad + 1} needs node_id, widget and value.`)
     return variation as Override[]
   }
   if (isOverride(variation)) return [variation]
   if (typeof variation === 'object' && variation !== null)
     return Object.entries(variation).map(([key, value]) => {
       const [nodeId, widget] = key.split('.')
-      if (!nodeId || !widget) throw new Error(`Variation ${index + 1}: use "node_id.widget" keys, e.g. "6.text".`)
+      if (!nodeId || !widget)
+        throw new Error(`Variation ${index + 1}: use "node_id.widget" keys, e.g. "6.text".`)
       return { node_id: nodeId, widget, value }
     })
   throw new Error(`Variation ${index + 1} is not a list of changes.`)
@@ -440,7 +607,9 @@ function overridesFrom(variation: unknown, index: number): Override[] {
 function variationsFrom(variations: unknown): Override[][] {
   if (!Array.isArray(variations) || !variations.length) return [[]]
   const list = variations.map(overridesFrom)
-  const keys = list.map((overrides) => JSON.stringify(overrides.map((o) => [String(o.node_id), o.widget, o.value]).sort()))
+  const keys = list.map((overrides) =>
+    JSON.stringify(overrides.map((o) => [String(o.node_id), o.widget, o.value]).sort()),
+  )
   const twin = keys.findIndex((key, i) => keys.indexOf(key) !== i)
   if (twin !== -1)
     throw new Error(
@@ -460,9 +629,22 @@ function runSummary(run: Run) {
   }
 }
 
-const pendingRuns = () => Object.values(runs).filter((r) => r.finishedAt === null).map((r) => r.promptId)
+const pendingRuns = () =>
+  Object.values(runs)
+    .filter((r) => r.finishedAt === null)
+    .map((r) => r.promptId)
 
-const EDITS = new Set(['add_node', 'set_widget', 'connect', 'disconnect', 'remove_node', 'move_node', 'resize_node', 'use_as_input', 'tidy_layout'])
+const EDITS = new Set([
+  'add_node',
+  'set_widget',
+  'connect',
+  'disconnect',
+  'remove_node',
+  'move_node',
+  'resize_node',
+  'use_as_input',
+  'tidy_layout',
+])
 
 interface ChangeTracker {
   captureCanvasState?(): void
@@ -486,7 +668,11 @@ export async function runTool(
   hooks: ToolHooks,
 ): Promise<ToolResult> {
   const capability = TOOLS[name] ? undefined : capabilityFor(name)
-  const tool = TOOLS[name] ?? (capability ? () => zenKit().capabilities.run(capability, args) : undefined)
+  const tool =
+    TOOLS[name] ??
+    (capability
+      ? () => zenKit().capabilities.run(capability, args, { signal: hooks.signal })
+      : undefined)
   if (!tool) return { ok: false, error: `Unknown tool "${name}".` }
   try {
     const result = await tool(args, hooks)

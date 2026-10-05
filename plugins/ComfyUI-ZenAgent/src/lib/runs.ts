@@ -1,5 +1,6 @@
 import { api } from '@comfy/api'
 import { app } from '@comfy/app'
+import { mediaKindOf } from '@nynxz/zenkit-client'
 import { reactive } from 'vue'
 
 // Runs the agent queues, followed through ComfyUI's execution events (all keyed by
@@ -39,9 +40,6 @@ interface PromptData {
   exception_message?: string
   node_type?: string
 }
-
-const VIDEO = /\.(mp4|webm|mov|mkv|gif)$/i
-const AUDIO = /\.(mp3|wav|flac|ogg|m4a)$/i
 
 function nodeTitle(id: string | undefined): string | null {
   if (!id) return null
@@ -106,7 +104,7 @@ function addOutputs(run: Run, node: string, output: NodeOutput): void {
   for (const files of Object.values(output ?? {})) {
     for (const file of files ?? []) {
       if (!file?.filename) continue
-      const kind = VIDEO.test(file.filename) ? 'video' : AUDIO.test(file.filename) ? 'audio' : 'image'
+      const kind = mediaKindOf(file.filename)
       run.outputs.push({ ref: [file.type ?? 'output', file.subfolder, file.filename].filter(Boolean).join('/'), node, filename: file.filename, subfolder: file.subfolder ?? '', type: file.type ?? 'output', url: viewUrl(file), kind })
     }
   }

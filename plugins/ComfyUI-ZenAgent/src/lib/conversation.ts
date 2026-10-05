@@ -87,6 +87,9 @@ function createConversation() {
   const draft = ref('')
   const attachments = ref<Attachment[]>([])
   const busy = computed(() => turnId.value !== null)
+  // The turn's abort signal, handed to the capabilities its tools run: stopping the turn (or its
+  // end) cancels whatever they are still doing.
+  let turnAbort = new AbortController()
 
   function appendStream(kind: 'text' | 'thinking', delta: string): void {
     const last = items.value.at(-1)
@@ -110,6 +113,7 @@ function createConversation() {
       // Every run one call queues shares a card, so a batch reads as one job.
       let card: Extract<Item, { kind: 'run' }> | null = null
       void runTool(event.name, event.args, {
+        signal: turnAbort.signal,
         onRun: (promptId) => {
           if (card) return void card.promptIds.push(promptId)
           items.value.push({ kind: 'run', promptIds: [promptId] })
@@ -118,6 +122,7 @@ function createConversation() {
       }).then((result) => agentApi.toolResult(event.call_id, result))
     } else if (event.type === 'turn_end') {
       turnId.value = null
+      turnAbort.abort()
       endTurn()
       if (event.error) items.value.push({ kind: 'error', text: event.error })
       void refreshThreads()
@@ -136,6 +141,7 @@ function createConversation() {
     attachments.value = []
     items.value.push({ kind: 'user', text: content, attachments: attached })
     turnId.value = crypto.randomUUID()
+    turnAbort = new AbortController()
     beginTurn()
     const workflow = (app.graph as { serialize(): unknown }).serialize()
     try {
@@ -166,6 +172,7 @@ function createConversation() {
   }
 
   async function stop(): Promise<void> {
+    turnAbort.abort()
     if (turnId.value) await agentApi.cancel(turnId.value).catch(() => undefined)
   }
 

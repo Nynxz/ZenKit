@@ -4,7 +4,12 @@ import { computed, nextTick, onMounted, ref, watch } from 'vue'
 
 import type { Item } from '../lib/conversation'
 import { useConversation } from '../lib/conversation'
-import { hasImageDragData, readImageDragData, readMediaDrop, ZEN_MEDIA_LIST_MIME } from '@nynxz/zenkit-client'
+import {
+  hasImageDragData,
+  readImageDragData,
+  readMediaListDrop,
+  ZEN_MEDIA_LIST_MIME,
+} from '@nynxz/zenkit-client'
 
 import type { Attachment } from '../lib/vision'
 import { resolveMedia, uploadLocal } from '../lib/vision'
@@ -105,7 +110,7 @@ async function onDrop(e: DragEvent): Promise<void> {
   if (!isList && !readImageDragData(e).length) return
   e.preventDefault()
   e.stopPropagation()
-  const { items: dropped } = await readMediaDrop(e)
+  const { items: dropped } = await readMediaListDrop(e)
   const media = await Promise.all(
     dropped.slice(0, 8).map(async (it): Promise<Attachment | null> => {
       try {
