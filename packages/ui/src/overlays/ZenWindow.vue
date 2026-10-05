@@ -5,8 +5,10 @@
 // every tool shares one consistent panel. No ZenKit-runtime dependency — pure @nynxz/zenkit-ui.
 //
 //   Slots: `actions` (header buttons, before maximize/close) · default (body) · `footer`.
+import '../lib/scrollbar.css'
 import { computed, onBeforeUnmount, ref, watch } from 'vue'
 import ZenIconButton from '../primitives/ZenIconButton.vue'
+import { openLayer, Z, type Layer } from './layers'
 
 const props = withDefaults(
   defineProps<{
@@ -115,35 +117,46 @@ function toggleMax() {
 function close() {
   emit('update:open', false)
 }
+// Joins the layer stack: Esc closes the window only when no menu/modal opened above it is open.
+let layer: Layer | null = null
+const z = ref<number>(Z.window)
 function onKey(e: KeyboardEvent) {
   if (props.closeOnEsc && e.key === 'Escape') {
     const el = e.target as HTMLElement | null
     if (el && (el.tagName === 'INPUT' || el.tagName === 'TEXTAREA' || el.isContentEditable)) return
-    close()
+    if (layer?.escape(e)) close()
   }
+}
+function teardown() {
+  layer?.release()
+  layer = null
+  window.removeEventListener('resize', clampToViewport)
+  window.removeEventListener('keydown', onKey)
 }
 watch(
   () => props.open,
   (o) => {
     if (o) {
       init()
+      layer ??= openLayer(Z.window)
+      z.value = layer.z
       window.addEventListener('resize', clampToViewport)
       window.addEventListener('keydown', onKey)
-    } else {
-      window.removeEventListener('resize', clampToViewport)
-      window.removeEventListener('keydown', onKey)
-    }
+    } else teardown()
   },
 )
-onBeforeUnmount(() => {
-  window.removeEventListener('resize', clampToViewport)
-  window.removeEventListener('keydown', onKey)
-})
+onBeforeUnmount(teardown)
 </script>
 
 <template>
   <Teleport to="body">
-    <div v-if="open" data-zen-layer class="zw-root zen-scroll" :class="{ 'zw-backdrop': backdrop }">
+    <div
+      v-if="open"
+      data-zen-layer
+      class="zw-root zen-scroll"
+      :class="{ 'zw-backdrop': backdrop }"
+      :style="{ zIndex: z }"
+    >
       <div class="zw" :class="{ max: maximized }" :style="winStyle">
         <header class="zw-bar" @pointerdown="startDrag" @dblclick="toggleMax">
           <i class="zw-icon" :class="icon" />
@@ -173,7 +186,7 @@ onBeforeUnmount(() => {
 .zw-root {
   position: fixed;
   inset: 0;
-  z-index: 100001;
+  z-index: 100200;
   pointer-events: none;
   font-family: var(--p-font-family, system-ui, sans-serif);
 }
@@ -191,7 +204,7 @@ onBeforeUnmount(() => {
   color: var(--zen-text, #e5e5ea);
   background: var(--zen-glass, color-mix(in srgb, var(--zen-bg, #1a1a1f) 90%, transparent));
   border: 1px solid var(--zen-surface-border, var(--zen-border, #34343c));
-  border-radius: var(--zen-radius-surface, var(--zen-radius, 12px));
+  border-radius: var(--zen-radius-surface, var(--zen-radius, 7px));
   box-shadow: 0 24px 70px rgba(0, 0, 0, 0.55);
   backdrop-filter: blur(12px);
 }

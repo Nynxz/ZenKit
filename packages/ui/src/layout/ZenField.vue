@@ -23,20 +23,29 @@ withDefaults(
 
 <template>
   <div class="zen-field" :class="{ stack }">
-    <label v-if="label" class="zf-label">{{ label }}</label>
-    <div class="zf-control"><slot /></div>
+    <div class="zf-row">
+      <label v-if="label" class="zf-label">{{ label }}</label>
+      <div class="zf-control"><slot /></div>
+    </div>
     <span v-if="hint" class="zf-hint">{{ hint }}</span>
   </div>
 </template>
 
 <style scoped>
+/* The hint gets its own line under the label and control, never squeezing in beside them. */
 .zen-field {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  min-width: 0;
+}
+.zf-row {
   display: flex;
   align-items: center;
   gap: 6px;
   min-width: 0;
 }
-.zen-field.stack {
+.zen-field.stack .zf-row {
   flex-direction: column;
   align-items: stretch;
   gap: 3px;
@@ -70,7 +79,6 @@ withDefaults(
 }
 
 .zf-hint {
-  flex: 1 1 100%;
   font-size: 10px;
   color: var(--zen-muted, #9aa0aa);
   opacity: 0.8;

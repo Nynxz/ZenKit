@@ -11,3 +11,10 @@ export function isIconUrl(icon?: string | null): boolean {
     /\.(png|jpe?g|gif|webp|svg|ico|avif|bmp)(\?|#|$)/i.test(s)
   )
 }
+
+/** An MDI icon as classes, in either spelling: "mdi mdi-x" passes through, a bare glyph "mdi-x"
+ *  gets its "mdi" base class. Empty → `fallback`. */
+export function iconClass(icon?: string | null, fallback = ''): string {
+  const s = icon?.trim() || fallback
+  return s.startsWith('mdi-') ? `mdi ${s}` : s
+}

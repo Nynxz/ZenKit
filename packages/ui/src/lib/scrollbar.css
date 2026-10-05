@@ -7,10 +7,15 @@
 .zen-scroll {
   scrollbar-color: var(
       --zen-scrollbar,
-      var(--dialog-surface, color-mix(in srgb, var(--zen-text, #9aa0aa) 24%, transparent))
+      var(--dialog-surface, color-mix(in srgb, var(--zen-text, #e5e5ea) 24%, transparent))
     )
     transparent;
 }
 :where(.zen-scroll, .zen-scroll *) {
   scrollbar-width: thin;
+}
+/* Floating layers (popovers, menus, dialogs) sit on a surface close to ComfyUI's thumb colour
+ * (--dialog-surface), which would hide it there: they tint the thumb from the text instead. */
+[data-zen-layer] {
+  --zen-scrollbar: color-mix(in srgb, var(--zen-text, #e5e5ea) 32%, transparent);
 }

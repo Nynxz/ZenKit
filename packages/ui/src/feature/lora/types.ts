@@ -10,6 +10,10 @@ export interface LoraItem {
   /** What the preview file is. `previewUrl` is always a still; a video plays via `mediaUrl`. */
   preview?: LoraPreviewKind | null
   favorite?: boolean
+  /** File size, bytes. */
+  size?: number | null
+  /** Last modified, epoch seconds. */
+  mtime?: number | null
 }
 
 /** One example generation (e.g. a Civitai showcase image). */

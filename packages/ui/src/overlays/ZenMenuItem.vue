@@ -4,6 +4,7 @@
 // opens on hover with a close-delay (hover-intent) so a diagonal cursor path toward it doesn't
 // snap it shut — the failing of a pure CSS :hover submenu. Emits `select` on click.
 import { ref, useSlots } from 'vue'
+import { iconClass } from '../lib/icon'
 import ZenPopover from './ZenPopover.vue'
 
 const props = withDefaults(defineProps<{ icon?: string; danger?: boolean; disabled?: boolean }>(), {
@@ -18,7 +19,7 @@ const subOpen = ref(false)
 let t: ReturnType<typeof setTimeout> | undefined
 function openSub() {
   clearTimeout(t)
-  subOpen.value = true
+  if (!props.disabled) subOpen.value = true
 }
 function scheduleClose() {
   clearTimeout(t)
@@ -40,7 +41,7 @@ function onClick() {
     @pointerleave="scheduleClose"
   >
     <button type="button" class="zmi" :class="{ danger, on: subOpen }" :disabled="disabled">
-      <i v-if="icon" class="zmi-ico" :class="icon" />
+      <i v-if="icon" class="zmi-ico" :class="iconClass(icon)" />
       <span class="zmi-lbl"><slot /></span>
       <i class="mdi mdi-chevron-right zmi-caret" />
     </button>
@@ -58,7 +59,7 @@ function onClick() {
     :disabled="disabled"
     @click="onClick"
   >
-    <i v-if="icon" class="zmi-ico" :class="icon" />
+    <i v-if="icon" class="zmi-ico" :class="iconClass(icon)" />
     <span class="zmi-lbl"><slot /></span>
     <span v-if="slots.hint" class="zmi-hint"><slot name="hint" /></span>
   </button>
@@ -79,21 +80,26 @@ function onClick() {
   font-size: 12px;
   padding: 7px 9px;
   border: none;
-  border-radius: max(0px, calc(var(--zen-radius, 8px) - 3px));
+  border-radius: max(0px, calc(var(--zen-radius, 7px) - 3px));
   background: none;
   color: var(--zen-text, #e5e5ea);
 }
 .zmi:hover:not(:disabled),
 .zmi.on {
-  background: color-mix(in srgb, var(--zen-text, #fff) 10%, transparent);
+  background: color-mix(in srgb, var(--zen-text, #e5e5ea) 10%, transparent);
+}
+.zmi:focus-visible {
+  outline: 2px solid
+    var(--zen-focus-ring, color-mix(in srgb, var(--zen-accent, #6366f1) 60%, transparent));
+  outline-offset: -2px;
 }
 .zmi:disabled {
   opacity: 0.45;
   cursor: default;
 }
 .zmi.danger:hover:not(:disabled) {
-  background: #b91c1c;
-  color: #fff;
+  background: var(--zen-danger, #dc2626);
+  color: var(--zen-danger-text, #fff);
 }
 .zmi-ico {
   flex: 0 0 auto;
@@ -101,7 +107,7 @@ function onClick() {
   color: var(--zen-muted, #9aa0aa);
 }
 .zmi.danger:hover:not(:disabled) .zmi-ico {
-  color: #fff;
+  color: var(--zen-danger-text, #fff);
 }
 .zmi-lbl {
   flex: 1;

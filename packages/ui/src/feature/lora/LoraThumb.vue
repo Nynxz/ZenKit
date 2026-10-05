@@ -84,14 +84,14 @@ function onError(e: Event) {
   width: 40px;
   height: 40px;
   object-fit: contain;
-  border-radius: var(--zen-radius, 6px);
+  border-radius: var(--zen-radius, 7px);
   background: var(--zen-input, #1b1b20);
   border: 1px solid var(--zen-border, #34343c);
 }
 .lt.sm {
   width: 18px;
   height: 18px;
-  border-radius: var(--zen-radius, 5px);
+  border-radius: var(--zen-radius, 7px);
 }
 .lt.ph {
   display: inline-flex;
@@ -107,9 +107,9 @@ function onError(e: Event) {
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  color: var(--zen-danger, #f5665f);
-  background: color-mix(in srgb, var(--zen-danger, #f5665f) 14%, transparent);
-  border-color: color-mix(in srgb, var(--zen-danger, #f5665f) 45%, transparent);
+  color: var(--zen-danger, #dc2626);
+  background: color-mix(in srgb, var(--zen-danger, #dc2626) 14%, transparent);
+  border-color: color-mix(in srgb, var(--zen-danger, #dc2626) 45%, transparent);
   font-size: 20px;
 }
 .lt.sm.warn {

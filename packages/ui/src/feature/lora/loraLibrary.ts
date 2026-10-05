@@ -39,8 +39,59 @@ export const favorites = ref<string[]>([])
 /** Whether the listing has arrived; before that, "not in the list" means "not loaded yet". */
 export const listLoaded = ref(false)
 
+/** Browse the picker folder by folder; off shows one flat list. Set by the host. */
+export const folderNav = ref(true)
+
+export function setFolderNav(on: boolean): void {
+  folderNav.value = on
+}
+
+/** Blur examples rated R and above until revealed. Set by the host. */
+export const blurMature = ref(true)
+
+export function setBlurMature(on: boolean): void {
+  blurMature.value = on
+}
+
 const favSet = computed(() => new Set(favorites.value))
 const known = computed(() => new Set(loras.value.map((l) => l.name)))
+
+interface FolderNode {
+  /** Immediate subfolder names, sorted. */
+  folders: string[]
+  /** LoRAs directly in this folder. */
+  files: string[]
+  /** LoRAs in this folder and below. */
+  total: number
+}
+
+/** Folder path ('' = root) -> its contents. */
+export const folderIndex = computed(() => {
+  const index = new Map<string, FolderNode>()
+  const node = (path: string) => {
+    let n = index.get(path)
+    if (!n) index.set(path, (n = { folders: [], files: [], total: 0 }))
+    return n
+  }
+  node('')
+  for (const { name } of loras.value) {
+    const parts = name.split('/')
+    let path = ''
+    node('').total++
+    for (const part of parts.slice(0, -1)) {
+      const parent = node(path)
+      path = path ? `${path}/${part}` : part
+      if (!index.has(path)) parent.folders.push(part)
+      node(path).total++
+    }
+    node(path).files.push(name)
+  }
+  for (const n of index.values()) {
+    n.folders.sort((a, b) => a.localeCompare(b))
+    n.files.sort((a, b) => short(a).localeCompare(short(b)))
+  }
+  return index
+})
 
 // Sets are replaced rather than mutated: Vue's reactivity does not track Set membership, so a
 // `.add()` on a ref'd Set updates nothing on screen.

@@ -1,8 +1,9 @@
 <script setup lang="ts">
 // ZenModal — teleported centered overlay dialog (v-model:open). Backdrop click + Esc
 // close. `header`/default/`footer` slots. Sized via width/height props (CSS values).
-import { onBeforeUnmount, watch } from 'vue'
+import { onBeforeUnmount, ref, watch } from 'vue'
 import '../lib/scrollbar.css'
+import { openLayer, Z, type Layer } from './layers'
 
 const props = withDefaults(
   defineProps<{ open: boolean; title?: string; width?: string; height?: string }>(),
@@ -13,28 +14,48 @@ const emit = defineEmits<{ 'update:open': [boolean] }>()
 function close() {
   emit('update:open', false)
 }
+// Joins the layer stack so Esc in a menu/lightbox opened from inside closes only that.
+let layer: Layer | null = null
+const z = ref<number>(Z.modal)
 function onKey(e: KeyboardEvent) {
-  if (e.key === 'Escape') close()
+  if (layer?.escape(e)) close()
+}
+function teardown() {
+  layer?.release()
+  layer = null
+  window.removeEventListener('keydown', onKey, true)
 }
 
 watch(
   () => props.open,
   (o) => {
-    if (o) window.addEventListener('keydown', onKey, true)
-    else window.removeEventListener('keydown', onKey, true)
+    if (o) {
+      layer ??= openLayer(Z.modal)
+      z.value = layer.z
+      window.addEventListener('keydown', onKey, true)
+    } else teardown()
   },
+  { immediate: true },
 )
-onBeforeUnmount(() => window.removeEventListener('keydown', onKey, true))
+onBeforeUnmount(teardown)
 </script>
 
 <template>
   <Teleport to="body">
-    <div v-if="open" data-zen-layer class="zen-modal-back zen-scroll" @pointerdown.self="close">
+    <div
+      v-if="open"
+      data-zen-layer
+      class="zen-modal-back zen-scroll"
+      :style="{ zIndex: z }"
+      @pointerdown.self="close"
+    >
       <div class="zen-modal" :style="{ width, height }">
         <div class="zm-head">
           <span v-if="title" class="zm-title">{{ title }}</span>
           <div class="zm-head-mid"><slot name="header" /></div>
-          <button class="zm-x" title="Close" @click="close"><i class="mdi mdi-close" /></button>
+          <button type="button" class="zm-x" title="Close" @click="close">
+            <i class="mdi mdi-close" />
+          </button>
         </div>
         <div class="zm-body zen-scroll"><slot /></div>
         <div v-if="$slots.footer" class="zm-foot"><slot name="footer" /></div>
@@ -48,7 +69,7 @@ onBeforeUnmount(() => window.removeEventListener('keydown', onKey, true))
 .zen-modal-back {
   position: fixed;
   inset: 0;
-  z-index: 12000;
+  z-index: 100100;
   display: flex;
   align-items: center;
   justify-content: center;
@@ -64,7 +85,7 @@ onBeforeUnmount(() => window.removeEventListener('keydown', onKey, true))
   background: var(--zen-chrome-bg, var(--zen-surface, #202026));
   color: var(--zen-text, #e5e5ea);
   border: 1px solid var(--zen-surface-border, var(--zen-border, #34343c));
-  border-radius: calc(var(--zen-radius-surface, var(--zen-radius, 8px)) + 2px);
+  border-radius: calc(var(--zen-radius-surface, var(--zen-radius, 7px)) + 2px);
   box-shadow: 0 24px 70px rgba(0, 0, 0, 0.6);
   font-family: var(--p-font-family, system-ui, sans-serif);
 }

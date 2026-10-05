@@ -1,11 +1,13 @@
 <script setup lang="ts">
 // ZenToolbar — a panel header bar. `start` slot sits after the title; default slot is right-aligned.
+import { iconClass } from '../lib/icon'
+
 defineProps<{ title?: string; icon?: string }>()
 </script>
 
 <template>
   <div class="zen-toolbar">
-    <i v-if="icon" class="tb-icon" :class="icon" />
+    <i v-if="icon" class="tb-icon" :class="iconClass(icon)" />
     <span v-if="title" class="tb-title">{{ title }}</span>
     <slot name="start" />
     <span class="tb-grow" />
@@ -20,12 +22,12 @@ defineProps<{ title?: string; icon?: string }>()
   align-items: center;
   gap: 8px;
   padding: 7px 9px;
-  border-bottom: 1px solid var(--zen-surface-border, var(--zen-border, #3a3a44));
+  border-bottom: 1px solid var(--zen-surface-border, var(--zen-border, #34343c));
   background: var(--zen-chrome-bg, var(--zen-surface, #202026));
 }
 .tb-icon {
   font-size: 15px;
-  color: var(--zen-accent, #3b82f6);
+  color: var(--zen-accent, #6366f1);
 }
 .tb-title {
   font-size: 12px;

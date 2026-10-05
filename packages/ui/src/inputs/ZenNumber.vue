@@ -18,8 +18,10 @@ const props = withDefaults(
     precision?: number
     disabled?: boolean
     bare?: boolean
+    /** `sm` 24px, `md` (default) 28px — the shared control heights. */
+    size?: 'sm' | 'md'
   }>(),
-  { step: 0.05, disabled: false, bare: false },
+  { step: 0.05, disabled: false, bare: false, size: 'md' },
 )
 const emit = defineEmits<{ 'update:modelValue': [number] }>()
 
@@ -129,7 +131,7 @@ function onUp(e: PointerEvent) {
 <template>
   <div
     class="zen-num"
-    :class="{ disabled, bare }"
+    :class="{ disabled, bare, sm: size === 'sm' }"
     :style="{ '--zn-chars': chars }"
     @pointerleave="hover = 0"
   >
@@ -189,10 +191,10 @@ function onUp(e: PointerEvent) {
 .zen-num {
   display: inline-flex;
   align-items: stretch;
-  height: 28px;
+  height: var(--zen-control-h, 28px);
   box-sizing: border-box;
   border: 1px solid var(--zen-control-border, var(--zen-border, #34343c));
-  border-radius: var(--zen-radius, 6px);
+  border-radius: var(--zen-radius, 7px);
   background: var(--zen-field-bg, var(--zen-input, #1b1b20));
   overflow: hidden;
   user-select: none;
@@ -222,7 +224,11 @@ function onUp(e: PointerEvent) {
 .zen-num:focus-within {
   border-color: var(--zen-accent, #6366f1);
 }
+.zen-num.sm {
+  height: var(--zen-control-h-sm, 24px);
+}
 .zen-num.disabled {
+  cursor: not-allowed;
   opacity: 0.5;
   pointer-events: none;
 }
@@ -239,7 +245,7 @@ function onUp(e: PointerEvent) {
 }
 .zn-step.hot {
   color: var(--zen-text, #e5e5ea);
-  background: color-mix(in srgb, var(--zen-text, #fff) 9%, transparent);
+  background: color-mix(in srgb, var(--zen-text, #e5e5ea) 9%, transparent);
 }
 .zn-step .mdi {
   font-size: 13px;

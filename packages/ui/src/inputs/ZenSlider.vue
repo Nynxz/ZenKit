@@ -37,7 +37,7 @@ function onInput(e: Event) {
   appearance: none;
   width: 100%;
   height: 4px;
-  border-radius: var(--zen-radius, 999px);
+  border-radius: var(--zen-radius, 7px);
   background: var(--zen-border, #34343c);
   outline: none;
   cursor: pointer;
@@ -51,7 +51,7 @@ function onInput(e: Event) {
   appearance: none;
   width: 14px;
   height: 14px;
-  border-radius: var(--zen-radius, 50%);
+  border-radius: var(--zen-radius, 7px);
   background: var(--zen-accent, #6366f1);
   border: 2px solid var(--zen-bg, #1a1a1f);
   cursor: pointer;
@@ -61,16 +61,17 @@ function onInput(e: Event) {
   width: 14px;
   height: 14px;
   border: 2px solid var(--zen-bg, #1a1a1f);
-  border-radius: var(--zen-radius, 50%);
+  border-radius: var(--zen-radius, 7px);
   background: var(--zen-accent, #6366f1);
   cursor: pointer;
 }
 .zen-slider::-moz-range-track {
   height: 4px;
-  border-radius: var(--zen-radius, 999px);
+  border-radius: var(--zen-radius, 7px);
   background: var(--zen-border, #34343c);
 }
 .zen-slider:focus-visible {
-  box-shadow: 0 0 0 2px color-mix(in srgb, var(--zen-accent, #6366f1) 50%, transparent);
+  box-shadow: 0 0 0 2px
+    var(--zen-focus-ring, color-mix(in srgb, var(--zen-accent, #6366f1) 60%, transparent));
 }
 </style>

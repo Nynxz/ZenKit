@@ -3,7 +3,7 @@
 // (saturation/brightness box + hue slider + hex field + presets). No native OS dialog, so it
 // stays consistent with the rest of the UI. v-model is a `#rrggbb` string.
 import { computed, nextTick, onBeforeUnmount, ref, watch } from 'vue'
-import { inOtherLayer } from '../overlays/layers'
+import { inOtherLayer, openLayer, Z, type Layer } from '../overlays/layers'
 
 const props = withDefaults(
   defineProps<{
@@ -22,6 +22,8 @@ const open = ref(false)
 const trigger = ref<HTMLElement | null>(null)
 const pop = ref<HTMLElement | null>(null)
 const popStyle = ref<Record<string, string>>({})
+const z = ref<number>(Z.popover)
+let layer: Layer | null = null
 
 const h = ref(0)
 const s = ref(1)
@@ -167,23 +169,33 @@ function place() {
 }
 function onDoc(e: PointerEvent) {
   const t = e.target as Node
-  if (trigger.value?.contains(t) || pop.value?.contains(t) || inOtherLayer(e.target, pop.value)) return
+  if (trigger.value?.contains(t) || pop.value?.contains(t) || inOtherLayer(e.target, pop.value))
+    return
   closePop()
+}
+function onKey(e: KeyboardEvent) {
+  if (layer?.escape(e)) closePop()
 }
 function toggle() {
   open.value = !open.value
   if (open.value) {
     syncFromModel()
+    layer ??= openLayer(Z.popover)
+    z.value = layer.z
     nextTick(() => {
       place()
       window.addEventListener('pointerdown', onDoc, true)
+      window.addEventListener('keydown', onKey, true)
       window.addEventListener('resize', place)
     })
   } else closePop()
 }
 function closePop() {
   open.value = false
+  layer?.release()
+  layer = null
   window.removeEventListener('pointerdown', onDoc, true)
+  window.removeEventListener('keydown', onKey, true)
   window.removeEventListener('resize', place)
 }
 onBeforeUnmount(closePop)
@@ -200,7 +212,14 @@ syncFromModel()
       </template>
     </button>
     <Teleport to="body">
-      <div v-if="open" ref="pop" data-zen-layer class="zcp-pop" :style="popStyle" @pointerdown.stop>
+      <div
+        v-if="open"
+        ref="pop"
+        data-zen-layer
+        class="zcp-pop"
+        :style="[popStyle, { zIndex: z }]"
+        @pointerdown.stop
+      >
         <div class="zcp-sv" :style="{ background: hueColor }" @pointerdown="svDown">
           <div class="zcp-sv-white" />
           <div class="zcp-sv-black" />
@@ -263,11 +282,11 @@ syncFromModel()
   align-items: center;
   gap: 6px;
   width: 100%;
-  height: 28px;
+  height: var(--zen-control-h, 28px);
   box-sizing: border-box;
   padding: 0 6px;
   border: 1px solid var(--zen-control-border, var(--zen-border, #34343c));
-  border-radius: var(--zen-radius, 6px);
+  border-radius: var(--zen-radius, 7px);
   background: var(--zen-control-bg, var(--zen-input, #1b1b20));
   color: var(--zen-text, #e5e5ea);
   cursor: pointer;
@@ -307,14 +326,14 @@ syncFromModel()
 }
 .zcp-pop {
   position: fixed;
-  z-index: 100002;
+  z-index: 100000;
   display: flex;
   flex-direction: column;
   gap: 8px;
   padding: 8px;
   background: var(--zen-chrome-bg, var(--zen-surface, #202026));
   border: 1px solid var(--zen-surface-border, var(--zen-border, #34343c));
-  border-radius: var(--zen-radius-surface, var(--zen-radius, 8px));
+  border-radius: var(--zen-radius-surface, var(--zen-radius, 7px));
   box-shadow: 0 12px 32px rgba(0, 0, 0, 0.5);
 }
 .zcp-sv {
@@ -379,7 +398,7 @@ syncFromModel()
   box-sizing: border-box;
   padding: 0 6px;
   border: 1px solid var(--zen-control-border, var(--zen-border, #34343c));
-  border-radius: var(--zen-radius, 6px);
+  border-radius: var(--zen-radius, 7px);
   background: var(--zen-field-bg, var(--zen-input, #1b1b20));
   color: var(--zen-text, #e5e5ea);
   font: inherit;

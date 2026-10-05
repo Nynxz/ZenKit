@@ -75,8 +75,8 @@ const vars = computed<Record<string, string> | undefined>(() =>
   height: var(--zen-dot-size, 13px);
   /* Follows the theme's rounding token like ZenSwitch does, so square-edged themes get a
      square mark. Override just this control with --zen-dot-radius. */
-  border-radius: var(--zen-dot-radius, var(--zen-radius, 50%));
-  border: 1px solid var(--zen-border, #3a3a44);
+  border-radius: var(--zen-dot-radius, var(--zen-radius, 7px));
+  border: 1px solid var(--zen-border, #34343c);
   background: var(--zen-input, #1b1b20);
   transition: border-color 0.12s ease;
 }
@@ -122,9 +122,10 @@ const vars = computed<Record<string, string> | undefined>(() =>
   }
 }
 .zen-dot:focus-visible {
-  outline: 1px solid var(--zen-accent, #6366f1);
+  outline: 2px solid
+    var(--zen-focus-ring, color-mix(in srgb, var(--zen-accent, #6366f1) 60%, transparent));
   outline-offset: 1px;
-  border-radius: var(--zen-radius, 4px);
+  border-radius: var(--zen-radius, 7px);
 }
 
 .zen-dot:not(.on) .lbl {

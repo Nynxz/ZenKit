@@ -5,8 +5,9 @@
 // Escape dismiss, and a token-styled container. Drive it with the #trigger slot (a self-
 // managing button) OR with v-model:open + :anchor (an element, a DOMRect, or an {x,y} point —
 // e.g. a right-click). The default slot is the content and receives { close }.
+import '../lib/scrollbar.css'
 import { computed, nextTick, onBeforeUnmount, ref, watch } from 'vue'
-import { inOtherLayer, openLayer } from './layers'
+import { inOtherLayer, openLayer, Z, type Layer } from './layers'
 
 type Placement =
   'bottom-start' | 'bottom-end' | 'top-start' | 'top-end' | 'right-start' | 'left-start'
@@ -105,9 +106,10 @@ function onDoc(e: PointerEvent) {
   if (panelEl.value?.contains(t) || anchorEl.value?.contains(t) || inOtherLayer(e.target, panelEl.value)) return
   close()
 }
-let layer: ReturnType<typeof openLayer> | null = null
+let layer: Layer | null = null
+const z = ref<number>(Z.popover)
 function onKey(e: KeyboardEvent) {
-  if (e.key === 'Escape' && layer?.isTop()) close()
+  if (layer?.escape(e)) close()
 }
 function onReflow() {
   if (isOpen.value) place()
@@ -127,7 +129,8 @@ watch(isOpen, (v) => {
     return
   }
   ready.value = false
-  layer ??= openLayer()
+  layer ??= openLayer(Z.popover)
+  z.value = layer.z
   nextTick(() => {
     place()
     // defer the dismiss listeners a tick so the opening click doesn't immediately close it
@@ -153,7 +156,7 @@ defineExpose({ open: show, close, toggle })
       ref="panelEl"
       data-zen-layer
       class="zen-pop zen-scroll"
-      :style="[panelStyle, { visibility: ready ? 'visible' : 'hidden' }]"
+      :style="[panelStyle, { zIndex: z, visibility: ready ? 'visible' : 'hidden' }]"
       role="menu"
     >
       <slot :close="close" />
@@ -176,8 +179,8 @@ defineExpose({ open: show, close, toggle })
   flex-direction: column;
   gap: 1px;
   background: var(--zen-chrome-bg, var(--zen-surface, #202026));
-  border: 1px solid var(--zen-surface-border, var(--zen-border, #3a3a44));
-  border-radius: var(--zen-radius-surface, var(--zen-radius, 8px));
+  border: 1px solid var(--zen-surface-border, var(--zen-border, #34343c));
+  border-radius: var(--zen-radius-surface, var(--zen-radius, 7px));
   box-shadow: 0 10px 30px rgba(0, 0, 0, 0.5);
   font-family: var(--p-font-family, system-ui, sans-serif);
   color: var(--zen-text, #e5e5ea);

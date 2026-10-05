@@ -10,7 +10,9 @@ import ZenScroll from '../primitives/ZenScroll.vue'
 import ZenPopover from '../overlays/ZenPopover.vue'
 import ZenSwitch from '../inputs/ZenSwitch.vue'
 import ZenSlider from '../inputs/ZenSlider.vue'
+import ZenMediaControls from './ZenMediaControls.vue'
 import type { LightboxItem } from '../types'
+import { openLayer, Z } from '../overlays/layers'
 
 const props = withDefaults(
   defineProps<{
@@ -18,11 +20,14 @@ const props = withDefaults(
     index: number
     inline?: boolean // true = fill container; false = fullscreen overlay
     slideshowMs?: number
+    /** Inline host's setting: in a slideshow, a video or audio plays to its end before moving on
+     *  (only pictures use the time per slide). */
+    slideshowToEnd?: boolean
     // Built-in chrome: shown unless 'none' (the host drives it via the exposed API — see
     // defineExpose below). 'none' also hides the nav zones. 'top' is accepted for compatibility.
     controls?: 'bottom' | 'top' | 'none'
   }>(),
-  { inline: false, slideshowMs: 3000, controls: 'bottom' },
+  { inline: false, slideshowMs: 3000, slideshowToEnd: true, controls: 'bottom' },
 )
 const emit = defineEmits<{ 'update:index': [number]; close: [] }>()
 const showChrome = computed(() => props.controls !== 'none')
@@ -196,6 +201,18 @@ const stageW = ref(0)
 const natW = ref(0) // intrinsic media size; 0 until it loads
 const natH = ref(0)
 let stageRO: ResizeObserver | null = null
+/** The floating bottom toolbar's height: a video's control bar sits above it, not under it. */
+const footEl = ref<HTMLElement | null>(null)
+const footH = ref(0)
+let footRO: ResizeObserver | null = null
+watch(footEl, (el) => {
+  footRO?.disconnect()
+  footH.value = el?.offsetHeight ?? 0
+  if (!el) return
+  footRO = new ResizeObserver(() => (footH.value = el.offsetHeight))
+  footRO.observe(el)
+})
+onBeforeUnmount(() => footRO?.disconnect())
 
 function measureStage() {
   const el = stageEl.value
@@ -377,20 +394,31 @@ function onWheel(e: WheelEvent) {
 function onDblClick() {
   reset()
 }
-// Native video controls sit in a strip along the bottom of the element. A pan-drag starting
-// there would preventDefault the press and make the scrubber unusable, so leave that band alone.
-const VIDEO_CONTROLS_H = 56
-function onVideoControls(e: PointerEvent): boolean {
-  const t = e.target
-  if (!(t instanceof HTMLVideoElement)) return false
-  return e.clientY >= t.getBoundingClientRect().bottom - VIDEO_CONTROLS_H
+// --- video / audio ------------------------------------------------------------
+// The element plays with no native controls: ZenMediaControls drives it from outside the zoom
+// transform, so its bar stays full size, and a pan-drag works anywhere on a zoomed video in every
+// browser (native controls swallow the press in some).
+const mediaEl = ref<HTMLMediaElement | null>(null)
+const mediaControls = ref<InstanceType<typeof ZenMediaControls> | null>(null)
+function setMediaEl(el: unknown) {
+  mediaEl.value = el instanceof HTMLMediaElement ? el : null
 }
+/** Set by a pan that actually moved, so the click ending it doesn't also toggle playback. */
+let panned = false
+function onMediaClick() {
+  if (!panned) mediaControls.value?.toggle()
+}
+
 function startPan(e: PointerEvent) {
-  if (zoom.value <= 1 || onVideoControls(e)) return
+  panned = false
+  if (zoom.value <= 1 || e.button !== 0) return
   e.preventDefault()
   const ox = e.clientX - tx.value
   const oy = e.clientY - ty.value
+  const sx = e.clientX
+  const sy = e.clientY
   const move = (m: PointerEvent) => {
+    if (Math.hypot(m.clientX - sx, m.clientY - sy) > 3) panned = true
     tx.value = m.clientX - ox
     ty.value = m.clientY - oy
   }
@@ -409,14 +437,14 @@ function startPan(e: PointerEvent) {
 /** Seconds per slide the slider offers. */
 const SPEED = { min: 1, max: 30, step: 0.5 }
 const SLIDE_KEY = 'zenkit.lightbox.slideshow'
-function loadSlide(): { ms: number; shuffle: boolean } {
+function loadSlide(): { ms: number; shuffle: boolean; toEnd: boolean } {
   try {
     const saved = JSON.parse(localStorage.getItem(SLIDE_KEY) || '{}')
     const ms = Number(saved.ms)
     const ok = Number.isFinite(ms) && ms >= SPEED.min * 1000 && ms <= SPEED.max * 1000
-    return { ms: ok ? ms : 3000, shuffle: saved.shuffle === true }
+    return { ms: ok ? ms : 3000, shuffle: saved.shuffle === true, toEnd: saved.toEnd !== false }
   } catch {
-    return { ms: 3000, shuffle: false }
+    return { ms: 3000, shuffle: false, toEnd: true }
   }
 }
 const slidePrefs = ref(loadSlide())
@@ -455,11 +483,34 @@ function stopTimer() {
 function togglePlay() {
   playing.value = !playing.value
 }
+/** A video or audio slide that moves on when it ends, rather than on the clock. */
+const waitsForEnd = computed(
+  () =>
+    playing.value &&
+    (props.inline ? props.slideshowToEnd : slidePrefs.value.toEnd) &&
+    (item.value?.kind === 'video' || item.value?.kind === 'audio'),
+)
 function syncTimer() {
   stopTimer()
-  if (playing.value) timer = setTimeout(tick, slideMs.value)
+  if (playing.value && !waitsForEnd.value) timer = setTimeout(tick, slideMs.value)
 }
-watch([playing, slideMs, () => props.index], syncTimer)
+watch([playing, slideMs, () => props.index, waitsForEnd], syncTimer)
+watch([mediaEl, waitsForEnd], ([m, wait], _, onCleanup) => {
+  if (!m || !wait) return
+  const next = () => tick()
+  // A clip that can't play still moves on, after the usual time.
+  const failed = () => {
+    stopTimer()
+    timer = setTimeout(tick, slideMs.value)
+  }
+  m.addEventListener('ended', next)
+  m.addEventListener('error', failed)
+  if (m.paused) void m.play().catch(failed)
+  onCleanup(() => {
+    m.removeEventListener('ended', next)
+    m.removeEventListener('error', failed)
+  })
+})
 /** Restarts the progress line's animation whenever the countdown restarts. */
 const progressKey = computed(() => `${props.index}:${slideMs.value}:${playing.value}`)
 
@@ -473,9 +524,15 @@ function isEditable(t: EventTarget | null): boolean {
 }
 function onKey(e: KeyboardEvent) {
   if (isEditable(e.target)) return
+  if (mediaControls.value?.onKey(e)) {
+    e.preventDefault()
+    return
+  }
   switch (e.key) {
     case 'Escape':
-      if (!props.inline) emit('close')
+      // only when the lightbox is the innermost layer — a menu opened over it closes first
+      if (layer?.escape(e)) emit('close')
+      else return
       break
     case 'ArrowLeft':
       go(props.index - 1)
@@ -507,10 +564,13 @@ function onKey(e: KeyboardEvent) {
   }
   e.preventDefault()
 }
+// The fullscreen overlay joins the layer stack (Escape + z-order); inline is part of its host.
+const layer = props.inline ? null : openLayer(Z.lightbox)
 onMounted(() => {
   if (!props.inline) window.addEventListener('keydown', onKey)
 })
 onBeforeUnmount(() => {
+  layer?.release()
   window.removeEventListener('keydown', onKey)
   stopTimer()
   sideRO?.disconnect()
@@ -535,7 +595,12 @@ defineExpose({
 
 <template>
   <component :is="inline ? 'div' : Teleport" v-bind="inline ? {} : { to: 'body' }">
-    <div class="zlb" :class="{ inline }">
+    <div
+      class="zlb"
+      :class="{ inline }"
+      :data-zen-layer="inline ? undefined : ''"
+      :style="layer ? { zIndex: layer.z } : undefined"
+    >
       <Transition name="zlb-side">
         <aside
           v-if="showChrome && !inline && strip && count > 1"
@@ -554,6 +619,7 @@ defineExpose({
                 <button
                   v-for="t in tVisible"
                   :key="t.i"
+                  type="button"
                   class="zlb-cell"
                   :class="{ on: t.i === index }"
                   :title="t.it.label"
@@ -633,7 +699,12 @@ defineExpose({
         <div
           ref="stageEl"
           class="zlb-stage"
-          :style="{ '--zlb-slide': `${stageW + 48}px`, '--zlb-slide-ms': `${slideDuration}ms` }"
+          :class="{ 'has-mc': item?.kind === 'video' || item?.kind === 'audio' }"
+          :style="{
+            '--zlb-slide': `${stageW + 48}px`,
+            '--zlb-slide-ms': `${slideDuration}ms`,
+            '--zlb-foot': `${footH ? footH + 8 : 0}px`,
+          }"
           @wheel="onWheel"
           @pointerdown="startPan"
           @dblclick="onDblClick"
@@ -641,6 +712,7 @@ defineExpose({
         >
           <button
             v-if="showChrome && zoom <= 1"
+            type="button"
             class="zlb-nav prev"
             :disabled="!canPrev"
             title="Previous (Left)"
@@ -653,18 +725,21 @@ defineExpose({
             <video
               v-if="item && item.kind === 'video'"
               :key="`v${index}`"
+              :ref="setMediaEl"
               :src="item.src"
               class="zlb-media"
               :style="mediaStyle"
-              controls
               autoplay
               loop
+              playsinline
+              draggable="false"
               @loadedmetadata="onMediaMeta"
+              @click="onMediaClick"
             />
             <div v-else-if="item && item.kind === 'audio'" :key="`a${index}`" class="zlb-audio">
               <i class="mdi mdi-music-circle-outline" />
               <span v-if="item.label" class="zlb-audio-name">{{ item.label }}</span>
-              <audio :src="item.src" controls />
+              <audio :ref="setMediaEl" :src="item.src" autoplay />
             </div>
             <img
               v-else-if="item"
@@ -680,6 +755,7 @@ defineExpose({
           </Transition>
           <button
             v-if="showChrome && zoom <= 1"
+            type="button"
             class="zlb-nav next"
             :disabled="!canNext"
             title="Next (Right)"
@@ -688,12 +764,20 @@ defineExpose({
           >
             <i class="mdi mdi-chevron-right" />
           </button>
+          <ZenMediaControls
+            v-if="mediaEl && (item?.kind === 'video' || item?.kind === 'audio')"
+            ref="mediaControls"
+            class="zlb-mc"
+            :media="mediaEl"
+            :compact="stageW < 420"
+            :no-loop="waitsForEnd"
+          />
         </div>
 
-        <footer v-if="showChrome" class="zlb-bottom">
+        <footer v-if="showChrome" ref="footEl" class="zlb-bottom">
           <div class="zlb-chrome zlb-tools">
             <span
-              v-if="playing"
+              v-if="playing && !waitsForEnd"
               :key="progressKey"
               class="zlb-progress"
               :style="{ animationDuration: `${slideMs}ms` }"
@@ -715,6 +799,7 @@ defineExpose({
               <ZenPopover placement="top-start" :offset="10">
                 <template #trigger="{ toggle, active }">
                   <button
+                    type="button"
                     class="zlb-caret"
                     :class="{ on: active }"
                     title="Slideshow settings"
@@ -725,7 +810,7 @@ defineExpose({
                 </template>
                 <div class="zlb-slidepop" @click.stop>
                   <div class="zlb-slidepop-row">
-                    <span class="zlb-slidepop-label">Time per slide</span>
+                    <span class="zlb-slidepop-label">Time per picture</span>
                     <div class="zlb-slidepop-speed">
                       <ZenSlider
                         :model-value="slidePrefs.ms / 1000"
@@ -737,6 +822,13 @@ defineExpose({
                       <span class="zlb-slidepop-value">{{ fmtSpeed(slidePrefs.ms) }}</span>
                     </div>
                   </div>
+                  <label
+                    class="zlb-slidepop-row inline"
+                    title="Off: videos and audio get the time per slide too"
+                  >
+                    <span class="zlb-slidepop-label">Play videos to the end</span>
+                    <ZenSwitch v-model="slidePrefs.toEnd" />
+                  </label>
                   <label class="zlb-slidepop-row inline">
                     <span class="zlb-slidepop-label">Shuffle</span>
                     <ZenSwitch v-model="slidePrefs.shuffle" />
@@ -785,18 +877,18 @@ defineExpose({
 .zlb {
   position: fixed;
   inset: 0;
-  z-index: 100000;
+  z-index: 100300;
   display: flex;
   overflow: hidden;
-  background: color-mix(in srgb, var(--zen-bg, #111114) 92%, transparent);
+  background: color-mix(in srgb, var(--zen-bg, #1a1a1f) 92%, transparent);
   backdrop-filter: blur(6px);
   font-family: var(--p-font-family, system-ui, sans-serif);
-  color: var(--zen-text, #e8e8ea);
+  color: var(--zen-text, #e5e5ea);
 }
 .zlb.inline {
   position: absolute;
   z-index: 1;
-  border-radius: var(--zen-radius, 8px);
+  border-radius: var(--zen-radius, 7px);
   background: var(--zen-bg, #1a1a1f);
 }
 
@@ -819,8 +911,8 @@ defineExpose({
     var(--zen-chrome-bg, var(--zen-surface, #202026)) 94%,
     transparent
   );
-  border: 1px solid var(--zen-surface-border, var(--zen-border, #3a3a44));
-  border-radius: var(--zen-radius-surface, var(--zen-radius, 10px));
+  border: 1px solid var(--zen-surface-border, var(--zen-border, #34343c));
+  border-radius: var(--zen-radius-surface, var(--zen-radius, 7px));
   box-shadow: var(--interface-floating-panel-shadow, 0 6px 18px rgba(0, 0, 0, 0.28));
   backdrop-filter: blur(12px);
 }
@@ -879,7 +971,7 @@ defineExpose({
 }
 .zlb-label {
   font-weight: 600;
-  color: var(--zen-text, #e8e8ea);
+  color: var(--zen-text, #e5e5ea);
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
@@ -889,7 +981,7 @@ defineExpose({
 .zlb-meta,
 .zlb-zval {
   font-size: 11.5px;
-  color: var(--zen-muted, #9a9aa0);
+  color: var(--zen-muted, #9aa0aa);
   font-variant-numeric: tabular-nums;
   white-space: nowrap;
 }
@@ -899,6 +991,9 @@ defineExpose({
 }
 .zlb-tools {
   position: relative;
+  flex-wrap: wrap;
+  justify-content: center;
+  max-width: 100%;
   overflow: hidden;
 }
 /* time to the next slide, along the toolbar's bottom edge */
@@ -909,7 +1004,7 @@ defineExpose({
   height: 2px;
   width: 100%;
   transform-origin: left;
-  background: var(--zen-accent, #3b82f6);
+  background: var(--zen-accent, #6366f1);
   animation: zlb-progress linear forwards;
 }
 @keyframes zlb-progress {
@@ -926,15 +1021,15 @@ defineExpose({
   margin-left: -2px;
   padding: 0;
   cursor: pointer;
-  color: var(--zen-muted, #9a9aa0);
+  color: var(--zen-muted, #9aa0aa);
   background: none;
   border: 1px solid transparent;
-  border-radius: var(--zen-radius, 6px);
+  border-radius: var(--zen-radius, 7px);
 }
 .zlb-caret:hover,
 .zlb-caret.on {
-  color: var(--zen-text, #e8e8ea);
-  background: color-mix(in srgb, var(--zen-text, #fff) 12%, transparent);
+  color: var(--zen-text, #e5e5ea);
+  background: color-mix(in srgb, var(--zen-text, #e5e5ea) 12%, transparent);
 }
 .zlb-slidepop {
   display: flex;
@@ -968,18 +1063,18 @@ defineExpose({
   text-align: right;
   font-size: 12px;
   font-variant-numeric: tabular-nums;
-  color: var(--zen-text, #e8e8ea);
+  color: var(--zen-text, #e5e5ea);
 }
 .zlb-slidepop-label {
   font-size: 11.5px;
   font-weight: 600;
-  color: var(--zen-muted, #9a9aa0);
+  color: var(--zen-muted, #9aa0aa);
 }
 .zlb-sep {
   width: 1px;
   height: 18px;
   margin: 0 4px;
-  background: var(--zen-surface-border, var(--zen-border, #3a3a44));
+  background: var(--zen-surface-border, var(--zen-border, #34343c));
 }
 
 /* opening and closing: the card slides in from the left while the picture makes room */
@@ -1017,8 +1112,8 @@ defineExpose({
     var(--zen-chrome-bg, var(--zen-surface, #202026)) 94%,
     transparent
   );
-  border: 1px solid var(--zen-surface-border, var(--zen-border, #3a3a44));
-  border-radius: var(--zen-radius-surface, var(--zen-radius, 10px));
+  border: 1px solid var(--zen-surface-border, var(--zen-border, #34343c));
+  border-radius: var(--zen-radius-surface, var(--zen-radius, 7px));
   box-shadow: var(--interface-floating-panel-shadow, 0 6px 18px rgba(0, 0, 0, 0.28));
   backdrop-filter: blur(12px);
 }
@@ -1032,7 +1127,7 @@ defineExpose({
   cursor: ew-resize;
 }
 .zlb-resize:hover {
-  background: color-mix(in srgb, var(--zen-accent, #3b82f6) 45%, transparent);
+  background: color-mix(in srgb, var(--zen-accent, #6366f1) 45%, transparent);
 }
 .zlb-side-head {
   flex: 0 0 auto;
@@ -1051,11 +1146,11 @@ defineExpose({
   height: 28px;
   padding: 0 8px;
   border: 1px solid var(--zen-border, #34343c);
-  border-radius: var(--zen-radius, 6px);
-  background: var(--zen-input, #15151a);
+  border-radius: var(--zen-radius, 7px);
+  background: var(--zen-input, #1b1b20);
 }
 .zlb-search:focus-within {
-  border-color: var(--zen-accent, #3b82f6);
+  border-color: var(--zen-accent, #6366f1);
 }
 .zlb-search .mdi {
   font-size: 14px;
@@ -1094,8 +1189,8 @@ defineExpose({
   aspect-ratio: 1;
   padding: 0;
   border: 1px solid var(--zen-border, #34343c);
-  border-radius: var(--zen-radius, 8px);
-  background: var(--zen-input, #15151a);
+  border-radius: var(--zen-radius, 7px);
+  background: var(--zen-input, #1b1b20);
   cursor: pointer;
   overflow: hidden;
 }
@@ -1125,11 +1220,11 @@ defineExpose({
   pointer-events: none;
 }
 .zlb-cell:hover {
-  border-color: var(--zen-accent, #3b82f6);
+  border-color: var(--zen-accent, #6366f1);
 }
 .zlb-cell.on {
-  border-color: var(--zen-accent, #3b82f6);
-  box-shadow: 0 0 0 2px var(--zen-accent, #3b82f6) inset;
+  border-color: var(--zen-accent, #6366f1);
+  box-shadow: 0 0 0 2px var(--zen-accent, #6366f1) inset;
 }
 .zlb-cell-wf {
   position: absolute;
@@ -1171,6 +1266,22 @@ defineExpose({
   overflow: hidden;
   padding: 16px;
 }
+/* Room under a video or audio for its control bar, which sits in the stage's own padding. */
+.zlb-stage.has-mc {
+  padding-bottom: calc(60px + var(--zlb-foot, 0px));
+}
+.zlb.inline .zlb-stage.has-mc {
+  padding-bottom: 52px;
+}
+.zlb-mc {
+  position: absolute;
+  right: 12px;
+  bottom: calc(8px + var(--zlb-foot, 0px));
+  left: 12px;
+  z-index: 3;
+  max-width: 760px;
+  margin: 0 auto;
+}
 .zlb.inline .zlb-stage {
   padding: 6px;
 }
@@ -1179,7 +1290,7 @@ defineExpose({
   max-height: 100%;
   object-fit: contain;
   display: block;
-  border-radius: var(--zen-radius, 6px);
+  border-radius: var(--zen-radius, 7px);
   box-shadow: 0 24px 60px -20px rgba(0, 0, 0, 0.55);
   transition: transform 0.05s linear;
 }
@@ -1194,14 +1305,15 @@ defineExpose({
   display: flex;
   flex-direction: column;
   align-items: center;
-  gap: 14px;
-  padding: 24px;
+  gap: clamp(4px, 3cqh, 14px);
+  padding: clamp(4px, 5cqh, 24px);
   max-width: 560px;
   width: 100%;
-  color: var(--zen-text, #e8e8ea);
+  color: var(--zen-text, #e5e5ea);
 }
 .zlb-audio .mdi {
-  font-size: 96px;
+  font-size: clamp(28px, 30cqh, 96px);
+  line-height: 1;
   opacity: 0.5;
 }
 .zlb-audio-name {
@@ -1239,7 +1351,7 @@ defineExpose({
   justify-content: flex-start;
   background: linear-gradient(
     to right,
-    color-mix(in srgb, var(--zen-accent, #3b82f6) 20%, transparent),
+    color-mix(in srgb, var(--zen-accent, #6366f1) 20%, transparent),
     transparent
   );
 }
@@ -1248,7 +1360,7 @@ defineExpose({
   justify-content: flex-end;
   background: linear-gradient(
     to left,
-    color-mix(in srgb, var(--zen-accent, #3b82f6) 20%, transparent),
+    color-mix(in srgb, var(--zen-accent, #6366f1) 20%, transparent),
     transparent
   );
 }

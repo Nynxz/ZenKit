@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import { nextTick, onMounted, ref, watch } from 'vue'
 // ZenInput — themed text/number/textarea field (v-model). type='textarea' renders a
 // resizable <textarea>; otherwise a single-line <input :type>. Emits numbers for type='number'.
 const props = withDefaults(
@@ -11,10 +12,27 @@ const props = withDefaults(
     max?: number
     step?: number
     disabled?: boolean
+    /** `sm` 24px, `md` (default) 28px — the shared control heights (one-line inputs). */
+    size?: 'sm' | 'md'
+    /** Same as size="sm". */
     sm?: boolean
+    /** textarea only: grow with the text instead of scrolling (from `rows` up). */
+    autosize?: boolean
   }>(),
-  { type: 'text', rows: 4, disabled: false, sm: false },
+  { type: 'text', rows: 4, disabled: false, size: 'md', sm: false, autosize: false },
 )
+const area = ref<HTMLTextAreaElement | null>(null)
+function fit() {
+  const el = area.value
+  if (!props.autosize || !el) return
+  el.style.height = 'auto'
+  el.style.height = `${el.scrollHeight + 2}px`
+}
+watch(
+  () => props.modelValue,
+  () => nextTick(fit),
+)
+onMounted(fit)
 const emit = defineEmits<{ 'update:modelValue': [string | number] }>()
 
 function onInput(e: Event) {
@@ -31,8 +49,9 @@ function onInput(e: Event) {
 <template>
   <textarea
     v-if="type === 'textarea'"
+    ref="area"
     class="zen-input area"
-    :class="{ sm }"
+    :class="{ sm: sm || size === 'sm', auto: autosize }"
     :rows="rows"
     :placeholder="placeholder"
     :disabled="disabled"
@@ -42,7 +61,7 @@ function onInput(e: Event) {
   <input
     v-else
     class="zen-input"
-    :class="{ sm }"
+    :class="{ sm: sm || size === 'sm' }"
     :type="type"
     :placeholder="placeholder"
     :disabled="disabled"
@@ -56,9 +75,8 @@ function onInput(e: Event) {
 
 <style scoped>
 .zen-input {
-  /* line-height: normal decouples from ComfyUI's inherited (small) line-height; the
-     asymmetric padding (1px more top than bottom) optically centres the glyphs, which
-     otherwise sit a touch high inside the field (line-height alone can't fix that). */
+  /* line-height: normal decouples from ComfyUI's inherited (small) line-height. A one-line input
+     has the shared control height and centres its text itself; a textarea pads instead. */
   width: 100%;
   box-sizing: border-box;
   font: inherit;
@@ -68,7 +86,8 @@ function onInput(e: Event) {
   color: var(--zen-text, #e5e5ea);
   border: 1px solid var(--zen-control-border, var(--zen-border, #34343c));
   border-radius: var(--zen-radius, 7px);
-  padding: 8px 9px 6px;
+  height: var(--zen-control-h, 28px);
+  padding: 0 9px;
   transition: border-color 0.12s ease;
 }
 .zen-input::placeholder {
@@ -79,16 +98,24 @@ function onInput(e: Event) {
   border-color: var(--zen-accent, #6366f1);
 }
 .zen-input:disabled {
-  opacity: 0.5;
-  cursor: default;
+  opacity: 0.45;
+  cursor: not-allowed;
 }
 .zen-input.sm {
-  padding: 6px 8px 4px;
+  height: var(--zen-control-h-sm, 24px);
+  padding: 0 8px;
   font-size: 11px;
 }
 .zen-input.area {
+  height: auto;
+  padding: 7px 9px;
   resize: vertical;
   min-height: 64px;
   line-height: 1.45;
+}
+.zen-input.area.auto {
+  resize: none;
+  min-height: 0;
+  overflow: hidden;
 }
 </style>

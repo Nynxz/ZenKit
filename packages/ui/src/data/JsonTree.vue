@@ -75,10 +75,10 @@ const preview = (v: unknown) => {
   gap: 3px;
   cursor: pointer;
   white-space: nowrap;
-  border-radius: var(--zen-radius, 4px);
+  border-radius: var(--zen-radius, 7px);
 }
 .jt-row:hover {
-  background: color-mix(in srgb, var(--zen-text, #fff) 7%, transparent);
+  background: color-mix(in srgb, var(--zen-text, #e5e5ea) 7%, transparent);
 }
 .jt-row.leaf {
   cursor: default;
@@ -89,7 +89,7 @@ const preview = (v: unknown) => {
   margin-left: -2px;
 }
 .jt-key {
-  color: var(--zen-accent, #7aa2ff);
+  color: var(--zen-accent, #6366f1);
 }
 .jt-key::after {
   content: ':';
@@ -109,20 +109,21 @@ const preview = (v: unknown) => {
   opacity: 0.8;
 }
 .jt-children {
-  border-left: 1px solid var(--zen-border, rgba(255, 255, 255, 0.08));
+  border-left: 1px solid var(--zen-border, #34343c);
 }
 .jt-val {
   white-space: pre-wrap;
   word-break: break-word;
 }
+/* Mixed with the text colour, so they stay readable on light themes as well as dark. */
 .t-string {
-  color: #b5e8a0;
+  color: color-mix(in srgb, #4caf50 70%, var(--zen-text, #e5e5ea));
 }
 .t-number {
-  color: #f0c674;
+  color: color-mix(in srgb, #d4a017 70%, var(--zen-text, #e5e5ea));
 }
 .t-boolean {
-  color: #d39bf5;
+  color: color-mix(in srgb, #b16ce8 70%, var(--zen-text, #e5e5ea));
 }
 .t-null {
   color: #9aa0aa;

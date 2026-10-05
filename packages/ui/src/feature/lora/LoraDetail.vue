@@ -4,7 +4,13 @@
 <template>
   <div class="ld zen-scroll">
     <header class="ld-head">
-      <button class="ld-cover" :disabled="!hasPreview" title="Enlarge" @click="openPreview">
+      <button
+        type="button"
+        class="ld-cover"
+        :disabled="!hasPreview"
+        title="Enlarge"
+        @click="openPreview"
+      >
         <video
           v-if="hasPreview && kind === 'video'"
           :src="lib.media(name)"
@@ -56,7 +62,7 @@
     <section v-if="info?.trigger_words?.length" class="ld-sec">
       <h4>
         Trigger words
-        <button class="ld-copy" @click="copy('words', info.trigger_words.join(', '))">
+        <button type="button" class="ld-copy" @click="copy('words', info.trigger_words.join(', '))">
           <i class="mdi" :class="copied === 'words' ? 'mdi-check' : 'mdi-content-copy'" />
         </button>
       </h4>
@@ -64,6 +70,7 @@
         <button
           v-for="w in info.trigger_words"
           :key="w"
+          type="button"
           class="ld-chip word"
           title="Copy"
           @click="copy('w:' + w, w)"
@@ -80,6 +87,7 @@
         <span class="ld-count">{{ examples.length }}</span>
         <button
           v-if="hasMature"
+          type="button"
           class="ld-toggle"
           :class="{ on: revealMature }"
           @click="revealMature = !revealMature"
@@ -92,6 +100,7 @@
         <button
           v-for="(ex, i) in examples"
           :key="ex.url || i"
+          type="button"
           class="ld-tile"
           :class="{ sel: i === sel, blur: blurred(ex) }"
           :style="tileStyle(ex)"
@@ -118,6 +127,7 @@
 
       <div v-if="current" class="ld-example">
         <button
+          type="button"
           class="ld-ex-media"
           :class="{ blur: blurred(current) }"
           title="Open fullscreen"
@@ -138,7 +148,7 @@
           <div v-for="p in prompts" :key="p.key" class="ld-prompt">
             <div class="ld-k">
               {{ p.label }}
-              <button class="ld-copy" @click="copy(p.key, p.text)">
+              <button type="button" class="ld-copy" @click="copy(p.key, p.text)">
                 <i class="mdi" :class="copied === p.key ? 'mdi-check' : 'mdi-content-copy'" />
               </button>
             </div>
@@ -167,7 +177,12 @@
     <section v-if="description" class="ld-sec">
       <h4>About</h4>
       <div class="ld-desc" :class="{ open: descOpen }">{{ description }}</div>
-      <button v-if="description.length > 400" class="ld-more" @click="descOpen = !descOpen">
+      <button
+        v-if="description.length > 400"
+        type="button"
+        class="ld-more"
+        @click="descOpen = !descOpen"
+      >
         {{ descOpen ? 'Show less' : 'Show more' }}
       </button>
     </section>
@@ -263,7 +278,9 @@ const kind = computed(() => lib.previewKind(props.name) ?? info.value?.preview ?
 const hasPreview = computed(() => !!kind.value || lib.hasThumb(props.name))
 const examples = computed(() => info.value?.images ?? [])
 const current = computed<LoraExample | undefined>(() => examples.value[sel.value])
-const hasMature = computed(() => examples.value.some((e) => (e.nsfw_level ?? 0) >= MATURE_LEVEL))
+const hasMature = computed(
+  () => lib.blurMature.value && examples.value.some((e) => (e.nsfw_level ?? 0) >= MATURE_LEVEL),
+)
 const description = computed(() =>
   [info.value?.description, info.value?.version_description].filter(Boolean).join('\n\n'),
 )
@@ -272,7 +289,7 @@ const isBare = computed(
 )
 
 function blurred(ex: LoraExample): boolean {
-  return !revealMature.value && (ex.nsfw_level ?? 0) >= MATURE_LEVEL
+  return lib.blurMature.value && !revealMature.value && (ex.nsfw_level ?? 0) >= MATURE_LEVEL
 }
 
 function srcOf(ex: LoraExample): string {
@@ -423,7 +440,7 @@ function openExamples() {
   height: 136px;
   padding: 0;
   border: 1px solid var(--zen-border, #34343c);
-  border-radius: var(--zen-radius, 8px);
+  border-radius: var(--zen-radius, 7px);
   background: var(--zen-input, #1b1b20);
   overflow: hidden;
   cursor: zoom-in;
@@ -507,7 +524,7 @@ function openExamples() {
   align-items: center;
   gap: 4px;
   font-size: 11.5px;
-  color: var(--zen-accent, #818cf8);
+  color: var(--zen-accent, #6366f1);
   text-decoration: none;
 }
 .ld-link:hover {
@@ -560,7 +577,7 @@ function openExamples() {
 .ld-more {
   align-self: flex-start;
   font-size: 11px;
-  color: var(--zen-accent, #818cf8);
+  color: var(--zen-accent, #6366f1);
 }
 .ld-gallery {
   display: flex;
@@ -577,7 +594,7 @@ function openExamples() {
   min-width: 0;
   padding: 0;
   border: 1px solid var(--zen-border, #34343c);
-  border-radius: var(--zen-radius, 6px);
+  border-radius: var(--zen-radius, 7px);
   background: var(--zen-input, #1b1b20);
   overflow: hidden;
   cursor: pointer;
@@ -616,7 +633,7 @@ function openExamples() {
   max-width: 100%;
   padding: 0;
   border: 1px solid var(--zen-border, #34343c);
-  border-radius: var(--zen-radius, 8px);
+  border-radius: var(--zen-radius, 7px);
   background: var(--zen-input, #1b1b20);
   overflow: hidden;
   cursor: zoom-in;
@@ -649,7 +666,7 @@ function openExamples() {
   max-height: 140px;
   overflow: auto;
   padding: 6px 8px;
-  border-radius: var(--zen-radius, 6px);
+  border-radius: var(--zen-radius, 7px);
   background: var(--zen-input, #1b1b20);
   white-space: pre-wrap;
   word-break: break-word;

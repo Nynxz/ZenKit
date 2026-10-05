@@ -39,6 +39,14 @@ const emit = defineEmits<{ 'update:modelValue': [boolean] }>()
   padding: 0;
   text-align: left;
 }
+.zen-check:focus-visible {
+  outline: none;
+}
+.zen-check:focus-visible .box {
+  outline: 2px solid
+    var(--zen-focus-ring, color-mix(in srgb, var(--zen-accent, #6366f1) 60%, transparent));
+  outline-offset: 1px;
+}
 .zen-check:disabled {
   opacity: 0.5;
   cursor: default;
@@ -50,8 +58,8 @@ const emit = defineEmits<{ 'update:modelValue': [boolean] }>()
   width: 16px;
   height: 16px;
   flex: none;
-  border: 1px solid var(--zen-border, #3a3a44);
-  border-radius: min(var(--zen-radius, 4px), 6px);
+  border: 1px solid var(--zen-border, #34343c);
+  border-radius: min(var(--zen-radius, 7px), 6px);
   background: var(--zen-input, #1b1b20);
   color: var(--zen-accent-text, #fff);
   transition:

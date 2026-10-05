@@ -6,7 +6,7 @@
 // fast and off-screen thumbnails never load). Set `menuWidth` for a roomier popover.
 import { computed, nextTick, onBeforeUnmount, ref, useSlots, watch } from 'vue'
 import type { ComboItem } from '../types'
-import { inOtherLayer } from '../overlays/layers'
+import { inOtherLayer, openLayer, Z, type Layer } from '../overlays/layers'
 import '../lib/scrollbar.css'
 
 type Val = string | number
@@ -19,12 +19,18 @@ const props = withDefaults(
     pinned?: Val[]
     emptyText?: string
     disabled?: boolean
+    /** `sm` 24px, `md` (default) 28px — the shared control heights. */
+    size?: 'sm' | 'md'
     menuWidth?: number
     itemHeight?: number
     /** Render the menu options as a responsive grid (cards) instead of a list. */
     grid?: boolean
     /** Min column width (px) for grid mode — drives a "zoom" of the cards. */
     gridMin?: number
+    /** Sort by label with pinned first. Off keeps `items` in the given order. */
+    sorted?: boolean
+    /** Called before a pick; return true to handle it here (no emit, menu stays open). */
+    pickGuard?: (value: Val) => boolean
   }>(),
   {
     placeholder: 'Select…',
@@ -32,9 +38,18 @@ const props = withDefaults(
     emptyText: 'No matches',
     disabled: false,
     grid: false,
+    sorted: true,
+    pickGuard: undefined,
   },
 )
-const emit = defineEmits<{ 'update:modelValue': [Val]; open: [] }>()
+const emit = defineEmits<{
+  'update:modelValue': [Val]
+  open: []
+  /** The search text as typed. */
+  query: [string]
+  /** Keydown in the menu before the built-in navigation; preventDefault() to override it. */
+  key: [KeyboardEvent]
+}>()
 
 const OVERSCAN = 4
 const slots = useSlots()
@@ -49,6 +64,8 @@ const menuRef = ref<HTMLElement | null>(null)
 const listRef = ref<HTMLElement | null>(null)
 const searchRef = ref<HTMLInputElement | null>(null)
 const menuStyle = ref<Record<string, string>>({})
+const z = ref<number>(Z.popover)
+let layer: Layer | null = null
 
 // grid mode never virtualises (cards are auto-height); virtual is list-only.
 const virtual = computed(() => !props.grid && !!props.itemHeight && props.itemHeight > 0)
@@ -66,6 +83,7 @@ const filtered = computed<ComboItem[]>(() => {
       return terms.every((t) => hay.includes(t))
     })
   }
+  if (!props.sorted) return list
   const pin = pinnedSet.value
   return [...list].sort((a, b) => {
     const pa = pin.has(a.value) ? 0 : 1
@@ -94,7 +112,12 @@ const windowItems = computed(() => {
 
 function onDoc(e: PointerEvent) {
   const t = e.target as Node
-  if (root.value?.contains(t) || menuRef.value?.contains(t) || inOtherLayer(e.target, menuRef.value)) return
+  if (
+    root.value?.contains(t) ||
+    menuRef.value?.contains(t) ||
+    inOtherLayer(e.target, menuRef.value)
+  )
+    return
   close()
 }
 function place() {
@@ -118,7 +141,8 @@ function place() {
   const maxHeight = Math.max(160, Math.round((flipUp ? above : below) - 12))
   // bound the scrolling list itself (the menu only has a max-height, so flex-grow
   // would collapse to 0). list cap = available − search − footer.
-  const reserved = (props.searchable ? 46 : 0) + (slots.footer ? 48 : 0) + 8
+  const reserved =
+    (props.searchable ? 46 : 0) + (slots.header ? 32 : 0) + (slots.footer ? 48 : 0) + 8
   listMaxH.value = Math.max(120, maxHeight - reserved)
   menuStyle.value = {
     left: left + 'px',
@@ -143,6 +167,8 @@ function openMenu() {
     filtered.value.findIndex((i) => i.value === props.modelValue),
   )
   place()
+  layer ??= openLayer(Z.popover)
+  z.value = layer.z
   open.value = true
   nextTick(() => {
     searchRef.value?.focus()
@@ -155,9 +181,12 @@ function openMenu() {
 function close() {
   if (!open.value) return
   open.value = false
+  layer?.release()
+  layer = null
   window.removeEventListener('pointerdown', onDoc, true)
 }
 function pick(v: Val) {
+  if (props.pickGuard?.(v)) return
   emit('update:modelValue', v)
   close()
 }
@@ -177,7 +206,13 @@ function scrollToActive() {
   }
 }
 function onKey(e: KeyboardEvent) {
-  if (e.key === 'Escape') return close()
+  emit('key', e)
+  if (e.defaultPrevented) return
+  if (e.key === 'Escape') {
+    // only when this menu is the innermost layer, so an enclosing modal/window stays open
+    if (layer?.escape(e)) close()
+    return
+  }
   if (e.key === 'ArrowDown') {
     e.preventDefault()
     active.value = Math.min(active.value + 1, filtered.value.length - 1)
@@ -192,11 +227,22 @@ function onKey(e: KeyboardEvent) {
     if (it) pick(it.value)
   }
 }
-watch(query, () => {
+function resetScroll() {
   active.value = 0
   scrollTop.value = 0
   if (listRef.value) listRef.value.scrollTop = 0
+}
+watch(query, (q) => {
+  emit('query', q)
+  resetScroll()
 })
+// A host that swaps the list while open (e.g. stepping into a folder) starts at the top.
+watch(
+  () => props.items,
+  () => {
+    if (open.value) resetScroll()
+  },
+)
 onBeforeUnmount(close)
 </script>
 
@@ -205,6 +251,7 @@ onBeforeUnmount(close)
     <button
       type="button"
       class="zc-trigger"
+      :class="{ sm: size === 'sm' }"
       :disabled="disabled"
       @click="open ? close() : openMenu()"
     >
@@ -221,7 +268,11 @@ onBeforeUnmount(close)
         data-zen-layer
         class="zen-combo-menu"
         :class="{ grid }"
-        :style="[menuStyle, grid && gridMin ? { '--zc-grid-min': gridMin + 'px' } : {}]"
+        :style="[
+          menuStyle,
+          { zIndex: z },
+          grid && gridMin ? { '--zc-grid-min': gridMin + 'px' } : {},
+        ]"
         @keydown="onKey"
       >
         <div v-if="searchable" class="zc-search">
@@ -233,12 +284,15 @@ onBeforeUnmount(close)
             placeholder="Search…"
             spellcheck="false"
           />
-          <button v-if="query" class="zc-clear" title="Clear" @click="query = ''">
+          <button v-if="query" type="button" class="zc-clear" title="Clear" @click="query = ''">
             <i class="mdi mdi-close" />
           </button>
           <!-- right-aligned actions inside the search row (e.g. a source switcher) -->
-          <span v-if="$slots.search" class="zc-search-actions"><slot name="search" /></span>
+          <span v-if="$slots.search" class="zc-search-actions">
+            <slot name="search" :close="close" />
+          </span>
         </div>
+        <div v-if="$slots.header" class="zc-header"><slot name="header" :close="close" /></div>
 
         <div
           ref="listRef"
@@ -333,7 +387,7 @@ onBeforeUnmount(close)
   gap: 6px;
   width: 100%;
   box-sizing: border-box;
-  min-height: 28px;
+  min-height: var(--zen-control-h, 28px);
   background: var(--zen-control-bg, var(--zen-input, #1b1b20));
   color: var(--zen-text, #e5e5ea);
   border: 1px solid var(--zen-control-border, var(--zen-border, #34343c));
@@ -349,8 +403,19 @@ onBeforeUnmount(close)
   border-color: var(--zen-control-hover-border, var(--zen-accent, #6366f1));
   background: var(--zen-control-hover-bg, var(--zen-control-bg));
 }
+.zc-trigger:focus-visible {
+  outline: 2px solid
+    var(--zen-focus-ring, color-mix(in srgb, var(--zen-accent, #6366f1) 60%, transparent));
+  outline-offset: 1px;
+}
+.zc-trigger.sm {
+  min-height: var(--zen-control-h-sm, 24px);
+  padding: 2px 7px;
+  font-size: 11px;
+}
 .zc-trigger:disabled {
-  opacity: 0.5;
+  cursor: not-allowed;
+  opacity: 0.45;
   cursor: default;
 }
 .zen-combo.open .zc-trigger {
@@ -375,13 +440,13 @@ onBeforeUnmount(close)
 /* Teleported menu — NOT scoped (lives at <body>); reads the same --zen-* tokens. */
 .zen-combo-menu {
   position: fixed;
-  z-index: 11000;
+  z-index: 100000;
   display: flex;
   flex-direction: column;
   max-height: 360px;
   background: var(--zen-chrome-bg, var(--zen-surface, #202026));
   border: 1px solid var(--zen-surface-border, var(--zen-border, #34343c));
-  border-radius: var(--zen-radius-surface, var(--zen-radius, 8px));
+  border-radius: var(--zen-radius-surface, var(--zen-radius, 7px));
   box-shadow: 0 12px 34px rgba(0, 0, 0, 0.5);
   overflow: hidden;
   font-family: var(--p-font-family, system-ui, sans-serif);
@@ -420,6 +485,10 @@ onBeforeUnmount(close)
   display: inline-flex;
   align-items: center;
 }
+.zen-combo-menu .zc-header {
+  flex: none;
+  border-bottom: 1px solid var(--zen-border, #34343c);
+}
 .zen-combo-menu .zc-list {
   overflow-y: auto;
   padding: 4px;
@@ -440,14 +509,14 @@ onBeforeUnmount(close)
   align-items: center;
   gap: 9px;
   padding: 6px 8px;
-  border-radius: var(--zen-radius, 6px);
+  border-radius: var(--zen-radius, 7px);
   cursor: pointer;
   font-size: 12px;
   box-sizing: border-box;
   overflow: hidden;
 }
 .zen-combo-menu .zc-opt.active {
-  background: color-mix(in srgb, var(--zen-text, #fff) 10%, transparent);
+  background: color-mix(in srgb, var(--zen-text, #e5e5ea) 10%, transparent);
 }
 .zen-combo-menu .zc-opt.sel {
   color: var(--zen-accent, #6366f1);

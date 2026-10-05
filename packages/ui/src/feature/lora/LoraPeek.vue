@@ -31,6 +31,7 @@
 <script setup lang="ts">
 import { computed, ref, watch } from 'vue'
 
+import { zAbove, Z } from '../../overlays/layers'
 import * as lib from './loraLibrary'
 import { peekTarget as target, shiftHeld } from './loraState'
 import type { LoraInfo } from './types'
@@ -63,14 +64,15 @@ const box = computed(() => {
   let left = r.right + GAP
   if (left + WIDTH > window.innerWidth - 8) left = Math.max(8, r.left - GAP - WIDTH)
   const top = Math.max(8, Math.min(r.top, window.innerHeight - 8 - MAX_HEIGHT))
-  return { left: `${left}px`, top: `${top}px`, width: `${WIDTH}px` }
+  // above every open layer, including the browser/lightbox it may be peeking from
+  return { left: `${left}px`, top: `${top}px`, width: `${WIDTH}px`, zIndex: zAbove(Z.peek) }
 })
 </script>
 
 <style scoped>
 .lpk {
   position: fixed;
-  z-index: 13000;
+  z-index: 100400;
   pointer-events: none;
   display: flex;
   flex-direction: column;
@@ -79,7 +81,7 @@ const box = computed(() => {
   background: var(--zen-chrome-bg, var(--zen-surface, #202026));
   color: var(--zen-text, #e5e5ea);
   border: 1px solid var(--zen-surface-border, var(--zen-border, #34343c));
-  border-radius: calc(var(--zen-radius-surface, var(--zen-radius, 8px)) + 2px);
+  border-radius: calc(var(--zen-radius-surface, var(--zen-radius, 7px)) + 2px);
   box-shadow: 0 16px 48px rgb(0 0 0 / 55%);
   font-family: var(--p-font-family, system-ui, sans-serif);
 }

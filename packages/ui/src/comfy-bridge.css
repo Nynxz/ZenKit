@@ -35,4 +35,6 @@
   --zen-info: var(--zen-accent);
   --zen-info-text: var(--zen-accent-text);
   --zen-mono: ui-monospace, 'SF Mono', Menlo, Consolas, monospace;
+  /* keyboard-focus outline colour shared by every control's :focus-visible */
+  --zen-focus-ring: color-mix(in srgb, var(--zen-accent) 60%, transparent);
 }

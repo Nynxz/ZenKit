@@ -2,11 +2,20 @@
 // ZenSelect — custom dropdown (v-model). Fully themed (native <select>'s option
 // popup can't be styled) and the menu is teleported to <body> with fixed coords so
 // it escapes the panel's overflow:hidden. options: strings or {value,label,icon}.
+import '../lib/scrollbar.css'
 import { computed, onBeforeUnmount, ref } from 'vue'
-import { inOtherLayer, openLayer } from '../overlays/layers'
+import { iconClass } from '../lib/icon'
+import { inOtherLayer, openLayer, Z, type Layer } from '../overlays/layers'
 type Val = string
 type Opt = Val | { value: Val; label?: string; icon?: string }
-const props = defineProps<{ modelValue: Val; options: Opt[]; placeholder?: string }>()
+const props = defineProps<{
+  modelValue: Val
+  options: Opt[]
+  placeholder?: string
+  disabled?: boolean
+  /** `sm` 24px, `md` (default) 28px — the shared control heights. */
+  size?: 'sm' | 'md'
+}>()
 const emit = defineEmits<{ 'update:modelValue': [Val] }>()
 const norm = (o: Opt) => (typeof o === 'object' ? o : { value: o, label: String(o) })
 
@@ -18,12 +27,18 @@ const current = computed(() => props.options.map(norm).find((o) => o.value === p
 
 function onDoc(e: PointerEvent) {
   const t = e.target as Node
-  if (root.value?.contains(t) || menuRef.value?.contains(t) || inOtherLayer(e.target, menuRef.value)) return
+  if (
+    root.value?.contains(t) ||
+    menuRef.value?.contains(t) ||
+    inOtherLayer(e.target, menuRef.value)
+  )
+    return
   close()
 }
-let layer: ReturnType<typeof openLayer> | null = null
+let layer: Layer | null = null
+const z = ref<number>(Z.popover)
 function onKey(e: KeyboardEvent) {
-  if (e.key === 'Escape' && layer?.isTop()) close()
+  if (layer?.escape(e)) close()
 }
 // Close on scroll/resize so the fixed-position menu never detaches from its
 // trigger — but ignore scrolling *inside* the menu itself.
@@ -48,7 +63,8 @@ function openMenu() {
       : { top: r.bottom + 4 + 'px', left: r.left + 'px', minWidth: r.width + 'px' }
   }
   open.value = true
-  layer ??= openLayer()
+  layer ??= openLayer(Z.popover)
+  z.value = layer.z
   setTimeout(() => {
     window.addEventListener('pointerdown', onDoc, true)
     window.addEventListener('keydown', onKey, true)
@@ -74,14 +90,26 @@ onBeforeUnmount(close)
 </script>
 
 <template>
-  <div ref="root" class="zen-select" :class="{ open }">
-    <button type="button" class="zs-trigger" @click="open ? close() : openMenu()">
-      <i v-if="current?.icon" class="zs-ico" :class="current.icon" />
+  <div ref="root" class="zen-select" :class="{ open, sm: size === 'sm' }">
+    <button
+      type="button"
+      class="zs-trigger"
+      :disabled="disabled"
+      @click="open ? close() : openMenu()"
+    >
+      <i v-if="current?.icon" class="zs-ico" :class="iconClass(current.icon)" />
       <span class="zs-label">{{ current?.label ?? current?.value ?? placeholder ?? '' }}</span>
       <i class="mdi mdi-menu-down zs-caret" />
     </button>
     <Teleport to="body">
-      <div v-if="open" ref="menuRef" data-zen-layer class="zs-menu zen-scroll" :style="menuStyle" role="listbox">
+      <div
+        v-if="open"
+        ref="menuRef"
+        data-zen-layer
+        class="zs-menu zen-scroll"
+        :style="[menuStyle, { zIndex: z }]"
+        role="listbox"
+      >
         <button
           v-for="o in options"
           :key="String(norm(o).value)"
@@ -92,7 +120,7 @@ onBeforeUnmount(close)
           :aria-selected="norm(o).value === modelValue"
           @click="pick(norm(o).value)"
         >
-          <i v-if="norm(o).icon" class="zs-ico" :class="norm(o).icon" />
+          <i v-if="norm(o).icon" class="zs-ico" :class="iconClass(norm(o).icon)" />
           <span>{{ norm(o).label ?? norm(o).value }}</span>
           <i v-if="norm(o).value === modelValue" class="mdi mdi-check zs-check" />
         </button>
@@ -117,20 +145,35 @@ onBeforeUnmount(close)
   align-items: center;
   gap: 6px;
   min-width: 0;
-  padding: 5px 6px 5px 8px;
+  box-sizing: border-box;
+  height: var(--zen-control-h, 28px);
+  padding: 0 6px 0 8px;
   font-size: 12px;
   font-family: inherit;
   cursor: pointer;
   background: var(--zen-control-bg, var(--zen-surface, #202026));
   color: var(--zen-text, #e5e5ea);
-  border: 1px solid var(--zen-control-border, var(--zen-border, #3a3a44));
+  border: 1px solid var(--zen-control-border, var(--zen-border, #34343c));
   border-radius: var(--zen-radius, 7px);
   transition: border-color 0.12s ease;
 }
+.zen-select.sm .zs-trigger {
+  height: var(--zen-control-h-sm, 24px);
+  font-size: 11px;
+}
+.zs-trigger:disabled {
+  opacity: 0.45;
+  cursor: not-allowed;
+}
 .zs-trigger:hover,
 .zen-select.open .zs-trigger {
-  border-color: var(--zen-control-hover-border, var(--zen-accent, #3b82f6));
+  border-color: var(--zen-control-hover-border, var(--zen-accent, #6366f1));
   background: var(--zen-control-hover-bg, var(--zen-control-bg));
+}
+.zs-trigger:focus-visible {
+  outline: 2px solid
+    var(--zen-focus-ring, color-mix(in srgb, var(--zen-accent, #6366f1) 60%, transparent));
+  outline-offset: 1px;
 }
 .zs-label {
   flex: 1;
@@ -159,8 +202,8 @@ onBeforeUnmount(close)
   flex-direction: column;
   gap: 1px;
   background: var(--zen-chrome-bg, var(--zen-surface, #202026));
-  border: 1px solid var(--zen-surface-border, var(--zen-border, #3a3a44));
-  border-radius: var(--zen-radius-surface, var(--zen-radius, 8px));
+  border: 1px solid var(--zen-surface-border, var(--zen-border, #34343c));
+  border-radius: var(--zen-radius-surface, var(--zen-radius, 7px));
   box-shadow: 0 10px 30px rgba(0, 0, 0, 0.5);
   font-family: var(--p-font-family, system-ui, sans-serif);
 }
@@ -176,21 +219,26 @@ onBeforeUnmount(close)
   background: none;
   border: none;
   color: var(--zen-text, #e5e5ea);
-  border-radius: max(0px, calc(var(--zen-radius, 8px) - 3px));
+  border-radius: max(0px, calc(var(--zen-radius, 7px) - 3px));
   white-space: nowrap;
 }
 .zs-opt span {
   flex: 1;
 }
 .zs-opt:hover {
-  background: color-mix(in srgb, var(--zen-text, #fff) 10%, transparent);
+  background: color-mix(in srgb, var(--zen-text, #e5e5ea) 10%, transparent);
+}
+.zs-opt:focus-visible {
+  outline: 2px solid
+    var(--zen-focus-ring, color-mix(in srgb, var(--zen-accent, #6366f1) 60%, transparent));
+  outline-offset: -2px;
 }
 .zs-opt.on {
-  color: var(--zen-accent, #3b82f6);
+  color: var(--zen-accent, #6366f1);
 }
 .zs-check {
   font-size: 14px;
-  color: var(--zen-accent, #3b82f6);
+  color: var(--zen-accent, #6366f1);
   flex: 0 0 auto;
 }
 </style>

@@ -9,7 +9,7 @@
 <style scoped>
 .zen-msep {
   height: 1px;
-  background: var(--zen-border, #3a3a44);
+  background: var(--zen-border, #34343c);
   margin: 4px 4px;
 }
 </style>
