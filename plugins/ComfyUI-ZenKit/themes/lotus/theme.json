@@ -70,5 +70,8 @@
       "--sidebar-border": "oklch(0.28 0.05 280)",
       "--sidebar-ring": "oklch(0.72 0.2 300)"
     }
+  },
+  "splash": {
+    "preset": "lotus"
   }
 }
