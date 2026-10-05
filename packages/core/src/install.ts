@@ -421,9 +421,14 @@ export function installZenKitSecondary(panelId: string, opts: InstallOptions = {
   }
 
   const reveal = () => document.getElementById('zen-secondary-cover')?.remove()
+  // The message names the panel id from the URL, so it is set as text, never as HTML.
   const fail = (msg: string) => {
     reveal()
-    body.innerHTML = `<div style="padding:24px;font:13px system-ui,sans-serif;color:var(--zen-muted,#9aa0aa)">${msg}</div>`
+    const note = document.createElement('div')
+    note.style.cssText =
+      'padding:24px;font:13px system-ui,sans-serif;color:var(--zen-muted,#9aa0aa)'
+    note.textContent = msg
+    body.replaceChildren(note)
   }
 
   // Mount the requested panel as soon as its consumer plugin registers it (the full

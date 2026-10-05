@@ -77,17 +77,44 @@ function themeOption(id: string, active: boolean, labelOverride?: string): HTMLL
   const a = document.createElement('a')
   a.className = 'zen-theme-opt' + (active ? ' active' : '')
   a.setAttribute('role', 'menuitemradio')
-  const label = labelOverride ?? theme.packLabel(id)
   // The swatch previews both the theme's color and its corner rounding (--radius).
-  const dot = `<span class="zen-dot" style="background:${theme.packSwatch(id)};border-radius:${theme.packRadius(id)}"></span>`
-  const check = active ? '<i class="zen-check pi pi-check"></i>' : ''
-  a.innerHTML = `${dot}<span class="zen-opt-label">${label}</span>${check}`
+  fillOption(
+    a,
+    labelOverride ?? theme.packLabel(id),
+    active,
+    theme.packSwatch(id),
+    theme.packRadius(id),
+  )
   a.addEventListener('click', (e) => {
     e.stopPropagation()
     theme.setPack(id)
   })
   li.appendChild(a)
   return li
+}
+
+// A row's swatch, label and check. Names come from theme packs and imported palettes — files
+// anyone can share — so they go in as text and the swatch values as style properties, never HTML.
+function fillOption(
+  a: HTMLElement,
+  label: string,
+  active: boolean,
+  swatch: string,
+  radius: string,
+) {
+  const dot = document.createElement('span')
+  dot.className = 'zen-dot'
+  dot.style.background = swatch
+  dot.style.borderRadius = radius
+  const text = document.createElement('span')
+  text.className = 'zen-opt-label'
+  text.textContent = label
+  a.append(dot, text)
+  if (active) {
+    const check = document.createElement('i')
+    check.className = 'zen-check pi pi-check'
+    a.append(check)
+  }
 }
 
 // A ComfyUI ("1.0") palette row. We don't have each palette's colors, so the dot is neutral.
@@ -98,10 +125,7 @@ function comfyOption(id: string, name: string, active: boolean): HTMLLIElement {
   const a = document.createElement('a')
   a.className = 'zen-theme-opt' + (active ? ' active' : '')
   a.setAttribute('role', 'menuitemradio')
-  const dot =
-    '<span class="zen-dot" style="background:var(--zen-accent,#3b82f6);border-radius:50%"></span>'
-  const check = active ? '<i class="zen-check pi pi-check"></i>' : ''
-  a.innerHTML = `${dot}<span class="zen-opt-label">${name}</span>${check}`
+  fillOption(a, name, active, 'var(--zen-accent,#6366f1)', '50%')
   a.addEventListener('click', (e) => {
     e.stopPropagation()
     applyComfyPalette(id)

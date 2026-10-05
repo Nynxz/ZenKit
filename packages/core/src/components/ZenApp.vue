@@ -67,7 +67,11 @@ function mountRoute() {
   if (!r) return // app not registered yet — show an empty surface until it arrives
   const m = match.value
   if (!m) {
-    el.innerHTML = `<div class="zen-app-msg">Route “${active.value.path}” not found in ${r.title}.</div>`
+    // The path comes from the URL, so it is text, never HTML.
+    const msg = document.createElement('div')
+    msg.className = 'zen-app-msg'
+    msg.textContent = `Route “${active.value.path}” not found in ${r.title}.`
+    el.replaceChildren(msg)
     return
   }
   const key = active.value.app as string // routing key ('<namespace>/<id>')
