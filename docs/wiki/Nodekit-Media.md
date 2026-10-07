@@ -46,15 +46,21 @@ async function onDrop(e: DragEvent) {
 </template>
 ```
 
-| Function          | Signature                                                                             | Description                                                                                                                |
-| ----------------- | ------------------------------------------------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------- |
-| `readMediaDrop`   | `(e: DragEvent, subfolder = 'zenkit', upload = uploadMediaFile) => Promise<string[]>` | Refs carried by a drop. Desktop files are uploaded into `input/<subfolder>` with `upload`.                                 |
-| `hasMediaDrop`    | `(e: DragEvent) => boolean`                                                           | Whether a drag carries something `readMediaDrop` understands. Checks only `dataTransfer.types`, so it works in `dragover`. |
-| `uploadMediaFile` | `(file: File, subfolder = 'zenkit') => Promise<string>`                               | POSTs to ComfyUI's `/upload/image`, returns `input/<subfolder>/<name>`. Throws on a non-OK response.                       |
-| `parseMediaRef`   | `(ref: string) => { type, subfolder, filename } \| null`                              | Null unless the first segment is `input`, `output` or `temp`                                                               |
-| `mediaRefUrl`     | `(ref: string) => string`                                                             | `/view` URL for a ref (via `viewUrl`); returns non-refs unchanged                                                          |
-| `mediaKind`       | `(ref: string) => 'image' \| 'video' \| 'audio'`                                      | By extension; anything unknown is `'image'`, and so is GIF. The client's `mediaKindOf`, under the name packs know it by.   |
-| `viewUrl`         | `(record: Record<string, string>) => string`                                          | ComfyUI `/view?…` from a saved-image record (`{filename, subfolder, type}`), base-path safe, cache-busted. Published.      |
+| Function          | Signature                                                                             | Description                                                                                                                  |
+| ----------------- | ------------------------------------------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------- |
+| `readMediaDrop`   | `(e: DragEvent, subfolder = 'zenkit', upload = uploadMediaFile) => Promise<string[]>` | Refs carried by a drop. Desktop files are uploaded into `input/<subfolder>` with `upload`.                                   |
+| `hasMediaDrop`    | `(e: DragEvent) => boolean`                                                           | Whether a drag carries something `readMediaDrop` understands. Checks only `dataTransfer.types`, so it works in `dragover`.   |
+| `uploadMediaFile` | `(file: File, subfolder = 'zenkit') => Promise<string>`                               | POSTs to ComfyUI's `/upload/image`, returns `input/<subfolder>/<name>`. Throws on a non-OK response.                         |
+| `parseMediaRef`   | `(ref: string) => { type, subfolder, filename } \| null`                              | Null unless the first segment is `input`, `output` or `temp` (and no segment is empty or `..`)                               |
+| `mediaRefUrl`     | `(ref: string) => string`                                                             | `/view` URL for a ref (via `viewUrl`). Anything else (a URL, `/path`, bad ref) gets a `/view` URL ComfyUI refuses, see below |
+| `mediaKind`       | `(ref: string) => 'image' \| 'video' \| 'audio'`                                      | By extension; anything unknown is `'image'`, and so is GIF. The client's `mediaKindOf`, under the name packs know it by.     |
+| `viewUrl`         | `(record: Record<string, string>) => string`                                          | ComfyUI `/view?…` from a saved-image record (`{filename, subfolder, type}`), base-path safe, cache-busted. Published.        |
+
+Only ComfyUI refs resolve. A ref a widget stored can come from a shared workflow, so `mediaRefUrl`
+never turns an `http:`, `data:` or `blob:` URL, a `/path` or a malformed ref into its own URL;
+it returns `/view?filename=` instead, which ComfyUI answers with 400. An `<img>` or `<video>`
+then shows its error state and a `HEAD` check reports the file missing, without anything being
+fetched from the address the workflow named. Use `parseMediaRef(ref)` to tell refs apart up front.
 
 ### What `readMediaDrop` accepts
 

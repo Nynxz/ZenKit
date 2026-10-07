@@ -6,7 +6,7 @@ How the repo is laid out, how packages resolve, the dev loop, and how releases g
 
 ```sh
 pnpm install
-pnpm check    # build, then lint, format check and typecheck every package
+pnpm check    # build, test, lint, format check and typecheck every package
 ```
 
 Requirements: Node 20+ (CI uses 22) and pnpm (CI uses 11). Python changes need ComfyUI with the V3
@@ -67,7 +67,8 @@ nothing prebuilt is committed.
 | `pnpm typecheck`                    | `pnpm -r typecheck` (needs a prior build, see above)                                            |
 | `pnpm lint` / `pnpm lint:fix`       | ESLint (one flat config at the root)                                                            |
 | `pnpm format` / `pnpm format:check` | Prettier                                                                                        |
-| `pnpm check`                        | `build`, then `lint`, `format:check`, `typecheck`                                               |
+| `pnpm test`                         | Node regression tests for registries, media, component lifecycles and agent cancellation        |
+| `pnpm check`                        | `build`, then `test`, `lint`, `format:check`, `typecheck`                                       |
 
 Build one plugin and what it depends on:
 
@@ -136,6 +137,16 @@ except Exception as e:
 ```
 
 Namespace routes by plugin id (`/zensuite/...`, `/zeninspector/...`).
+
+A route that changes state (POST, PUT, PATCH, DELETE, or a GET with side effects beyond a cache)
+must start with the request guard. The plugins here don't vendor nodekit's Python, so copy
+`plugins/ComfyUI-ZenExample/request_guard.py` (a copy of nodekit's `server.request_allowed`; see
+[Guarding routes that change state](Nodekit-Pack-Pattern.md#guarding-routes-that-change-state)):
+
+```python
+if (denied := request_allowed(request)) is not None:
+    return denied
+```
 
 ## Releasing
 

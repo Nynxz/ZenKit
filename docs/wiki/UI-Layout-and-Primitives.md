@@ -161,7 +161,36 @@ Slots: `pane-0`, `pane-1`, … Exposed: `el`, `reset()` (back to the configured 
 
 Gutters: double-click resets the pane; arrow keys resize (Shift = 5×); Home/End take a side to
 its `min`; Enter collapses or reopens a collapsible pane. Panes clip their content, so put a
-ZenScroll inside a pane that needs to scroll.
+ZenScroll inside a pane that needs to scroll. Escape cancels a drag and restores its starting sizes.
+
+## ZenResizeHandle
+
+The shared resize grip used by ZenSplit, workspace tiles and docks. It owns pointer capture,
+keyboard input and cleanup; the host owns sizes and layout geometry.
+
+```vue
+<ZenResizeHandle
+  orientation="vertical"
+  label="Resize inspector"
+  :value="width"
+  :min="200"
+  :max="600"
+  @nudge="(pixels) => (width = Math.min(600, Math.max(200, width + pixels)))"
+/>
+```
+
+`orientation`: `vertical` (moves along x), `horizontal` (moves along y), or `both` for
+workspace junctions. `variant`: `gap` (default, 8px with a compact grip on hover/focus/drag)
+or `line` (1px with a wider hit area). The host can position and size it with CSS.
+`label` is required; `value`, `min`, `max`, `valueText` and `controls` describe the separator
+for assistive technology. `step` defaults to 10px; Shift multiplies it by five.
+
+Events: `dragStart(PointerEvent)`, `dragMove(PointerEvent)`, `dragEnd(cancelled)`,
+`nudge(pixels, axis)`, `limit('min' | 'max')` for Home/End, `toggle()` for Enter, and
+`reset()` for double-click. A `both` handle also accepts Space for `toggle()`.
+Escape, pointer cancellation, lost capture and unmount emit `dragEnd(true)`; release emits
+`dragEnd(false)`. Hosts restore their starting sizes on cancellation and persist successful
+changes on release. The handle restores the previous document cursor and selection styles.
 
 ## ZenView
 

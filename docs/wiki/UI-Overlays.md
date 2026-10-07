@@ -12,6 +12,8 @@ Floating UI: popovers, menus, dialogs and windows. All are teleported to `<body>
 | Movable, resizable tool window                          | ZenWindow                                                                                                                                                      |
 | Dockable panel that survives clicking back on the graph | A ZenKit panel ([Panels and workspaces](Panels-and-Workspaces.md), or `openZenPanel` in [nodekit](Nodekit-Panels-and-Canvas.md#openzenpanel-and-haszenpanels)) |
 
+**One surface.** Every ZenKit pop-up — ZenPopover, ZenContextMenu, and the ZenSelect, ZenCombo, ZenMentionInput and ZenColorPicker lists — shares one look from `lib/surface.css` (`class="zen-surface"`): `--zen-chrome-bg`, `--zen-surface-border`, `--zen-radius-surface`, and the shadow `--zen-shadow-pop` (default `0 10px 30px rgb(0 0 0 / 45%)`), in ComfyUI's font. Give a custom pop-up the same class to match.
+
 ## ZenPopover
 
 An anchored floating panel that flips to stay on screen and re-places on scroll and resize. Use it
@@ -36,13 +38,14 @@ Controlled, anchored to a point:
 <ZenPopover v-model:open="menuOpen" :anchor="{ x: e.clientX, y: e.clientY }">…</ZenPopover>
 ```
 
-| Prop         | Type                                                                                          | Default          | Description                                                                |
-| ------------ | --------------------------------------------------------------------------------------------- | ---------------- | -------------------------------------------------------------------------- |
-| `open`       | `boolean \| undefined`                                                                        | `undefined`      | Bind with `v-model:open` to control it; leave unbound for trigger-slot use |
-| `anchor`     | `HTMLElement \| DOMRect \| { x: number; y: number }`                                          | the trigger      | What to position against                                                   |
-| `placement`  | `'bottom-start' \| 'bottom-end' \| 'top-start' \| 'top-end' \| 'right-start' \| 'left-start'` | `'bottom-start'` |                                                                            |
-| `offset`     | `number`                                                                                      | `6`              | px gap from the anchor                                                     |
-| `matchWidth` | `boolean`                                                                                     | `false`          | Minimum width = anchor width                                               |
+| Prop         | Type                                                                                          | Default          | Description                                                                    |
+| ------------ | --------------------------------------------------------------------------------------------- | ---------------- | ------------------------------------------------------------------------------ |
+| `open`       | `boolean \| undefined`                                                                        | `undefined`      | Bind with `v-model:open` to control it; leave unbound for trigger-slot use     |
+| `anchor`     | `HTMLElement \| DOMRect \| { x: number; y: number }`                                          | the trigger      | What to position against                                                       |
+| `placement`  | `'bottom-start' \| 'bottom-end' \| 'top-start' \| 'top-end' \| 'right-start' \| 'left-start'` | `'bottom-start'` |                                                                                |
+| `offset`     | `number`                                                                                      | `6`              | px gap from the anchor                                                         |
+| `matchWidth` | `boolean`                                                                                     | `false`          | Minimum width = anchor width                                                   |
+| `role`       | `'menu' \| 'dialog' \| 'listbox' \| 'tooltip'`                                                | `'menu'`         | Its ARIA role: `dialog` for a form or picker, `listbox` for a choice of values |
 
 | Event         | Payload   |
 | ------------- | --------- |

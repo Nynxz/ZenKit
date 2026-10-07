@@ -445,3 +445,5 @@ examples in ZenLightbox.
 | Event  | Payload  |
 | ------ | -------- |
 | `pick` | `string` |
+
+Examples show in a viewer: the chosen one large (‹ › or ←/→, Home/End; click for fullscreen), a filmstrip of them all beneath that keeps the chosen one in view (the wheel scrolls it sideways), and its generation details beside it when the panel is wider than about 560px. Example and page URLs come from the LoRA's metadata, so they pass `safeMediaUrl` / `safeLinkUrl` first; anything else shows nothing.

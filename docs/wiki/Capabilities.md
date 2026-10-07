@@ -48,7 +48,7 @@ const result = await zen.capabilities.run('stash.search', { tag: 'portrait' })
 | `id`             | `string`               | `<plugin>.<action>`. In `registerZenPlugin`, an id without a `.` gets your plugin id prepended; one with a `.` is kept. Must match `/^[a-z][\w-]*(\.[a-z][\w-]*)+$/i` or it is ignored with a warning. |
 | `description`    | `string`               | Written for the caller. An agent reads exactly this, so say what it does, what the args mean and what it returns.                                                                                      |
 | `params`         | `CapabilitySchema`     | JSON Schema for the args: `{ type: 'object', properties?, required? }`.                                                                                                                                |
-| `effect`         | `'read' \| 'write'`    | `read` (default) only looks; `write` changes something (graph, files, panels).                                                                                                                         |
+| `effect`         | `'read' \| 'write'`    | `read` only looks; `write` changes something (graph, files, panels). The agent asks the user before running a `write` or undeclared capability, so declare `read` on ones that only look.              |
 | `plugin`         | `string`               | Owning plugin id; `registerZenPlugin` fills it in.                                                                                                                                                     |
 | `run(args, ctx)` | `unknown` or a promise | Return something JSON-able. Throw to fail.                                                                                                                                                             |
 
@@ -74,16 +74,35 @@ to call.
 
 ZenKit's agent panel (in progress) sends `capabilities.list()` with every turn:
 
-| Capability        | Agent tool                                                                                                         |
-| ----------------- | ------------------------------------------------------------------------------------------------------------------ |
-| `id`              | Tool name, with characters outside `[A-Za-z0-9_-]` replaced by `_` (`stash.search` → `stash_search`), max 64 chars |
-| `description`     | Tool description                                                                                                   |
-| `params`          | Tool parameters (an empty object schema when omitted)                                                              |
-| `effect: 'write'` | Counts as "the agent changed something" for the turn                                                               |
+| Capability    | Agent tool                                                                                                         |
+| ------------- | ------------------------------------------------------------------------------------------------------------------ |
+| `id`          | Tool name, with characters outside `[A-Za-z0-9_-]` replaced by `_` (`stash.search` → `stash_search`), max 64 chars |
+| `description` | Tool description                                                                                                   |
+| `params`      | Tool parameters (an empty object schema when omitted)                                                              |
+| `effect`      | `read` runs freely; `write` or none waits for the user's approval and counts as "the agent changed something"      |
 
 A capability whose tool name collides with one of the agent's built-in tools is dropped. The
 result, or the thrown error's message, goes back to the model as `{ ok, result }` /
 `{ ok: false, error }`.
+
+### Safety
+
+The agent reads text it didn't write (workflow titles and prompts, file names, capability results),
+and any of it can try to steer the model. So the agent panel keeps the user in the loop:
+
+- Every call that changes something waits for an approval card in the chat: graph edits, runs,
+  `use_as_input`, and any capability that isn't declared `read`. The card offers Approve, Deny
+  and "Allow for this reply" (per tool). A denied call tells the model it was declined.
+- A reply may queue at most 4 runs by default (Settings, up to 20). Stop also cancels the runs
+  that reply queued.
+- Media tools take refs only, never URLs or paths, and the agent's Markdown renders no images,
+  styles or forms; links open in a new tab.
+- Workflow text and tool results reach the model wrapped as data, not instructions.
+- Its server routes only accept same-origin JSON requests to a loopback `Host` (unless ComfyUI
+  listens on other addresses), and the API key is only ever sent to the endpoint it was saved
+  for.
+
+"Ask before actions" in the agent's settings turns the cards off.
 
 ## Built-in capabilities
 

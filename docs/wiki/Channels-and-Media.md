@@ -57,8 +57,9 @@ ComfyUI's API base, like `media` URLs). Optional `ref` (its media ref, when you 
 `kind` (`'image' | 'video' | 'audio'`, absent means image), `width`, `height`.
 
 `ChannelImage` (what subscribers get) adds `channel` and `ts`, and always has `url`. Its `ref` is
-the one you gave, else derived: `output/sub/name.png` for a ComfyUI file, else the `url` itself
-(a URL is a valid ref). So a subscriber can hand it straight to a capability.
+the one you gave, else derived: `output/sub/name.png` for a ComfyUI file. An image published with
+only a `url` is shown from that URL but has no `ref`, since URLs are not media refs. When there is
+a `ref`, a subscriber can hand it straight to a capability.
 
 Bus mirror: `channel` and `channel:<name>` with the `ChannelImage`; `channels:change` with the name
 when a new channel appears.
@@ -90,11 +91,15 @@ consumer (`plugins/ComfyUI-ZenSuite/channel_node.py`).
 A `MediaRef` is a short string that names one file, so capabilities and agents can pass media
 along without URLs.
 
-| Ref                                      | Means                                                    |
-| ---------------------------------------- | -------------------------------------------------------- |
-| `output/sub/name.png`                    | ComfyUI's output folder (also `input/…`, `temp/…`)       |
-| `https://…`, `data:…`, `blob:…`, `/path` | Used as-is                                               |
-| `<prefix>:…` or `<prefix>/…`             | Resolved by a source a plugin registered for that prefix |
+| Ref                          | Means                                                    |
+| ---------------------------- | -------------------------------------------------------- |
+| `output/sub/name.png`        | ComfyUI's output folder (also `input/…`, `temp/…`)       |
+| `<prefix>:…` or `<prefix>/…` | Resolved by a source a plugin registered for that prefix |
+
+Nothing else is a ref. `https://…`, `data:…`, `blob:…` and `/path` are rejected, as are `..` or
+empty segments in a ComfyUI ref: refs arrive from workflows, agents and capabilities, so a ref must
+never make ZenKit fetch an arbitrary address or copy it into `input/`. Code that really holds a URL
+(a channel image, say) shows it directly rather than passing it through `zen.media`.
 
 ```ts
 const zen = await whenZen()
@@ -108,12 +113,12 @@ const ref = zen!.media.fromComfyFile({ filename: 'a.png', subfolder: 'x', type: 
 // 'output/x/a.png'
 ```
 
-| `window.ZenKit.media`                            | Meaning                                                                                                                                                                                                                      |
-| ------------------------------------------------ | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `resolve(ref)`                                   | `Promise<MediaInfo>` (`{ ref, url, kind, label? }`). Rejects for an unknown prefix.                                                                                                                                          |
-| `toInput(ref)`                                   | Value for a ComfyUI loader widget. `input/` refs give the path, `output/` and `temp/` give `path [output]` / `path [temp]`, other refs use the source's `toInput`, else the file is fetched and uploaded to `input/zenkit/`. |
-| `fromComfyFile({ filename, subfolder?, type? })` | The ref for a file as `executed` / history outputs describe it.                                                                                                                                                              |
-| `registerSource(source)`                         | Handle a prefix. Returns unregister.                                                                                                                                                                                         |
+| `window.ZenKit.media`                            | Meaning                                                                                                                                                                                                                                                                        |
+| ------------------------------------------------ | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| `resolve(ref)`                                   | `Promise<MediaInfo>` (`{ ref, url, kind, label? }`). Rejects for a URL or an unknown prefix.                                                                                                                                                                                   |
+| `toInput(ref)`                                   | Value for a ComfyUI loader widget. `input/` refs give the path, `output/` and `temp/` give `path [output]` / `path [temp]`, other refs use the source's `toInput`, else the file is fetched and uploaded to `input/zenkit/` (only from a same-origin, `blob:` or `data:` URL). |
+| `fromComfyFile({ filename, subfolder?, type? })` | The ref for a file as `executed` / history outputs describe it.                                                                                                                                                                                                                |
+| `registerSource(source)`                         | Handle a prefix (a plain word; URL schemes such as `http` or `data` are refused). Returns unregister.                                                                                                                                                                          |
 
 ### Adding a source
 
@@ -124,7 +129,7 @@ const off = zen.media.registerSource({
     const id = ref.slice('stash:'.length)
     return { ref, url: `/stash/file/${id}`, kind: 'image', label: `Stash ${id}` }
   },
-  // toInput omitted: ZenKit downloads the url and uploads it to input/
+  // toInput omitted: ZenKit downloads the url (it must be same-origin) and uploads it to input/
 })
 ```
 
@@ -162,6 +167,7 @@ async function onDrop(e: DragEvent) {
 | `setMediaListDragData(e, { url, title?, count? })`          | Drag a whole collection. `url` must return a `MediaList` (`{ title?, items: [{ url, filename?, kind?, label? }] }`) as JSON. Set a single image too, for targets that take one.                                                            |
 | `hasImageDragData(e)`                                       | For `dragover`, where data can't be read yet. Checks the types only.                                                                                                                                                                       |
 | `mediaKindOf(nameOrUrl)`                                    | `'image' \| 'video' \| 'audio'` from extension or `data:` type. GIF is an image.                                                                                                                                                           |
+| `parseMediaRef(ref)`                                        | Parses `input/`, `output/` or `temp/` refs into `{ type, subfolder, filename }`. Returns `null` for URLs, absolute paths and empty/dot path segments. Shared with nodekit.                                                                 |
 | `thumbUrl({ filename, subfolder?, type? }, size = 256)`     | ComfyUI-ZenKit's cached thumbnail (`/zenkit/thumb`, JPEG, video first frame).                                                                                                                                                              |
 | `ZEN_IMAGE_MIME`, `COMFY_ASSET_MIME`, `ZEN_MEDIA_LIST_MIME` | The MIME types.                                                                                                                                                                                                                            |
 

@@ -156,6 +156,11 @@ html[data-zen-theme-pack='harbor'] .zenkit-panel-header {
 
 CSS is trusted local content: it can't run script, but `url()` can fetch.
 
+**Theme packs are trusted, code-like content.** A pack's CSS restyles all of ComfyUI (it can hide
+or disguise any button, and `url()` can send requests anywhere), so install packs only from people
+you trust, as you would a custom node. ZenKit validates the JSON and sanitises the startup splash
+(below), but it does not sandbox pack CSS.
+
 ### Startup splash
 
 `splash` sets what ComfyUI shows while loading, from the **next** load (ComfyUI draws it before any
@@ -168,6 +173,21 @@ extension runs, so ZenKit stores it in `localStorage` for the next boot).
 
 Without `splash`, the pack still gets ComfyUI's logo drawn in its colours. Users can turn themed
 startup off in Zen Settings.
+
+ComfyUI's boot script writes the stored splash with `innerHTML` before any extension runs, so a
+pack's own `html` and `css` are sanitised before they are stored (the built-in presets are stored
+as written):
+
+- `html` keeps basic markup (`div`, `span`, `p`, headings, lists, `b`/`i`/`em`/`strong`, …) and SVG
+  shapes (`svg`, `g`, `path`, `circle`, `ellipse`, `rect`, `line`, `polygon`, `text`, gradients,
+  `use`, `clipPath`, `mask`, `pattern`) with presentation attributes, `class`, `id` and `style`.
+  Script, `on*` attributes, `iframe`/`object`/`embed`/`form`, `img`, SMIL animation and every URL
+  except a `#fragment` are removed. Animate with CSS.
+- `css` goes through the browser's CSS parser: `@import` is dropped, and so is any declaration
+  whose `url()` is not same-origin (or a `#fragment`), or that uses `image-set()` or escapes.
+- The pack's background, foreground and accent colours are dropped if they hold a remote `url()`.
+
+If nothing of the `html` survives, the pack's `preset` (if any) is used instead.
 
 ## Registering a pack from a plugin
 
@@ -191,3 +211,17 @@ only resolved for packs on disk.
 
 A registered pack joins the theme pickers (the Start menu's, Zen Settings' and the ComfyUI logo
 menu's) at once, even if they are already open.
+
+## Motion, pop-ups and media tokens
+
+| Token              | Default                        | What it sets                                                             |
+| ------------------ | ------------------------------ | ------------------------------------------------------------------------ |
+| `--zen-dur-fast`   | `0.12s`                        | Hover and colour changes in every component                              |
+| `--zen-dur`        | `0.2s`                         | Things that move or open (sections folding, switches)                    |
+| `--zen-shadow-pop` | `0 10px 30px rgb(0 0 0 / 45%)` | The shadow under every pop-up (menus, popovers, dropdowns, pickers)      |
+| `--zen-media-bg`   | `#0b0b0e`                      | Behind images and video (media picker, LoRA browser, mention thumbnails) |
+| `--zen-star`       | `#f5b301`                      | Favourite stars                                                          |
+| `--zen-playhead`   | `#ff5a4f`                      | ZenTimeline's playhead and progress fills                                |
+| `--zen-marker`     | `#f5c542`                      | ZenTimeline markers without a colour of their own                        |
+
+With the system's reduced-motion setting on, both durations are 0, so nothing in the kit animates.

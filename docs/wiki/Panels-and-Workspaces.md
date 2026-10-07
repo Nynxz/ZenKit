@@ -232,18 +232,21 @@ notes?.focus() // its tab shows, the dock expands
 A workspace is a named surface that covers the graph and tiles panels side by side. At most one is
 on screen; none means the graph itself.
 
-| Action                | How                                                                                                                                                                                     |
-| --------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| Switch                | Taskbar switcher (graph, then one pill per workspace), <kbd>Alt</kbd>+<kbd>`</kbd> toggles graph ↔ last workspace, <kbd>Alt</kbd>+<kbd>1</kbd>–<kbd>9</kbd>                             |
-| Tile a panel          | Its header's tile button (while a workspace is on screen), the panel menu's "Tile in …", or drag it onto an open workspace (edges tile; hold Shift to split the tile under the pointer) |
-| Resize tiles          | Drag a gutter; double-click to even out; drag a junction to move both splits                                                                                                            |
-| Untile                | Panel menu → Float, or drag it out                                                                                                                                                      |
-| New / rename / remove | `+` on the switcher; double-click a pill to rename; right-click it for more                                                                                                             |
+| Action                | How                                                                                                                                                                                                                                            |
+| --------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Switch                | Taskbar switcher (the graph, then a tab per workspace with its name and panel count; more than 4 collapse to the active tab plus a list), <kbd>Alt</kbd>+<kbd>`</kbd> toggles graph ↔ last workspace, <kbd>Alt</kbd>+<kbd>1</kbd>–<kbd>9</kbd> |
+| Tile a panel          | Its header's tile button (while a workspace is on screen), the panel menu's "Tile in …", or drag it onto an open workspace (edges tile; hold Shift to split the tile under the pointer)                                                        |
+| Resize tiles          | Drag a gap grip; double-click or Enter to even out; drag a junction to move both splits. Focus a grip and use arrows (Shift = 5×), or Home/End. Escape cancels a drag.                                                                         |
+| Untile                | Panel menu → Float, or drag it out                                                                                                                                                                                                             |
+| New / rename / remove | `+` on the switcher; double-click a pill to rename; right-click it for more                                                                                                                                                                    |
 
 Behaviour worth knowing as a plugin author:
 
 - A tiled panel is still an ordinary panel; your `render` doesn't know it is tiled.
 - Revealing a panel (opening an already-open id) switches to the workspace that holds it.
+- The taskbar lists the panels that belong on screen: floating ones (they show over the graph and
+  every workspace) and those tiled in the workspace on screen. Another workspace's panels sit behind
+  its tab: hover it for their names, right-click it to jump straight to one.
 - Opening an app leaves the active workspace, and "Hide panels" steps out of it until panels show
   again.
 - Removing a workspace floats its panels rather than closing them.

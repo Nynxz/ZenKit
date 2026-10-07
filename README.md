@@ -85,7 +85,7 @@ The wiki is generated from [`docs/wiki`](docs/wiki), so fixes go through pull re
 
 ```sh
 pnpm install
-pnpm check    # build, then lint, format and typecheck everything
+pnpm check    # build, test, lint, format and typecheck everything
 ```
 
 See [Contributing](https://github.com/Nynxz/ZenKit/wiki/Contributing) for the repo layout and the release flow.

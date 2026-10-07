@@ -415,7 +415,7 @@ halves move together.
 | `autodiscover` | `load_nodes(package, paths)`                                                                                                                   |
 | `media_api`    | `register(routes)`, `path_of(ref)`, `resolve(ref)`, `media_info(path)`, `list_media()`, `find_input()`, `kind_of()`                            |
 | `jobs`         | `Job(name, total=0, …)` with `update()` / `done()` / `fail()` (a context manager), `emit()`                                                    |
-| `server`       | `routes` (ComfyUI's route table, `None` outside ComfyUI), `route()`, `send(event, payload, client_id=None)`                                    |
+| `server`       | `routes` (ComfyUI's route table, `None` outside ComfyUI), `route()`, `send(event, payload, client_id=None)`, `request_allowed(request)`        |
 
 Importing a module never registers anything; `setup()` does, once.
 
@@ -465,6 +465,34 @@ if routes is not None:  # None outside ComfyUI
 
 An underscore name keeps autodiscovery from also importing it as a node module. Modules that
 autodiscovery imports anyway (NynxzNodes' `*/api.py`) keep working as they are.
+
+### Guarding routes that change state
+
+ComfyUI's origin middleware blocks cross-site pages, but not DNS rebinding, and it never checks
+the content type. Every route that changes state (POST, PUT, PATCH, DELETE, or a GET with side
+effects beyond a cache) starts with `request_allowed`, which returns `None` or the 403 to send:
+
+```python
+from ._zenkit.server import request_allowed, route, routes
+
+if routes is not None:
+
+    @routes.post(route("studio/state"))
+    async def studio_save(request):
+        if (denied := request_allowed(request)) is not None:
+            return denied
+        body = await request.json()
+        ...
+```
+
+| Check        | Rule                                                                                                                                                                                                        |
+| ------------ | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Host         | While ComfyUI listens only on loopback (the default), the `Host` must be `localhost`, `127.0.0.1` or `[::1]`. `--listen <addr>` also allows that address; a wildcard `--listen` (`0.0.0.0`, `::`) skips it. |
+| Origin       | When present, its host and port must equal the `Host` header's.                                                                                                                                             |
+| Content type | A non-GET request with a body must send `application/json` (a cross-site form can't without a CORS preflight). Send `headers: { 'Content-Type': 'application/json' }` from the frontend.                    |
+
+A refused request gets `403 {"error": "forbidden: …"}` and one warning in the log per path. The
+media routes run the same check, so a rebound page can't list or probe ComfyUI's folders either.
 
 ### Media refs in Python
 

@@ -43,12 +43,13 @@ preview.
 />
 ```
 
-| Prop          | Type            | Default  | Description                                       |
-| ------------- | --------------- | -------- | ------------------------------------------------- |
-| `modelValue`  | `string`        | required |                                                   |
-| `items`       | `MentionItem[]` | required | The mentionable names                             |
-| `placeholder` | `string`        | `''`     |                                                   |
-| `resizable`   | `boolean`       | `false`  | Corner grip drags the height; double-click resets |
+| Prop          | Type            | Default  | Description                                           |
+| ------------- | --------------- | -------- | ----------------------------------------------------- |
+| `modelValue`  | `string`        | required |                                                       |
+| `items`       | `MentionItem[]` | required | The mentionable names                                 |
+| `placeholder` | `string`        | `''`     |                                                       |
+| `resizable`   | `boolean`       | `false`  | Corner grip drags the height; double-click resets     |
+| `disabled`    | `boolean`       | `false`  | Dims it; nothing inside takes clicks, typing or focus |
 
 `MentionItem`: `{ key: string; detail?: string; thumb?: string; icon?: string }` (`icon` is a glyph,
 `'mdi-x'`).
@@ -99,16 +100,17 @@ wide.
 <ZenResolution v-model:width="w" v-model:height="h" :snap="64" />
 ```
 
-| Prop      | Type                                                   | Default                   | Description                                              |
-| --------- | ------------------------------------------------------ | ------------------------- | -------------------------------------------------------- |
-| `width`   | `number`                                               | required                  | Use `v-model:width`                                      |
-| `height`  | `number`                                               | required                  | Use `v-model:height`                                     |
-| `snap`    | `number`                                               | `32`                      | Every value snaps to this                                |
-| `presets` | `number[]`                                             | `[0.5, 1, 1.5, 2]`        | Megapixel presets                                        |
-| `ratios`  | `ResolutionRatio[]`                                    | 1:1, 4:3, 3:2, 16:9, 21:9 | `{ label, w, h }`                                        |
-| `native`  | `(ratio: number) => { width: number; height: number }` | —                         | Adds a "Native" preset: the model's own size for a ratio |
-| `maxSide` | `number`                                               | `4096`                    |                                                          |
-| `maxMp`   | `number`                                               | `16`                      |                                                          |
+| Prop       | Type                                                   | Default                   | Description                                              |
+| ---------- | ------------------------------------------------------ | ------------------------- | -------------------------------------------------------- |
+| `width`    | `number`                                               | required                  | Use `v-model:width`                                      |
+| `height`   | `number`                                               | required                  | Use `v-model:height`                                     |
+| `snap`     | `number`                                               | `32`                      | Every value snaps to this                                |
+| `presets`  | `number[]`                                             | `[0.5, 1, 1.5, 2]`        | Megapixel presets                                        |
+| `ratios`   | `ResolutionRatio[]`                                    | 1:1, 4:3, 3:2, 16:9, 21:9 | `{ label, w, h }`                                        |
+| `native`   | `(ratio: number) => { width: number; height: number }` | —                         | Adds a "Native" preset: the model's own size for a ratio |
+| `maxSide`  | `number`                                               | `4096`                    |                                                          |
+| `maxMp`    | `number`                                               | `16`                      |                                                          |
+| `disabled` | `boolean`                                              | `false`                   | Dims it; nothing inside takes clicks, typing or focus    |
 
 | Event           | Payload  |
 | --------------- | -------- |
@@ -126,17 +128,18 @@ megapixel and aspect readouts.
 <ZenDimensions v-model="size" v-model:lock-aspect="lock" show-swap show-mp />
 ```
 
-| Prop         | Type              | Default  | Description                         |
-| ------------ | ----------------- | -------- | ----------------------------------- |
-| `modelValue` | `DimensionsValue` | required | `{ width: number; height: number }` |
-| `min`        | `number`          | `64`     |                                     |
-| `max`        | `number`          | `8192`   |                                     |
-| `step`       | `number`          | `8`      | Snap step                           |
-| `lockAspect` | `boolean`         | `false`  | Use `v-model:lock-aspect`           |
-| `showLock`   | `boolean`         | `true`   |                                     |
-| `showSwap`   | `boolean`         | `false`  |                                     |
-| `showMp`     | `boolean`         | `false`  |                                     |
-| `showAspect` | `boolean`         | `false`  |                                     |
+| Prop         | Type              | Default  | Description                                           |
+| ------------ | ----------------- | -------- | ----------------------------------------------------- |
+| `modelValue` | `DimensionsValue` | required | `{ width: number; height: number }`                   |
+| `min`        | `number`          | `64`     |                                                       |
+| `max`        | `number`          | `8192`   |                                                       |
+| `step`       | `number`          | `8`      | Snap step                                             |
+| `lockAspect` | `boolean`         | `false`  | Use `v-model:lock-aspect`                             |
+| `showLock`   | `boolean`         | `true`   |                                                       |
+| `showSwap`   | `boolean`         | `false`  |                                                       |
+| `showMp`     | `boolean`         | `false`  |                                                       |
+| `showAspect` | `boolean`         | `false`  |                                                       |
+| `disabled`   | `boolean`         | `false`  | Dims it; nothing inside takes clicks, typing or focus |
 
 | Event               | Payload           |
 | ------------------- | ----------------- |
@@ -183,6 +186,8 @@ A themed dropdown with a teleported menu that flips above when there's no room b
 | `update:modelValue` | `string` |
 
 Values are strings only. For search, many items, or custom rows use ZenCombo.
+
+Keyboard: arrows, Enter or Space on the trigger open it; then arrows, Home/End and a typed letter move, Enter or Space pick, Escape or Tab close.
 
 ## ZenCombo
 
@@ -306,6 +311,8 @@ A segmented single-select.
 
 Event: `update:modelValue` (`string`).
 
+A radio group to assistive tech: Tab lands on the chosen option, the arrow keys (and Home/End) choose another.
+
 ## ZenSlider
 
 A themed native range input.
@@ -369,15 +376,16 @@ between points, held flat past the ends.
 />
 ```
 
-| Prop         | Type               | Default            | Description                                 |
-| ------------ | ------------------ | ------------------ | ------------------------------------------- |
-| `modelValue` | `CurvePoint[]`     | `[]`               | `{ x: number; y: number }`                  |
-| `min`        | `number`           | `0`                | y range                                     |
-| `max`        | `number`           | `1`                |                                             |
-| `unit`       | `number \| null`   | `null`             | Faint guide line (e.g. `1` for "unchanged") |
-| `flat`       | `number`           | `1`                | Value drawn when there are no points        |
-| `xLabels`    | `[string, string]` | `['start', 'end']` |                                             |
-| `presets`    | `CurvePreset[]`    | `[]`               | `{ label, icon?, title?, points }`          |
+| Prop         | Type               | Default            | Description                                           |
+| ------------ | ------------------ | ------------------ | ----------------------------------------------------- |
+| `modelValue` | `CurvePoint[]`     | `[]`               | `{ x: number; y: number }`                            |
+| `min`        | `number`           | `0`                | y range                                               |
+| `max`        | `number`           | `1`                |                                                       |
+| `unit`       | `number \| null`   | `null`             | Faint guide line (e.g. `1` for "unchanged")           |
+| `flat`       | `number`           | `1`                | Value drawn when there are no points                  |
+| `xLabels`    | `[string, string]` | `['start', 'end']` |                                                       |
+| `presets`    | `CurvePreset[]`    | `[]`               | `{ label, icon?, title?, points }`                    |
+| `disabled`   | `boolean`          | `false`            | Dims it; nothing inside takes clicks, typing or focus |
 
 Event: `update:modelValue` (`CurvePoint[]`).
 
@@ -389,10 +397,11 @@ A swatch that opens a popover with a saturation/value box, hue bar, hex field an
 <ZenColorPicker v-model="tint" compact />
 ```
 
-| Prop         | Type       | Default                                           | Description         |
-| ------------ | ---------- | ------------------------------------------------- | ------------------- |
-| `modelValue` | `string`   | required                                          | `#rrggbb`           |
-| `presets`    | `string[]` | `#ff3b30 #ffcc00 #34c759 #0a84ff #ffffff #000000` |                     |
-| `compact`    | `boolean`  | —                                                 | Swatch-only trigger |
+| Prop         | Type       | Default                                           | Description                                           |
+| ------------ | ---------- | ------------------------------------------------- | ----------------------------------------------------- |
+| `modelValue` | `string`   | required                                          | `#rrggbb`                                             |
+| `presets`    | `string[]` | `#ff3b30 #ffcc00 #34c759 #0a84ff #ffffff #000000` |                                                       |
+| `compact`    | `boolean`  | —                                                 | Swatch-only trigger                                   |
+| `disabled`   | `boolean`  | `false`                                           | Dims it; nothing inside takes clicks, typing or focus |
 
 Event: `update:modelValue` (`string`), emitted continuously while dragging.
