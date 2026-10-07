@@ -89,16 +89,18 @@ function onBlur() {
   update()
 }
 
+// Capture phase: hosts that stop pointer events from bubbling (ComfyUI's Vue nodes do) would
+// otherwise hide every hover inside them.
 onMounted(() => {
-  window.addEventListener('pointermove', onMove, { passive: true })
-  window.addEventListener('keydown', onKey)
-  window.addEventListener('keyup', onKey)
+  window.addEventListener('pointermove', onMove, { passive: true, capture: true })
+  window.addEventListener('keydown', onKey, { capture: true })
+  window.addEventListener('keyup', onKey, { capture: true })
   window.addEventListener('blur', onBlur)
 })
 onBeforeUnmount(() => {
-  window.removeEventListener('pointermove', onMove)
-  window.removeEventListener('keydown', onKey)
-  window.removeEventListener('keyup', onKey)
+  window.removeEventListener('pointermove', onMove, { capture: true })
+  window.removeEventListener('keydown', onKey, { capture: true })
+  window.removeEventListener('keyup', onKey, { capture: true })
   window.removeEventListener('blur', onBlur)
 })
 
