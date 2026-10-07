@@ -1,15 +1,29 @@
 <script setup lang="ts">
 // Mounts one taskbar widget: hands it a host element on mount, runs its cleanup on unmount.
-import { ref, onMounted, onBeforeUnmount } from 'vue'
+import { ref, onMounted, onBeforeUnmount, watch } from 'vue'
 import type { TaskbarWidget } from '../types'
 
 const props = defineProps<{ widget: TaskbarWidget }>()
 const el = ref<HTMLElement | null>(null)
 let cleanup: (() => void) | void
-onMounted(() => {
+function clear() {
+  cleanup?.()
+  cleanup = undefined
+  el.value?.replaceChildren()
+}
+function mount() {
   if (el.value) cleanup = props.widget.render(el.value)
-})
-onBeforeUnmount(() => cleanup?.())
+}
+onMounted(mount)
+watch(
+  () => props.widget,
+  () => {
+    clear()
+    mount()
+  },
+  { flush: 'post' },
+)
+onBeforeUnmount(clear)
 </script>
 
 <template>

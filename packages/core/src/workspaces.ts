@@ -115,7 +115,6 @@ export function activate(id: string | null) {
   if (!ws.list.some((w) => w.id === id)) return
   if (apps?.state.active.app) apps.close()
   if (panels?.state.panelsHidden) panels.state.panelsHidden = false
-  slideFrom(ws.active, id)
   ws.active = id
   ws.last = id
   coverGraph(true)
@@ -123,19 +122,6 @@ export function activate(id: string | null) {
 export function leave() {
   ws.active = null
   coverGraph(false)
-}
-
-/** Moving between workspaces slides the new one in from the side its chip is on — further right
- *  in the list comes in from the right. The animation itself is CSS (ZenWorkspace.vue), so
- *  ComfyUI's "Disable animations" setting and the OS's reduced-motion preference both stop it.
- *  Coming from or going to the graph doesn't slide: that flick has to be instant. */
-let slideTimer = 0
-function slideFrom(from: string | null, to: string) {
-  if (!from || from === to) return
-  const order = (id: string) => ws.list.findIndex((w) => w.id === id)
-  document.documentElement.dataset.zenWsEnter = order(to) > order(from) ? 'right' : 'left'
-  clearTimeout(slideTimer)
-  slideTimer = window.setTimeout(() => delete document.documentElement.dataset.zenWsEnter, 320)
 }
 
 /** While a workspace covers it, the graph (and an animated background) stop drawing: nothing of
@@ -199,8 +185,8 @@ export function tilePanel(panelId: string, target?: TileTarget, workspaceId?: st
 export function untile(panelId: string) {
   for (const w of ws.list) if (hasTile(w.tree, panelId)) w.tree = removeTile(w.tree, panelId)
 }
-export function setRatio(path: TilePath, ratio: number) {
-  const w = ws.list.find((x) => x.id === ws.active)
+export function setRatio(path: TilePath, ratio: number, workspaceId = ws.active) {
+  const w = ws.list.find((x) => x.id === workspaceId)
   if (w) w.tree = setTileRatio(w.tree, path, ratio)
 }
 

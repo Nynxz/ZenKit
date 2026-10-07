@@ -36,6 +36,7 @@ export function registerCoreCapabilities(zen: ZenKitApi): void {
 
   register({
     id: 'panels.list',
+    effect: 'read',
     description:
       "List the panel types that can be opened and the panels open right now: each open panel's panel_id, " +
       'title, position/size, its own summary of what it shows (`state`) and the `commands` it accepts.',
@@ -145,6 +146,7 @@ export function registerCoreCapabilities(zen: ZenKitApi): void {
 
   register({
     id: 'media.list',
+    effect: 'read',
     description:
       'List ComfyUI\'s output (or input) files, newest first, as media refs — e.g. to find "the last 3 outputs". ' +
       'Pass the refs on to viewer.show, media.view or use_as_input.',
@@ -176,6 +178,7 @@ export function registerCoreCapabilities(zen: ZenKitApi): void {
 
   register({
     id: 'media.view',
+    effect: 'write',
     description: 'Show media full screen to the user (a lightbox over everything).',
     params: {
       type: 'object',

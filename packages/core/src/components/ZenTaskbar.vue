@@ -80,12 +80,38 @@ function finishRename(id: string, name: string) {
 const wsMenu = ref<InstanceType<typeof ZenContextMenu> | null>(null)
 const wsMenuFor = ref<string | null>(null)
 function openWsMenu(e: MouseEvent, id: string) {
+  wsListOpen.value = false
   wsMenuFor.value = id
   wsMenu.value?.show(e)
 }
+/** Go to a panel's workspace and bring the panel up. */
+function jumpTo(w: Workspace, id: string) {
+  activate(w.id)
+  const p = ops.get(id)
+  if (p?.status === 'minimized') ops.restore(id)
+  else ops.front(id)
+}
 const wsMenuItems = computed<ContextMenuItem[]>(() => {
+  if (wsListOpen.value && !wsMenuFor.value)
+    return [
+      { heading: 'Workspaces' },
+      {
+        label: 'The graph',
+        icon: `mdi ${ws.active ? 'mdi-graph-outline' : 'mdi-check'}`,
+        run: () => activate(null),
+      },
+      ...ws.list.map((x, i) => ({
+        label: `${x.name}${tileCount(x) ? ` (${tileCount(x)})` : ''}`,
+        icon: `mdi ${ws.active === x.id ? 'mdi-check' : 'mdi-view-dashboard-outline'}`,
+        hint: i < 9 ? `Alt+${i + 1}` : undefined,
+        run: () => activate(x.id),
+      })),
+      '-',
+      { label: 'New workspace', icon: 'mdi mdi-plus', run: () => activate(createWorkspace().id) },
+    ]
   const w = ws.list.find((x) => x.id === wsMenuFor.value)
   if (!w) return []
+  const own = panelsOf(w)
   return [
     { heading: w.name },
     {
@@ -93,6 +119,14 @@ const wsMenuItems = computed<ContextMenuItem[]>(() => {
       icon: 'mdi mdi-arrow-right',
       run: () => activate(ws.active === w.id ? null : w.id),
     },
+    ...(own.length
+      ? ([
+          '-',
+          { heading: 'Panels here' },
+          ...own.map((p) => ({ label: p.title, icon: p.icon, run: () => jumpTo(w, p.id) })),
+          '-',
+        ] as ContextMenuItem[])
+      : []),
     { label: 'Rename…', icon: 'mdi mdi-pencil-outline', run: () => startRename(w.id) },
     '-',
     {
@@ -108,15 +142,41 @@ const wsMenuItems = computed<ContextMenuItem[]>(() => {
 // enabled taskbar widgets, in user order (reactive — registry/prefs are reactive)
 const widgets = computed(() => activeWidgets())
 
-// All windowed consumer panels (floating + minimized; docked/sidebar live elsewhere).
-// ambient (frame:'none') panels like the mascot aren't "windows" — keep them out of the bar.
-const tasks = computed(() =>
-  ops.sortByTaskOrder(
-    store.state.list.filter(
-      (p) => !p.id.startsWith('zenkit:') && !p.dockSide && !p.inSidebar && p.frame !== 'none',
-    ),
+// Windowed consumer panels (floating + minimized; docked/sidebar live elsewhere) that belong
+// HERE: free-floating ones, which show over the graph and every workspace, plus the ones tiled in
+// the workspace on screen. Another workspace's panels sit behind its tab (its menu lists them).
+// Ambient (frame:'none') panels like the mascot aren't "windows" — keep them out of the bar.
+const windowed = computed(() =>
+  store.state.list.filter(
+    (p) => !p.id.startsWith('zenkit:') && !p.dockSide && !p.inSidebar && p.frame !== 'none',
   ),
 )
+const tasks = computed(() =>
+  ops.sortByTaskOrder(
+    windowed.value.filter((p) => {
+      const home = workspaceOf(p.id)
+      return !home || home.id === ws.active
+    }),
+  ),
+)
+/** A workspace's own panels, for its tab's tooltip and menu. */
+const panelsOf = (w: Workspace) => windowed.value.filter((p) => workspaceOf(p.id)?.id === w.id)
+/** Many workspaces: the tabs collapse to the active one plus a list. */
+const WS_TABS = 4
+const wsCompact = computed(() => ws.list.length > WS_TABS)
+const wsShown = computed(() =>
+  wsCompact.value ? ws.list.filter((w) => w.id === ws.active) : ws.list,
+)
+const wsTitle = (w: Workspace) => {
+  const names = panelsOf(w).map((p) => p.title)
+  return `${w.name}${names.length ? ' — ' + names.join(', ') : ' — empty'} · double-click to rename · right-click for more`
+}
+function openWsList(e: MouseEvent) {
+  wsMenuFor.value = null
+  wsListOpen.value = true
+  wsMenu.value?.show(e)
+}
+const wsListOpen = ref(false)
 // Bottom-docked panels: the taskbar is their tab strip. The shown one is the zone's active tab
 // (or its first, as the dock layout falls back to) unless the zone is tucked away.
 const bottomDocked = computed(() => ops.dockMembers('bottom'))
@@ -517,17 +577,19 @@ function openTaskFromOverflow(p: Parameters<typeof taskClick>[0]) {
       />
     </button>
 
-    <!-- workspaces: the graph, then each tiled workspace; Alt+` flips between them -->
+    <!-- workspaces: the graph, then a tab per workspace (named, with its panel count); Alt+`
+         flips between them. Many workspaces collapse to the active tab plus a list. -->
     <div class="tb-ws" @contextmenu.prevent>
       <button
-        class="tb-ws-b"
+        class="tb-ws-b graph"
         :class="{ active: !ws.active }"
         title="The graph (Alt+`)"
         @click="activate(null)"
       >
         <i class="mdi mdi-graph-outline" />
+        <span class="tb-ws-name">Graph</span>
       </button>
-      <template v-for="(w, i) in ws.list" :key="w.id">
+      <template v-for="w in wsShown" :key="w.id">
         <input
           v-if="renaming === w.id"
           ref="renameEl"
@@ -541,17 +603,30 @@ function openTaskFromOverflow(p: Parameters<typeof taskClick>[0]) {
           v-else
           class="tb-ws-b"
           :class="{ active: ws.active === w.id }"
-          :title="`${w.name} — ${tileCount(w)} panel${tileCount(w) === 1 ? '' : 's'} (Alt+${i + 1}) · double-click to rename · right-click for more`"
+          :title="wsTitle(w)"
           @click="activate(ws.active === w.id ? null : w.id)"
           @dblclick="startRename(w.id)"
           @contextmenu.prevent.stop="openWsMenu($event, w.id)"
         >
-          <span class="tb-ws-n">{{ i + 1 }}</span>
-          <span v-if="ws.active === w.id" class="tb-ws-name">{{ w.name }}</span>
-          <span v-else-if="tileCount(w)" class="tb-ws-dot" />
+          <i class="mdi mdi-view-dashboard-outline" />
+          <span class="tb-ws-name">{{ w.name }}</span>
+          <span v-if="tileCount(w)" class="tb-ws-count">{{ tileCount(w) }}</span>
         </button>
       </template>
-      <button class="tb-ws-b add" title="New workspace" @click="activate(createWorkspace().id)">
+      <button
+        v-if="wsCompact"
+        class="tb-ws-b more"
+        :title="`All ${ws.list.length} workspaces`"
+        @click="openWsList"
+      >
+        <i class="mdi mdi-chevron-up" />
+      </button>
+      <button
+        v-else
+        class="tb-ws-b add"
+        title="New workspace"
+        @click="activate(createWorkspace().id)"
+      >
         <i class="mdi mdi-plus" />
       </button>
     </div>
@@ -967,22 +1042,28 @@ img.tb-logo {
 .tb-ovf.on .mdi {
   color: var(--zen-accent, #3b82f6);
 }
+/* Tasks read as a strip, not a row of boxes: no outline at rest, a soft fill on hover, and the
+   focused one raised (the same mark as the active workspace tab). */
 .tb-task {
+  position: relative;
   display: inline-flex;
   align-items: center;
   gap: 6px;
   max-width: 180px;
   padding: 0 10px;
   cursor: pointer;
-  background: var(--zen-bg, #15151a);
-  border: 1px solid var(--zen-border, #3a3a44);
+  background: transparent;
+  border: 1px solid transparent;
   border-radius: var(--zen-radius, 6px);
   color: var(--zen-text, #e5e5ea);
   font-size: 11px;
   font-family: inherit;
+  transition:
+    background 0.12s ease,
+    color 0.12s ease;
 }
 .tb-task:hover {
-  border-color: var(--zen-accent, #3b82f6);
+  background: color-mix(in srgb, var(--zen-text, #e5e5ea) 8%, transparent);
 }
 .tb-task .mdi {
   font-size: 14px;
@@ -1001,10 +1082,14 @@ img.tb-logo {
 .tb-task.min .mdi {
   color: var(--zen-muted, #9aa0aa);
 }
-.tb-task.active {
-  border-color: var(--zen-accent, #3b82f6);
-  background: color-mix(in srgb, var(--zen-accent, #3b82f6) 16%, var(--zen-bg, #15151a));
-  box-shadow: inset 0 -2px 0 var(--zen-accent, #3b82f6);
+/* The focused task / active workspace is a raised pill: a lighter neutral fill with a soft
+   shadow, its icon in the accent colour — "this one" without adding colour or an underline. */
+.tb-task.active,
+.tb-ws-b.active {
+  background: color-mix(in srgb, var(--zen-text, #e5e5ea) 16%, var(--zen-bg, #15151a));
+  box-shadow:
+    0 1px 2px rgb(0 0 0 / 45%),
+    inset 0 1px 0 color-mix(in srgb, #fff 8%, transparent);
 }
 /* active full-screen app chip — sits just after Start, never collapses into overflow */
 .tb-app {
@@ -1329,30 +1414,29 @@ img.tb-logo {
      full-size, which showed as massive empty padding + shoved the controls' position. */
   zoom: 0.78;
 }
-/* Workspace switcher: shaped like a task button (same height, border, radius) so it lines up in
-   the bar, holding the graph button, a divider, then one pill per workspace. */
+/* Workspace switcher: the graph, then a tab per workspace with its name and panel count, styled
+   like the tasks (no box; the active one raised), set off by a divider. */
 .tb-ws {
   display: inline-flex;
   flex: none;
   align-items: stretch;
   align-self: stretch;
-  gap: 2px;
+  gap: 1px;
   box-sizing: border-box;
-  margin: 0 2px;
-  padding: 2px;
-  border: 1px solid var(--zen-border, #3a3a44);
-  border-radius: var(--zen-radius, 6px);
-  background: var(--zen-bg, #15151a);
+  margin: 0 4px 0 2px;
+  padding: 2px 6px 2px 0;
+  border-right: 1px solid var(--zen-border, #3a3a44);
 }
 .tb-ws-b {
+  position: relative;
   display: inline-flex;
   align-items: center;
   justify-content: center;
   gap: 5px;
-  min-width: 22px;
-  padding: 0 6px;
+  min-width: 24px;
+  padding: 0 8px;
   border: 0;
-  border-radius: calc(var(--zen-radius, 6px) - 2px);
+  border-radius: var(--zen-radius, 6px);
   background: none;
   color: var(--zen-muted, #9aa0aa);
   font: inherit;
@@ -1360,52 +1444,49 @@ img.tb-logo {
   font-weight: 600;
   line-height: 1;
   cursor: pointer;
-}
-.tb-ws-b:first-child {
-  position: relative;
-  margin-right: 5px;
-}
-.tb-ws-b:first-child::after {
-  position: absolute;
-  top: 3px;
-  right: -4px;
-  bottom: 3px;
-  width: 1px;
-  background: var(--zen-border, #3a3a44);
-  content: '';
+  transition:
+    background 0.12s ease,
+    color 0.12s ease;
 }
 .tb-ws-b:hover {
-  background: color-mix(in srgb, var(--zen-text, #fff) 9%, transparent);
+  background: color-mix(in srgb, var(--zen-text, #fff) 8%, transparent);
   color: var(--zen-text, #e5e5ea);
 }
 .tb-ws-b.active {
-  background: color-mix(in srgb, var(--zen-accent, #6366f1) 24%, transparent);
   color: var(--zen-text, #e5e5ea);
-  box-shadow: inset 0 -2px 0 var(--zen-accent, #6366f1);
 }
 .tb-ws-b .mdi {
   font-size: 14px;
 }
-.tb-ws-b.add {
-  min-width: 20px;
-  padding: 0 3px;
+.tb-ws-b.active .mdi {
+  color: var(--zen-accent, #6366f1);
 }
-.tb-ws-n {
-  font-variant-numeric: tabular-nums;
+.tb-ws-b.add,
+.tb-ws-b.more {
+  min-width: 22px;
+  padding: 0 4px;
 }
 .tb-ws-name {
-  max-width: 120px;
+  max-width: 96px;
   overflow: hidden;
   white-space: nowrap;
   text-overflow: ellipsis;
-  font-weight: 500;
 }
-.tb-ws-dot {
-  width: 4px;
-  height: 4px;
-  margin-left: -2px;
-  border-radius: 50%;
-  background: var(--zen-accent, #6366f1);
+.tb-ws-count {
+  min-width: 14px;
+  padding: 1px 4px;
+  border-radius: 999px;
+  background: color-mix(in srgb, var(--zen-text, #fff) 10%, transparent);
+  color: var(--zen-muted, #9aa0aa);
+  font-size: 9.5px;
+  font-variant-numeric: tabular-nums;
+  text-align: center;
+}
+@media (prefers-reduced-motion: reduce) {
+  .tb-task,
+  .tb-ws-b {
+    transition: none;
+  }
 }
 .tb-ws-rename {
   width: 110px;

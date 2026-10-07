@@ -3,9 +3,14 @@
 // The splash is drawn before any extension loads, so it can't be drawn by ZenKit at startup:
 // ComfyUI's boot script reads `comfy-splash-sequence` from localStorage instead, and this keeps
 // that key in step with the theme. It takes effect from the next load.
+//
+// That boot script puts the sequence's html into innerHTML and its css into a <style>, so a
+// pack's own splash is sanitised first (splashSanitize.ts); the built-in presets are ours and
+// are stored as written.
 
 import { getPack, resolveTokens } from '@nynxz/zenkit-theme'
 import type { ThemePack } from '@nynxz/zenkit-client'
+import { sanitizeSplashColor, sanitizeSplashCss, sanitizeSplashHtml } from './splashSanitize'
 import { theme } from './theme'
 
 const SEQUENCE_KEY = 'comfy-splash-sequence'
@@ -97,11 +102,16 @@ const PRESETS: Record<string, { html: string; css: string }> = {
   },
 }
 
-/** A pack's startup markup and CSS, or none to keep ComfyUI's own logo. */
+/** A pack's startup markup and CSS, or none to keep ComfyUI's own logo. A pack's own html and
+ *  css are sanitised; if nothing of its html survives, its preset (if any) is used instead. */
 function sequenceOf(pack: ThemePack): { html?: string; css?: string } {
   const splash = pack.splash
   if (!splash) return {}
-  if (splash.html) return { html: splash.html, css: splash.css }
+  const html = splash.html ? sanitizeSplashHtml(splash.html) : ''
+  if (html) {
+    const css = splash.css ? sanitizeSplashCss(splash.css) : ''
+    return css ? { html, css } : { html }
+  }
   return (splash.preset && PRESETS[splash.preset]) || {}
 }
 
@@ -119,9 +129,9 @@ export function syncThemeSplash(enabled: boolean): void {
     localStorage.setItem(
       SEQUENCE_KEY,
       JSON.stringify({
-        bg: tokens['--background'],
-        fg: tokens['--foreground'],
-        accent: tokens['--primary'] ?? tokens['--accent'],
+        bg: sanitizeSplashColor(tokens['--background']),
+        fg: sanitizeSplashColor(tokens['--foreground']),
+        accent: sanitizeSplashColor(tokens['--primary'] ?? tokens['--accent']),
         ...sequenceOf(pack),
       }),
     )

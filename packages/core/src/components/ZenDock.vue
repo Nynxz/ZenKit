@@ -19,14 +19,24 @@
     </div>
 
     <!-- inner-edge resize grip (expanded zones only) -->
-    <div
+    <ZenResizeHandle
       v-if="zone.body"
       class="dockresize"
-      :class="'rs-' + zone.side"
+      :orientation="zone.side === 'bottom' ? 'horizontal' : 'vertical'"
+      :label="`Resize ${zone.side} dock`"
+      :value="zone.side === 'bottom' ? zone.body.h : zone.body.w"
+      :min="zone.side === 'bottom' ? 160 : 220"
+      :value-text="`${zone.side === 'bottom' ? zone.body.h : zone.body.w}px`"
       :style="resizeStyle(zone)"
       @pointerenter="store.state.dockEdgeLit = zone.side"
       @pointerleave="!store.state.interacting && (store.state.dockEdgeLit = null)"
-      @pointerdown.stop="startResize($event, zone)"
+      @drag-start="startResize($event, zone)"
+      @drag-move="moveResize"
+      @drag-end="finishResize"
+      @nudge="nudge(zone, $event)"
+      @limit="dockLimit(zone, $event)"
+      @reset="ops.setDockSize(zone.side, zone.side === 'bottom' ? 300 : 320)"
+      @toggle="ops.toggleDockCollapsed(zone.side)"
     />
   </template>
 
@@ -63,7 +73,7 @@
 
 <script setup lang="ts">
 import { computed, inject, onBeforeUnmount, onMounted, ref } from 'vue'
-import { ZenIcon } from '@nynxz/zenkit-ui'
+import { ZenIcon, ZenResizeHandle } from '@nynxz/zenkit-ui'
 import { STORE_KEY, type Panel, type PanelStore } from '../panelStore'
 import { computeDockLayout, dockLayout, dockLayoutVersion, type ZoneLayout } from '../tiling'
 import { startDockTabDrag } from '../dockDrag'
@@ -136,45 +146,54 @@ function onTabClick(zone: ZoneLayout, m: Panel) {
   ops.toggleDockTab(zone.side, m.id)
 }
 
-function beginInteract(cursor: string) {
-  document.body.style.userSelect = 'none'
-  document.body.style.cursor = cursor
-  ops.setInteract(true, cursor)
-}
-function endInteract() {
-  document.body.style.userSelect = ''
-  document.body.style.cursor = ''
-  ops.setInteract(false)
-}
-
 function onTabDown(e: PointerEvent, zone: ZoneLayout, m: Panel) {
   startDockTabDrag(e, store, m.id, () => onTabClick(zone, m))
 }
 
 // --- zone resize ---
-function startResize(e: PointerEvent, zone: ZoneLayout) {
-  e.preventDefault()
-  const { side } = zone
-  const body = zone.body!
-  // capture so the drag survives crossing the canvas/iframes
-  const grip = e.currentTarget as HTMLElement
-  grip.setPointerCapture?.(e.pointerId)
-  beginInteract(side === 'bottom' ? 'row-resize' : 'col-resize')
-  const onMove = (m: PointerEvent) => {
-    if (side === 'left') ops.setDockSize(side, m.clientX - body.x, false)
-    else if (side === 'right') ops.setDockSize(side, body.x + body.w - m.clientX, false)
-    else ops.setDockSize(side, body.y + body.h - m.clientY, false)
+let resize: { zone: ZoneLayout; from: number } | null = null
+function startResize(_e: PointerEvent, zone: ZoneLayout) {
+  resize = { zone, from: store.state.docks[zone.side].size }
+  ops.setInteract(true, zone.side === 'bottom' ? 'row-resize' : 'col-resize')
+}
+function moveResize(e: PointerEvent) {
+  if (!resize) return
+  const { side, body } = resize.zone
+  if (!body) return
+  const size =
+    side === 'left'
+      ? e.clientX - body.x
+      : side === 'right'
+        ? body.x + body.w - e.clientX
+        : body.y + body.h - e.clientY
+  ops.setDockSize(side, size, false)
+}
+function finishResize(cancelled: boolean) {
+  if (resize) {
+    const { side } = resize.zone
+    ops.setDockSize(side, cancelled ? resize.from : store.state.docks[side].size)
   }
-  const onUp = (u: PointerEvent) => {
-    endInteract()
-    ops.setDockSize(side, store.state.docks[side].size)
-    if (document.elementFromPoint(u.clientX, u.clientY) !== grip) store.state.dockEdgeLit = null
-    grip.releasePointerCapture?.(e.pointerId)
-    window.removeEventListener('pointermove', onMove, true)
-    window.removeEventListener('pointerup', onUp, true)
-  }
-  window.addEventListener('pointermove', onMove, true)
-  window.addEventListener('pointerup', onUp, true)
+  resize = null
+  ops.setInteract(false)
+  store.state.dockEdgeLit = null
+}
+function nudge(zone: ZoneLayout, pixels: number) {
+  const sign = zone.side === 'left' ? 1 : -1
+  ops.setDockSize(zone.side, (zone.side === 'bottom' ? zone.body!.h : zone.body!.w) + sign * pixels)
+}
+function dockLimit(zone: ZoneLayout, edge: 'min' | 'max') {
+  // Home/End move the divider toward the start/end, matching the arrow keys.
+  const small = (zone.side === 'left') === (edge === 'min')
+  ops.setDockSize(
+    zone.side,
+    small
+      ? zone.side === 'bottom'
+        ? 160
+        : 220
+      : zone.side === 'bottom'
+        ? window.innerHeight
+        : window.innerWidth,
+  )
 }
 
 // --- tab context menu ---

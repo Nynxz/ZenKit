@@ -61,6 +61,16 @@ function locToPath(loc: AppLocation): string {
   return qs ? p + '?' + qs : p
 }
 
+// A route path or ":param" segment, decoded; a malformed escape (a bad stored route or #zen=
+// hash) stays raw rather than throwing during boot.
+function decodeSegment(seg: string): string {
+  try {
+    return decodeURIComponent(seg)
+  } catch {
+    return seg
+  }
+}
+
 // Match a clean route path (no query) against an app's route patterns. ':param'
 // segments capture into params. Exported so ZenApp resolves the same AppRoute the
 // store used to fill params — one matcher, no divergence.
@@ -76,7 +86,7 @@ export function matchRoute(
     let ok = true
     for (let i = 0; i < pat.length; i++) {
       const p = pat[i]
-      if (p.startsWith(':')) params[p.slice(1)] = decodeURIComponent(segs[i])
+      if (p.startsWith(':')) params[p.slice(1)] = decodeSegment(segs[i])
       else if (p !== segs[i]) {
         ok = false
         break
@@ -133,7 +143,7 @@ export function createAppStore(bus: ZenBus) {
   // that raced ahead of the plugin). Resolved in register().
   const hashPath = (): string | null => {
     const m = /^#zen=(.*)$/.exec(location.hash)
-    return m ? decodeURIComponent(m[1]) : null
+    return m ? decodeSegment(m[1]) : null
   }
   const loadSaved = (): string | null => {
     try {

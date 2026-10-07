@@ -1,20 +1,21 @@
 // ZenKit runtime orchestrator. installZenKit() wires the store + theme + host
-// overlay and installs window.ZenKit. (jobs/channels/finder/sidebar deferred.)
+// overlay and installs window.ZenKit.
 import { createApp, watch } from 'vue'
 import { registerPacks } from '@nynxz/zenkit-theme'
 import type { ZenKitApi, PanelHandle, PanelContext } from './types'
 import { createBus, type ZenBus } from './bus'
-import { ensureStyle, removeStyle } from './dom'
+import { ensureStyle } from './dom'
 import { theme } from './theme'
 import { startComfyThemeBridge } from './comfyTheme'
 import { createComfyThemeMenu } from './comfyThemeMenu'
 import { syncThemeSplash } from './themeSplash'
 import { createPanelStore, STORE_KEY, type PanelStore } from './panelStore'
 import { createAppStore, APP_STORE_KEY, type AppStore } from './appStore'
-import { setStatsPinned, startTiling } from './tiling'
+import { startTiling } from './tiling'
 import { activate, attachWorkspaces, toggleWorkspace, workspacesApi, ws } from './workspaces'
 import { startSidebar } from './sidebar'
-import { CANVAS_CONTROLS_WIDGET, registerTaskbarWidget } from './taskbarWidgets'
+import { registerTaskbarWidget } from './taskbarWidgets'
+import { registerBuiltinTaskbarWidgets } from './builtinTaskbarWidgets'
 import { createStorage } from './storage'
 import { startBackground, backgrounds } from './background'
 import { startSidebarPin } from './sidebarPin'
@@ -30,8 +31,6 @@ import { createMedia } from './media'
 import { createViewer } from './viewer'
 import { createChrome } from './chrome'
 import ZenHost from './components/ZenHost.vue'
-import ZenJobsWidget from './components/ZenJobsWidget.vue'
-import ZenRunWidget from './components/ZenRunWidget.vue'
 import ZenSettings from './components/ZenSettings.vue'
 // ZenKit's own family tile (docs/assets/render/brand.mjs) — the "core" row in Zen Settings.
 import zenkitLogo from './brand/zenkit.svg'
@@ -85,133 +84,7 @@ export function installZenKit(opts: InstallOptions = {}): ZenKitApi {
   startTiling(store)
   startSidebar(store, bus) // host pinned panels in ComfyUI's native sidebar (no-op if unavailable)
 
-  // Built-in widget: progress for running jobs (invisible while there are none).
-  registerTaskbarWidget({
-    id: 'zenkit:jobs',
-    label: 'Jobs',
-    icon: 'mdi mdi-progress-clock',
-    order: 90,
-    defaultOn: true,
-    render: (el) => {
-      const widget = createApp(ZenJobsWidget)
-      widget.mount(el)
-      return () => widget.unmount()
-    },
-  })
-
-  // Built-in widget: Run / Stop, shown while a workspace or an app covers ComfyUI's action bar.
-  registerTaskbarWidget({
-    id: 'zenkit:run',
-    label: 'Run (when the graph is covered)',
-    icon: 'mdi mdi-play',
-    order: 80,
-    defaultOn: true,
-    render: (el) => {
-      const widget = createApp(ZenRunWidget, { appStore })
-      widget.mount(el)
-      return () => widget.unmount()
-    },
-  })
-
-  // Built-in widget: the hide-all-panels toggle.
-  registerTaskbarWidget({
-    id: 'zenkit:hide-panels',
-    label: 'Hide panels',
-    icon: 'mdi mdi-eye-outline',
-    order: 100,
-    defaultOn: true,
-    render: (el) => {
-      const btn = document.createElement('button')
-      btn.style.cssText =
-        'display:inline-flex;align-items:center;justify-content:center;width:28px;height:24px;padding:0;background:none;border:none;border-radius:var(--zen-radius,6px);cursor:pointer;font-size:16px;'
-      el.appendChild(btn)
-      const sync = () => {
-        const h = store.state.panelsHidden
-        btn.innerHTML = `<i class="mdi ${h ? 'mdi-eye-off-outline' : 'mdi-eye-outline'}"></i>`
-        btn.style.color = h ? 'var(--zen-accent, #3b82f6)' : 'var(--zen-muted, #9aa0aa)'
-        btn.title = h ? 'Show panels' : 'Hide all panels'
-      }
-      btn.addEventListener(
-        'mouseenter',
-        () => (btn.style.background = 'color-mix(in srgb, var(--zen-text, #fff) 12%, transparent)'),
-      )
-      btn.addEventListener('mouseleave', () => (btn.style.background = 'none'))
-      btn.addEventListener('click', () => (store.state.panelsHidden = !store.state.panelsHidden))
-      sync()
-      return watch(() => store.state.panelsHidden, sync)
-    },
-  })
-
-  // Built-in widget: ComfyUI's bottom-right canvas controls, reparented into the taskbar.
-  registerTaskbarWidget({
-    id: CANVAS_CONTROLS_WIDGET,
-    label: 'Canvas controls',
-    icon: 'mdi mdi-tune-variant',
-    order: 110,
-    defaultOn: true,
-    render: (el) => {
-      // Found by its buttons' test ids (stable across ComfyUI layout changes), not its classes.
-      const SEL = '[role="toolbar"]:has([data-testid="zoom-controls-button"])'
-      let ctl: HTMLElement | null = null
-      let parent: Node | null = null
-      let next: Node | null = null
-      const dock = () => {
-        if (!theme.comfyRestyle()) return
-        const c = document.querySelector(SEL) as HTMLElement | null
-        if (!c || el.contains(c)) return
-        parent = c.parentNode
-        next = c.nextSibling
-        c.classList.add('zen-canvasctl')
-        el.appendChild(c)
-        ctl = c
-      }
-      const undock = () => {
-        if (!ctl) return
-        ctl.classList.remove('zen-canvasctl')
-        if (parent) parent.insertBefore(ctl, next)
-        ctl = parent = next = null
-      }
-      const styleId = 'zenkit-canvasctl-style'
-      const applyRestyle = (on: boolean) => {
-        setStatsPinned(on)
-        if (!on) {
-          undock()
-          removeStyle(styleId)
-          return
-        }
-        ensureStyle(
-          styleId,
-          `.minimap-main-container{bottom:0!important}${SEL}:not(.zen-canvasctl){display:none!important}`,
-        )
-        dock()
-      }
-      applyRestyle(theme.comfyRestyle())
-      const offRestyle = theme.onComfyRestyleChange(applyRestyle)
-      const retries = [150, 400, 900, 1800, 3000].map((t) =>
-        window.setTimeout(() => {
-          if (!ctl || !ctl.isConnected || !el.contains(ctl)) dock()
-        }, t),
-      )
-      let pending = false
-      const obs = new MutationObserver(() => {
-        if (pending) return
-        pending = true
-        requestAnimationFrame(() => {
-          pending = false
-          if (!ctl || !ctl.isConnected || !el.contains(ctl)) dock()
-        })
-      })
-      obs.observe(document.body, { childList: true, subtree: true })
-      return () => {
-        setStatsPinned(false)
-        offRestyle()
-        retries.forEach((t) => clearTimeout(t))
-        obs.disconnect()
-        undock()
-        removeStyle(styleId)
-      }
-    },
-  })
+  registerBuiltinTaskbarWidgets(store, appStore)
 
   // Host overlay injected into body (renders panels + docks + the taskbar).
   const hostEl = document.createElement('div')

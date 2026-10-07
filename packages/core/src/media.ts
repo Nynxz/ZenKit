@@ -1,28 +1,28 @@
 // zen.media — media refs: one short string per image / video / audio, so a result from one
-// capability can be handed to the next. ComfyUI's own files and plain URLs are built in;
-// plugins add sources for their own prefixes.
+// capability can be handed to the next. ComfyUI's own files (input/, output/, temp/) are built
+// in; plugins add sources for their own prefixes. Nothing else is a ref: a URL (http:, data:,
+// blob:, '/path') is refused, so a ref taken from a workflow or a model can't make ZenKit fetch
+// an arbitrary address or copy it into input/.
 import { api } from '@comfy/api'
 import type { MediaInfo, MediaRef, MediaSource, ZenMedia } from './types'
 
-// Same extensions as @nynxz/zenkit-client's mediaKindOf. GIF is an image: <img> plays it.
-const VIDEO = /\.(mp4|webm|mov|mkv|avi|m4v)$/i
-const AUDIO = /\.(mp3|wav|flac|ogg|oga|m4a|aac|opus)$/i
-export const kindOf = (name: string): MediaInfo['kind'] =>
-  VIDEO.test(name) ? 'video' : AUDIO.test(name) ? 'audio' : 'image'
+// Import the pure shared source, without loading the consumer SDK's runtime helpers.
+import {
+  COMFY_MEDIA_FOLDERS,
+  mediaKindOf,
+  parseMediaRef,
+  type ComfyMediaFolder,
+} from '../../client/src/mediaRefs'
 
-const COMFY_FOLDERS = ['output', 'input', 'temp'] as const
-type ComfyFolder = (typeof COMFY_FOLDERS)[number]
+export const kindOf = mediaKindOf
 
-/** `output/sub/name.png` → its folder, subfolder and file name. */
 function parseComfyRef(ref: MediaRef) {
-  const [folder, ...rest] = ref.split('/')
-  const filename = rest.pop()
-  if (!filename || !COMFY_FOLDERS.includes(folder as ComfyFolder))
-    throw new Error(`"${ref}" is not a ComfyUI file ref.`)
-  return { type: folder as ComfyFolder, subfolder: rest.join('/'), filename }
+  const file = parseMediaRef(ref)
+  if (!file) throw new Error(`"${ref}" is not a ComfyUI file ref.`)
+  return file
 }
 
-function comfySource(type: ComfyFolder): MediaSource {
+function comfySource(type: ComfyMediaFolder): MediaSource {
   return {
     prefix: type,
     resolve: (ref) => {
@@ -44,10 +44,25 @@ function comfySource(type: ComfyFolder): MediaSource {
   }
 }
 
-const URL_REF = /^(https?:|data:|blob:|\/)/
+// A prefix is a plain word; URL schemes can't be registered, so they never become refs.
+const PREFIX = /^[\w.-]+$/
+const URL_SCHEMES = new Set('http https data blob javascript file about ws wss'.split(' '))
 
-/** Copy anything with a URL into ComfyUI's input folder; returns the loader widget value. */
+/** Whether a registered source's URL may be downloaded: same-origin, or in-page blob:/data:. */
+function fetchable(url: string): boolean {
+  try {
+    const u = new URL(url, location.href)
+    return u.origin === location.origin || u.protocol === 'blob:' || u.protocol === 'data:'
+  } catch {
+    return false
+  }
+}
+
+/** Copy a registered source's media into ComfyUI's input folder; returns the loader widget
+ *  value. Only for sources without their own `toInput`, and only from a same-origin, blob: or
+ *  data: URL. */
 async function uploadFrom(info: MediaInfo): Promise<string> {
+  if (!fetchable(info.url)) throw new Error(`Won't copy ${info.ref} into input/: not a local URL.`)
   const res = await fetch(info.url)
   if (!res.ok) throw new Error(`Could not fetch ${info.ref} (${res.status}).`)
   const blob = await res.blob()
@@ -68,27 +83,26 @@ async function uploadFrom(info: MediaInfo): Promise<string> {
 }
 
 export function createMedia(): ZenMedia {
-  const sources = new Map<string, MediaSource>(COMFY_FOLDERS.map((t) => [t, comfySource(t)]))
+  const sources = new Map<string, MediaSource>(COMFY_MEDIA_FOLDERS.map((t) => [t, comfySource(t)]))
 
   const prefixOf = (ref: MediaRef) => /^[^:/]+/.exec(ref)?.[0] ?? ''
 
-  function sourceFor(ref: MediaRef): MediaSource | null {
-    if (URL_REF.test(ref)) return null
-    const source = sources.get(prefixOf(ref))
+  function sourceFor(ref: MediaRef): MediaSource {
+    const source = typeof ref === 'string' ? sources.get(prefixOf(ref)) : undefined
     if (!source)
-      throw new Error(`Unknown media ref "${ref}". Refs look like output/name.png, or a URL.`)
+      throw new Error(
+        `Unknown media ref "${String(ref)}". Refs look like output/name.png (or input/, temp/, ` +
+          `or a registered prefix); URLs are not refs.`,
+      )
     return source
   }
 
-  async function resolve(ref: MediaRef): Promise<MediaInfo> {
-    const source = sourceFor(ref)
-    if (source) return source.resolve(ref)
-    const name = ref.split(/[?#]/)[0]!.split('/').pop() ?? ref
-    return { ref, url: ref, kind: kindOf(name), label: name }
-  }
+  const resolve = async (ref: MediaRef): Promise<MediaInfo> => sourceFor(ref).resolve(ref)
 
   return {
     registerSource: (source) => {
+      if (!PREFIX.test(source.prefix) || URL_SCHEMES.has(source.prefix.toLowerCase()))
+        throw new Error(`"${source.prefix}" can't be a media ref prefix.`)
       sources.set(source.prefix, source)
       return () => {
         if (sources.get(source.prefix) === source) sources.delete(source.prefix)
@@ -97,8 +111,8 @@ export function createMedia(): ZenMedia {
     resolve,
     toInput: async (ref) => {
       const source = sourceFor(ref)
-      if (source?.toInput) return source.toInput(ref)
-      return uploadFrom(await resolve(ref))
+      if (source.toInput) return source.toInput(ref)
+      return uploadFrom(await source.resolve(ref))
     },
     fromComfyFile: (file) =>
       [file.type ?? 'output', file.subfolder, file.filename].filter(Boolean).join('/'),

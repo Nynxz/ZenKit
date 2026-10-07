@@ -1,12 +1,12 @@
 // Ownership ledger behind window.ZenKit.plugins: registerZenPlugin reports a RegisteredPlugin
 // here, and the Zen Inspector reads it back. Tracks who owns what; the surfaces themselves live
 // in their own registries.
-import { reactive } from 'vue'
+import { shallowReactive } from 'vue'
 import type { RegisteredPlugin, ZenPlugins } from './types'
 import type { ZenBus } from './bus'
 
 // Reactive so the Inspector re-renders on (de)register. Re-registering an id replaces it.
-const registry = reactive(new Map<string, RegisteredPlugin>())
+const registry = shallowReactive(new Map<string, RegisteredPlugin>())
 
 /** The reactive ledger, for in-bundle components (the Inspector if it ships in core). */
 export const pluginRegistry = registry

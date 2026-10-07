@@ -113,6 +113,7 @@ export function registerWorkflowCapabilities(zen: ZenKitApi): void {
 
   register({
     id: 'workflows.list',
+    effect: 'read',
     description:
       "The workflow tabs open now (which one is active, unsaved changes) and the user's saved workflows. Graph " +
       'tools and runs act on the active tab.',
@@ -176,6 +177,7 @@ export function registerWorkflowCapabilities(zen: ZenKitApi): void {
 
   register({
     id: 'workflows.templates',
+    effect: 'read',
     description:
       "Search ComfyUI's template gallery (ready-made workflows such as text to image, image edit, upscale, video). " +
       'Returns template names for workflows.open_template, with the models each one needs.',

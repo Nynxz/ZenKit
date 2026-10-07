@@ -2,7 +2,7 @@
 // window.ZenKit.taskbar.register (or a ZenPluginDef's `taskbarWidgets`). ZenTaskbar
 // renders the enabled ones in order; Zen Settings drives the on/off + ordering. Built-ins
 // (clock, and later the hide-panels toggle + canvas controls) register here too.
-import { reactive } from 'vue'
+import { reactive, shallowReactive } from 'vue'
 import type { TaskbarWidget } from './types'
 
 const LS = 'zenkit.taskbar.widgets.v1'
@@ -21,7 +21,7 @@ function load(): Prefs {
   return { on: {}, order: [] }
 }
 const prefs = reactive<Prefs>(load())
-const registry = reactive<TaskbarWidget[]>([])
+const registry = shallowReactive<TaskbarWidget[]>([])
 function save() {
   try {
     localStorage.setItem(LS, JSON.stringify({ on: prefs.on, order: prefs.order }))
@@ -37,12 +37,13 @@ export function registerTaskbarWidget(w: TaskbarWidget): () => void {
   registry.push(w)
   if (!(w.id in prefs.on)) prefs.on[w.id] = w.defaultOn !== false
   if (!prefs.order.includes(w.id)) {
-    prefs.order.push(w.id)
-    prefs.order.sort((a, b) => hintOf(a) - hintOf(b)) // seed by hint; user reorders persist
+    // Place new widgets by their hint without changing the relative order the user saved.
+    const before = prefs.order.findIndex((id) => hintOf(id) > (w.order ?? 100))
+    prefs.order.splice(before < 0 ? prefs.order.length : before, 0, w.id)
     save()
   }
   return () => {
-    const j = registry.findIndex((x) => x.id === w.id)
+    const j = registry.indexOf(w)
     if (j >= 0) registry.splice(j, 1)
   }
 }

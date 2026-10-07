@@ -21,25 +21,43 @@
       </span>
     </div>
   </div>
-  <div
+  <ZenResizeHandle
     v-for="d in layout.dividers"
     :key="d.path"
     class="zws-gutter"
-    :class="[d.axis, { on: dragging.includes(d.path) }]"
+    :orientation="d.axis === 'row' ? 'vertical' : 'horizontal'"
+    :active="dragging.includes(d.path)"
+    label="Resize tiled panels"
+    :value="Math.round(d.ratio * 100)"
+    :min="Math.round(clampTileRatio(0, d.length) * 100)"
+    :max="Math.round(clampTileRatio(1, d.length) * 100)"
+    :value-text="`${Math.round(d.ratio * 100)}%`"
     :style="px(grow(d.rect, d.axis))"
     :title="'Drag to resize · double-click to even out'"
-    @pointerdown="startResize($event, [d])"
-    @dblclick="setRatio(d.path, 0.5)"
+    @drag-start="startResize($event, [d])"
+    @drag-move="moveResize"
+    @drag-end="finishResize"
+    @nudge="nudge([d], $event)"
+    @limit="limit([d], $event)"
+    @reset="setRatio(d.path, 0.5)"
+    @toggle="setRatio(d.path, 0.5)"
   />
-  <div
+  <ZenResizeHandle
     v-for="j in junctions"
     :key="j.key"
     class="zws-junction"
-    :class="{ on: dragging.includes(j.v.path) && dragging.includes(j.h.path) }"
+    orientation="both"
+    label="Resize tiled panels in both directions"
+    :active="dragging.includes(j.v.path) && dragging.includes(j.h.path)"
     :style="{ left: `${j.x - 7}px`, top: `${j.y - 7}px` }"
     title="Drag to resize both ways · double-click to even out"
-    @pointerdown="startResize($event, [j.v, j.h])"
-    @dblclick="(setRatio(j.v.path, 0.5), setRatio(j.h.path, 0.5))"
+    @drag-start="startResize($event, [j.v, j.h])"
+    @drag-move="moveResize"
+    @drag-end="finishResize"
+    @nudge="(pixels, axis) => nudge([axis === 'x' ? j.v : j.h], pixels)"
+    @limit="limit([j.v, j.h], $event)"
+    @reset="(setRatio(j.v.path, 0.5), setRatio(j.h.path, 0.5))"
+    @toggle="(setRatio(j.v.path, 0.5), setRatio(j.h.path, 0.5))"
   />
   <div v-if="ws.preview" class="zws-preview" :style="px(ws.preview)" />
 </template>
@@ -49,6 +67,7 @@
 // tiles (drag to resize, double-click to even out), and previews where a dragged panel would tile.
 // The tiled panels themselves are ordinary ZenPanels placed by their tile rect.
 import { computed, inject, ref } from 'vue'
+import { ZenResizeHandle } from '@nynxz/zenkit-ui'
 import { STORE_KEY, type PanelStore } from '../panelStore'
 import type { Rect } from '../types'
 import { clampTileRatio, setRatio, ws, wsLayout, type Divider } from '../workspaces'
@@ -90,50 +109,56 @@ function grow(r: Rect, axis: Divider['axis']): Rect {
 }
 
 /** Drag one divider, or two at a junction: each follows the pointer along its own axis. */
+let resize: {
+  ds: Divider[]
+  sx: number
+  sy: number
+  from: number[]
+  latest: number[]
+  workspaceId: string | null
+} | null = null
+let frame = 0
 function startResize(e: PointerEvent, ds: Divider[]) {
-  if (e.button !== 0) return
-  e.preventDefault()
-  ;(e.currentTarget as Element).setPointerCapture(e.pointerId)
-  const sx = e.clientX
-  const sy = e.clientY
   const from = ds.map((d) => d.ratio)
+  resize = { ds, sx: e.clientX, sy: e.clientY, from, latest: [...from], workspaceId: ws.active }
   dragging.value = ds.map((d) => d.path)
-  const cursor = ds.length > 1 ? 'move' : ds[0]!.axis === 'row' ? 'col-resize' : 'row-resize'
-  store._ops.setInteract(true, cursor)
-  // One re-layout per frame however fast the pointer reports.
-  let frame = 0
-  let latest = [...from]
-  const apply = (ratios: number[]) => ds.forEach((d, i) => setRatio(d.path, ratios[i]!))
-  const onMove = (m: PointerEvent) => {
-    latest = ds.map((d, i) => {
-      const delta = d.axis === 'row' ? m.clientX - sx : m.clientY - sy
-      return clampTileRatio(from[i]! + delta / d.length, d.length)
+  store._ops.setInteract(
+    true,
+    ds.length > 1 ? 'move' : ds[0]!.axis === 'row' ? 'col-resize' : 'row-resize',
+  )
+}
+function apply(ratios: number[]) {
+  if (resize) {
+    const { ds, workspaceId } = resize
+    ds.forEach((d, i) => setRatio(d.path, ratios[i]!, workspaceId))
+  }
+}
+function moveResize(e: PointerEvent) {
+  if (!resize) return
+  const { ds, sx, sy, from } = resize
+  resize.latest = ds.map((d, i) => {
+    const delta = d.axis === 'row' ? e.clientX - sx : e.clientY - sy
+    return clampTileRatio(from[i]! + delta / d.length, d.length)
+  })
+  if (!frame)
+    frame = requestAnimationFrame(() => {
+      frame = 0
+      if (resize) apply(resize.latest)
     })
-    if (!frame)
-      frame = requestAnimationFrame(() => {
-        frame = 0
-        apply(latest)
-      })
-  }
-  const finish = (commit: boolean) => {
-    cancelAnimationFrame(frame)
-    frame = 0
-    apply(commit ? latest : from)
-    dragging.value = []
-    store._ops.setInteract(false)
-    window.removeEventListener('pointermove', onMove, true)
-    window.removeEventListener('pointerup', onUp, true)
-    window.removeEventListener('keydown', onKey, true)
-  }
-  const onUp = () => finish(true)
-  const onKey = (k: KeyboardEvent) => {
-    if (k.key !== 'Escape') return
-    k.preventDefault()
-    finish(false)
-  }
-  window.addEventListener('pointermove', onMove, true)
-  window.addEventListener('pointerup', onUp, true)
-  window.addEventListener('keydown', onKey, true)
+}
+function finishResize(cancelled: boolean) {
+  cancelAnimationFrame(frame)
+  frame = 0
+  if (resize) apply(cancelled ? resize.from : resize.latest)
+  resize = null
+  dragging.value = []
+  store._ops.setInteract(false)
+}
+function nudge(ds: Divider[], pixels: number) {
+  ds.forEach((d) => setRatio(d.path, clampTileRatio(d.ratio + pixels / d.length, d.length)))
+}
+function limit(ds: Divider[], edge: 'min' | 'max') {
+  ds.forEach((d) => setRatio(d.path, clampTileRatio(edge === 'min' ? 0 : 1, d.length)))
 }
 </script>
 
@@ -182,32 +207,6 @@ kbd {
   z-index: 4;
   touch-action: none;
 }
-.zws-gutter.row {
-  cursor: col-resize;
-}
-.zws-gutter.column {
-  cursor: row-resize;
-}
-.zws-gutter::after {
-  position: absolute;
-  inset: 0;
-  margin: auto;
-  border-radius: 2px;
-  background: var(--zen-accent, #6366f1);
-  opacity: 0;
-  content: '';
-  transition: opacity 0.12s;
-}
-.zws-gutter.row::after {
-  width: 2px;
-}
-.zws-gutter.column::after {
-  height: 2px;
-}
-.zws-gutter:hover::after,
-.zws-gutter.on::after {
-  opacity: 0.9;
-}
 .zws-preview {
   position: fixed;
   z-index: 5;
@@ -229,45 +228,5 @@ kbd {
   height: 14px;
   cursor: move;
   touch-action: none;
-}
-.zws-junction::after {
-  position: absolute;
-  inset: 3px;
-  border-radius: 50%;
-  background: var(--zen-accent, #6366f1);
-  opacity: 0;
-  content: '';
-  transition: opacity 0.12s;
-}
-.zws-junction:hover::after,
-.zws-junction.on::after {
-  opacity: 0.95;
-}
-</style>
-
-<style>
-/* The workspace-to-workspace slide (see `slideFrom` in workspaces.ts). Unscoped: it reaches the
-   tiled panels, which are ZenPanels. */
-@media (prefers-reduced-motion: no-preference) {
-  html[data-zen-ws-enter='right'] body:not(.disable-animations) .zp[data-zen-tiled],
-  html[data-zen-ws-enter='right'] body:not(.disable-animations) .zws-empty {
-    animation: zen-ws-in-right 0.22s cubic-bezier(0.2, 0.8, 0.2, 1);
-  }
-  html[data-zen-ws-enter='left'] body:not(.disable-animations) .zp[data-zen-tiled],
-  html[data-zen-ws-enter='left'] body:not(.disable-animations) .zws-empty {
-    animation: zen-ws-in-left 0.22s cubic-bezier(0.2, 0.8, 0.2, 1);
-  }
-}
-@keyframes zen-ws-in-right {
-  from {
-    transform: translateX(48px);
-    opacity: 0;
-  }
-}
-@keyframes zen-ws-in-left {
-  from {
-    transform: translateX(-48px);
-    opacity: 0;
-  }
 }
 </style>
