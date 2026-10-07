@@ -9,11 +9,12 @@
     "build": "pnpm -r build",
     "dev": "pnpm -r --parallel dev",
     "typecheck": "pnpm -r typecheck",
+    "test": "node --test tests/*.test.mjs",
     "lint": "eslint .",
     "lint:fix": "eslint . --fix",
     "format": "prettier --write .",
     "format:check": "prettier --check .",
-    "check": "pnpm build && pnpm lint && pnpm format:check && pnpm -r typecheck"
+    "check": "pnpm build && pnpm test && pnpm lint && pnpm format:check && pnpm -r typecheck"
   },
   "devDependencies": {
     "@eslint/js": "^10.0.1",

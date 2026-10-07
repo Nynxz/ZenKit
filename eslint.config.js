@@ -90,6 +90,7 @@ export default defineConfig(
       '**/*.{mts,cts}',
       '**/*.config.{js,ts,mts}',
       'workspace-aliases.ts',
+      'tests/**/*.mjs',
       'internal/**/*.mjs',
     ],
     languageOptions: { globals: { ...globals.node } },
