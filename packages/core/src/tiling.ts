@@ -113,11 +113,20 @@ function padNewRows() {
 /** Inside ZenKit's overlay, a node's DOM widget or the Vue node layer: never a chrome row. */
 const NOT_CHROME =
   '#zenkit-host, .dom-widget, [data-zen-layer], .lg-node, [data-testid="transform-pane"]'
+/** What holds ComfyUI's chrome rows — the graph's side toolbar, the app mode's workspace column. */
+const CHROME = '.side-toolbar-container, [data-testid="linear-workspace-column"]'
 function mayMoveChrome(record: MutationRecord): boolean {
   const target = record.target as Element
   if (target.closest?.(NOT_CHROME)) return false
-  const elements = (nodes: NodeList) => [...nodes].some((n) => n.nodeType === Node.ELEMENT_NODE)
-  return elements(record.addedNodes) || elements(record.removedNodes)
+  const nodes = [...record.addedNodes, ...record.removedNodes].filter(
+    (n): n is Element => n.nodeType === Node.ELEMENT_NODE,
+  )
+  if (!nodes.length) return false
+  // Straight onto <body> come teleported popovers, previews and tooltips, often many a second
+  // under a moving mouse; only the app's own mount can swap the chrome rows from there.
+  if (target === document.body)
+    return nodes.some((n) => n.id === 'vue-app' || n.matches(CHROME) || !!n.querySelector(CHROME))
+  return true
 }
 
 function nudgeCanvas() {
@@ -422,8 +431,24 @@ export function startTiling(store: PanelStore) {
     padNewRows()
     if (!rowFrame) rowFrame = requestAnimationFrame(checkRow)
   }).observe(document.body, { childList: true, subtree: true })
+  // A row going hidden or shown (graph <-> app mode) changes its size, which a ResizeObserver
+  // reports without measuring anything. Polling the rows' boxes instead forced a full layout
+  // every 400 ms — a visible hitch in anything scrolling or animating on a big page.
+  const watched = new WeakSet<HTMLElement>()
+  const rowSizes = new ResizeObserver(() => {
+    if (!rowFrame) rowFrame = requestAnimationFrame(checkRow)
+  })
+  const watchRows = () => {
+    for (const row of chromeRows())
+      if (!watched.has(row)) {
+        watched.add(row)
+        rowSizes.observe(row)
+      }
+  }
+  watchRows()
   window.setInterval(() => {
-    checkRow()
+    // Finding the rows is a query, not a measurement; a new one is watched from then on.
+    watchRows()
     // The frontend re-parks the stats when its sidebar changes size or side; take them back.
     applyStats()
   }, 400)
