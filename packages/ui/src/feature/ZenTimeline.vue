@@ -1,291 +1,339 @@
 <template>
   <div class="ztl" :style="{ '--ztl-head': `${headWidth}px` }">
-    <div ref="headsEl" class="ztl-heads" @wheel="onHeadsWheel">
-      <div class="ztl-corner">
-        <span class="ztl-time">{{ formatTime(playhead) }}</span>
-      </div>
-      <div
-        v-for="t in tracks"
-        :key="t.id"
-        class="ztl-head"
-        :class="{
-          movable: t.movable,
-          lifted: headDrag?.id === t.id,
-          'has-actions': !!t.actions?.length,
-        }"
-        :data-track="t.id"
-        :title="t.movable ? `${t.title ?? t.label} — drag to reorder` : (t.title ?? t.label)"
-        :style="{
-          height: `${t.height ?? 30}px`,
-          transform: headDrag?.id === t.id ? `translateY(${headDrag.dy}px)` : undefined,
-          boxShadow: t.color ? `inset 3px 0 0 ${t.color}` : undefined,
-        }"
-        @pointerdown="t.movable && startHeadDrag($event, t)"
-        @contextmenu.prevent.stop="emit('context', { trackId: t.id }, playhead, $event)"
-      >
-        <img v-if="t.thumb" class="ztl-head-thumb" :src="t.thumb" alt="" draggable="false" />
-        <i v-else-if="t.icon" :class="iconClass(t.icon)" />
-        <span class="ztl-head-label">{{ t.label }}</span>
-        <span v-if="t.actions?.length" class="ztl-head-actions">
-          <button
-            v-for="a in t.actions"
-            :key="a.id"
-            type="button"
-            class="ztl-head-action"
-            :class="{ on: a.active }"
-            :title="a.title"
-            @pointerdown.stop
-            @click.stop="emit('action', t.id, a.id)"
-          >
-            <i v-if="a.icon" :class="iconClass(a.icon)" />
-            {{ a.label }}
-          </button>
-        </span>
-      </div>
-      <div
-        v-if="headDrag && headDrag.lineY !== null"
-        class="ztl-insert"
-        :style="{ top: `${headDrag.lineY}px` }"
-      />
-    </div>
-
     <div ref="scroller" class="ztl-scroll" @wheel="onWheel" @scroll="onScroll">
-      <div class="ztl-body" :style="{ width: `${contentWidth}px` }">
-        <div
-          v-if="range"
-          class="ztl-range"
-          :style="{ left: `${x(range.start)}px`, width: `${x(range.end) - x(range.start)}px` }"
-        />
-        <div class="ztl-ruler" @pointerdown="startScrub">
-          <span
-            v-for="t in ticks"
-            :key="t.at"
-            class="ztl-tick"
-            :class="{ major: t.major }"
-            :style="{ left: `${x(t.at)}px` }"
-          >
-            <b v-if="t.major">{{ tickLabel(t.at) }}</b>
-          </span>
-        </div>
-
-        <div
-          v-for="(t, ti) in tracks"
-          :key="t.id"
-          class="ztl-track"
-          :class="{ dropping: dropTrack === t.id, zebra: ti % 2 === 0 }"
-          :style="{ height: `${t.height ?? 30}px` }"
-          @dblclick.self="emit('dblclick', t.id, timeAt($event.clientX))"
-          @contextmenu.prevent.stop="
-            emit('context', { trackId: t.id }, timeAt($event.clientX), $event)
-          "
-          @dragover="onDragOver($event, t.id)"
-          @dragleave="onDragLeave"
-          @drop="onDrop($event, t.id)"
-          @pointerdown.self="onTrackDown($event, t.id)"
-        >
-          <svg
-            v-if="t.curve"
-            class="ztl-curve"
-            :width="contentWidth"
-            :height="t.height ?? 30"
-            :style="{ '--ztl-curve': t.curve.color ?? 'var(--ztl-accent)' }"
-            @pointerdown="emit('select', `curve:${t.id}`, t.id, $event)"
-            @dblclick.stop="addCurvePoint($event, t)"
-            @contextmenu.prevent.stop="
-              emit('context', { trackId: t.id }, timeAt($event.clientX), $event)
-            "
-          >
-            <line
-              v-for="(st, i) in t.curve.steps ?? []"
-              :key="'s' + i"
-              class="ztl-cstep"
-              :x1="x(st.start) + 2"
-              :x2="x(st.end) - 2"
-              :y1="cy(t, st.v)"
-              :y2="cy(t, st.v)"
-            />
-            <line
-              v-if="t.curve.unit !== undefined"
-              class="ztl-cunit"
-              :x1="x(0)"
-              :x2="x(duration)"
-              :y1="cy(t, t.curve.unit)"
-              :y2="cy(t, t.curve.unit)"
-            />
-            <polygon class="ztl-carea" :points="curveArea(t)" />
-            <polyline class="ztl-cline" :points="curveLine(t)" />
-            <text
-              v-if="!t.curve.points.length"
-              class="ztl-cval"
-              :x="x(0) + 6"
-              :y="cy(t, t.curve.flat ?? curveRange(t).max) - 4"
-            >
-              {{ (t.curve.flat ?? curveRange(t).max).toFixed(2) }}
-            </text>
-            <text
-              v-for="(p, i) in t.curve.points"
-              :key="'v' + i"
-              class="ztl-cval"
-              text-anchor="middle"
-              :x="x(p.t)"
-              :y="cy(t, p.v) > (t.height ?? 30) / 2 ? cy(t, p.v) - 8 : cy(t, p.v) + 15"
-            >
-              {{ p.v.toFixed(2) }}
-            </text>
-            <circle
-              v-for="(p, i) in t.curve.points"
-              :key="'p' + i"
-              class="ztl-cpt"
-              :cx="x(p.t)"
-              :cy="cy(t, p.v)"
-              r="5"
-              @pointerdown.stop="startCurvePoint($event, t, i)"
-              @dblclick.stop
-              @contextmenu.prevent.stop="removeCurvePoint(t, i)"
-            >
-              <title>{{ p.v.toFixed(2) }} at {{ formatTime(p.t) }}</title>
-            </circle>
-          </svg>
-          <svg
-            v-if="t.levels"
-            class="ztl-curve ztl-levels"
-            :class="{ shaped: t.levels.mode === 'shape' }"
-            :width="contentWidth"
-            :height="t.height ?? 30"
-            :style="{ '--ztl-curve': t.levels.color ?? 'var(--ztl-accent)' }"
-            @pointerdown="emit('select', `curve:${t.id}`, t.id, $event)"
-            @contextmenu.prevent.stop="
-              emit('context', { trackId: t.id }, timeAt($event.clientX), $event)
-            "
-          >
-            <line
-              v-if="t.levels.unit !== undefined"
-              class="ztl-cunit"
-              :x1="x(0)"
-              :x2="x(duration)"
-              :y1="cy(t, t.levels.unit)"
-              :y2="cy(t, t.levels.unit)"
-            />
-            <g
-              v-for="seg in t.levels.segments"
-              :key="seg.id"
-              class="ztl-lseg"
-              :class="{ inherited: t.levels.mode === 'shape' ? seg.shapeInherited : seg.inherited }"
-              @dblclick.stop="t.levels.mode === 'shape' && addShapePoint($event, t, seg)"
-            >
-              <template v-if="t.levels.mode !== 'shape'">
-                <rect
-                  class="ztl-larea"
-                  :x="x(seg.start) + 1"
-                  :y="cy(t, seg.v)"
-                  :width="Math.max(0, x(seg.end) - x(seg.start) - 2)"
-                  :height="Math.max(0, (t.height ?? 30) - cy(t, seg.v))"
-                />
-                <line
-                  class="ztl-lbar"
-                  :x1="x(seg.start) + 1"
-                  :x2="x(seg.end) - 1"
-                  :y1="cy(t, seg.v)"
-                  :y2="cy(t, seg.v)"
-                />
-                <line
-                  class="ztl-lhit"
-                  :x1="x(seg.start) + 1"
-                  :x2="x(seg.end) - 1"
-                  :y1="cy(t, seg.v)"
-                  :y2="cy(t, seg.v)"
-                  @pointerdown.stop="startLevel($event, t, seg.id)"
-                  @dblclick.stop="emit('level', t.id, seg.id, null)"
-                >
-                  <title>{{ seg.title ?? seg.v.toFixed(2) }}</title>
-                </line>
-                <text
-                  class="ztl-cval"
-                  :x="x(seg.start) + 6"
-                  :y="cy(t, seg.v) > (t.height ?? 30) / 2 ? cy(t, seg.v) - 5 : cy(t, seg.v) + 13"
-                >
-                  {{ seg.v.toFixed(2) }}
-                </text>
-              </template>
-              <template v-else>
-                <rect
-                  class="ztl-lpad"
-                  :x="x(seg.start)"
-                  :y="0"
-                  :width="Math.max(0, x(seg.end) - x(seg.start))"
-                  :height="t.height ?? 30"
-                />
-                <polygon class="ztl-carea" :points="shapeArea(t, seg)" />
-                <polyline class="ztl-cline" :points="shapeLine(t, seg)" />
-                <circle
-                  v-for="(p, i) in seg.shape ?? []"
-                  :key="'p' + i"
-                  class="ztl-cpt"
-                  :cx="shapeX(seg, p.x)"
-                  :cy="cy(t, p.y)"
-                  r="4"
-                  @pointerdown.stop="startShapePoint($event, t, seg, i)"
-                  @dblclick.stop
-                  @contextmenu.prevent.stop="removeShapePoint(t, seg, i)"
-                >
-                  <title>×{{ p.y.toFixed(2) }} at {{ Math.round(p.x * 100) }}%</title>
-                </circle>
-              </template>
-            </g>
-          </svg>
-          <div
-            v-for="item in t.items"
-            :key="item.id"
-            class="ztl-item"
-            :class="[
-              item.kind === 'marker' ? 'marker' : 'clip',
-              {
-                on: isSelected(item.id),
-                muted: item.muted,
-                thumbed: !!item.thumb,
-                ghost: item.ghost,
-                lifted: held?.id === item.id,
-              },
-            ]"
-            :style="itemStyle(item)"
-            :title="item.title ?? item.label"
-            @pointerdown="startMove($event, t, item)"
-            @contextmenu.prevent.stop="
-              emit('context', { trackId: t.id, itemId: item.id }, timeAt($event.clientX), $event)
-            "
-            @dblclick.stop="emit('open', item.id, t.id)"
-          >
-            <img v-if="item.thumb" :src="item.thumb" alt="" draggable="false" />
-            <i v-if="item.icon" class="mdi ztl-icon" :class="iconClass(item.icon)" />
-            <span v-if="item.kind !== 'marker' && item.label" class="ztl-label">
-              {{ item.label }}
-            </span>
-            <span
-              v-if="item.progress != null"
-              class="ztl-progress"
-              :style="{ width: `${Math.min(Math.max(item.progress, 0), 1) * 100}%` }"
-            />
-            <span
-              v-if="
-                item.kind !== 'marker' &&
-                (item.resize ?? 'end') !== false &&
-                item.resize !== 'start'
-              "
-              class="ztl-grip end"
-              @pointerdown.stop="startResize($event, t, item, 'end')"
-            />
-            <span
-              v-if="item.kind !== 'marker' && (item.resize === 'start' || item.resize === 'both')"
-              class="ztl-grip start"
-              @pointerdown.stop="startResize($event, t, item, 'start')"
-            />
+      <div class="ztl-grid">
+        <div ref="headsEl" class="ztl-heads">
+          <div class="ztl-corner">
+            <span class="ztl-time">{{ formatTime(playhead) }}</span>
           </div>
+          <div
+            v-for="t in tracks"
+            :key="t.id"
+            class="ztl-head"
+            :class="{
+              movable: t.movable,
+              lifted: headDrag?.id === t.id,
+              'has-actions': !!t.actions?.length,
+            }"
+            :data-track="t.id"
+            :title="t.movable ? `${t.title ?? t.label} — drag to reorder` : (t.title ?? t.label)"
+            :style="{
+              height: `${t.height ?? 30}px`,
+              transform: headDrag?.id === t.id ? `translateY(${headDrag.dy}px)` : undefined,
+              boxShadow: t.color ? `inset 3px 0 0 ${t.color}` : undefined,
+            }"
+            @pointerdown="t.movable && startHeadDrag($event, t)"
+            @contextmenu.prevent.stop="emit('context', { trackId: t.id }, playhead, $event)"
+          >
+            <img v-if="t.thumb" class="ztl-head-thumb" :src="t.thumb" alt="" draggable="false" />
+            <i v-else-if="t.icon" :class="iconClass(t.icon)" />
+            <span class="ztl-head-label">{{ t.label }}</span>
+            <span v-if="t.actions?.length" class="ztl-head-actions">
+              <button
+                v-for="a in t.actions"
+                :key="a.id"
+                type="button"
+                class="ztl-head-action"
+                :class="{ on: a.active }"
+                :title="a.title"
+                @pointerdown.stop
+                @click.stop="emit('action', t.id, a.id)"
+              >
+                <i v-if="a.icon" :class="iconClass(a.icon)" />
+                {{ a.label }}
+              </button>
+            </span>
+          </div>
+          <div
+            v-if="headDrag && headDrag.lineY !== null"
+            class="ztl-insert"
+            :style="{ top: `${headDrag.lineY}px` }"
+          />
         </div>
 
-        <div v-for="g in guides" :key="g" class="ztl-guide" :style="{ left: `${x(g)}px` }" />
-        <div v-if="snapLine != null" class="ztl-snapline" :style="{ left: `${x(snapLine)}px` }" />
-        <div class="ztl-playhead" :style="{ transform: `translateX(${x(playhead)}px)` }">
-          <span />
+        <div ref="bodyEl" class="ztl-body" :style="{ width: `${contentWidth}px` }">
+          <div
+            v-if="range"
+            class="ztl-range"
+            :style="{ left: `${x(range.start)}px`, width: `${x(range.end) - x(range.start)}px` }"
+          />
+          <div class="ztl-ruler" @pointerdown="startScrub">
+            <span
+              v-for="t in ticks"
+              :key="t.at"
+              class="ztl-tick"
+              :class="{ major: t.major }"
+              :style="{ left: `${x(t.at)}px` }"
+            >
+              <b v-if="t.major">{{ tickLabel(t.at) }}</b>
+            </span>
+          </div>
+
+          <div
+            v-for="(t, ti) in tracks"
+            :key="t.id"
+            class="ztl-track"
+            :class="{ dropping: dropTrack === t.id, zebra: ti % 2 === 0 }"
+            :style="{ height: `${t.height ?? 30}px` }"
+            @dblclick.self="emit('dblclick', t.id, timeAt($event.clientX))"
+            @contextmenu.prevent.stop="
+              emit('context', { trackId: t.id }, timeAt($event.clientX), $event)
+            "
+            @dragover="onDragOver($event, t.id)"
+            @dragleave="onDragLeave"
+            @drop="onDrop($event, t.id)"
+            @pointerdown.self="onTrackDown($event, t.id)"
+          >
+            <svg
+              v-if="t.curve"
+              class="ztl-curve"
+              :width="contentWidth"
+              :height="t.height ?? 30"
+              :style="{ '--ztl-curve': t.curve.color ?? 'var(--ztl-accent)' }"
+              @pointerdown="emit('select', `curve:${t.id}`, t.id, $event)"
+              @dblclick.stop="addCurvePoint($event, t)"
+              @contextmenu.prevent.stop="
+                emit('context', { trackId: t.id }, timeAt($event.clientX), $event)
+              "
+            >
+              <line
+                v-for="(st, i) in t.curve.steps ?? []"
+                :key="'s' + i"
+                class="ztl-cstep"
+                :x1="x(st.start) + 2"
+                :x2="x(st.end) - 2"
+                :y1="cy(t, st.v)"
+                :y2="cy(t, st.v)"
+              />
+              <line
+                v-if="t.curve.unit !== undefined"
+                class="ztl-cunit"
+                :x1="x(0)"
+                :x2="x(duration)"
+                :y1="cy(t, t.curve.unit)"
+                :y2="cy(t, t.curve.unit)"
+              />
+              <polygon class="ztl-carea" :points="curveArea(t)" />
+              <polyline class="ztl-cline" :points="curveLine(t)" />
+              <text
+                v-if="!t.curve.points.length"
+                class="ztl-cval"
+                :x="x(0) + 6"
+                :y="cy(t, t.curve.flat ?? curveRange(t).max) - 4"
+              >
+                {{ (t.curve.flat ?? curveRange(t).max).toFixed(2) }}
+              </text>
+              <text
+                v-for="(p, i) in t.curve.points"
+                :key="'v' + i"
+                class="ztl-cval"
+                text-anchor="middle"
+                :x="x(p.t)"
+                :y="cy(t, p.v) > (t.height ?? 30) / 2 ? cy(t, p.v) - 8 : cy(t, p.v) + 15"
+              >
+                {{ p.v.toFixed(2) }}
+              </text>
+              <circle
+                v-for="(p, i) in t.curve.points"
+                :key="'p' + i"
+                class="ztl-cpt"
+                :cx="x(p.t)"
+                :cy="cy(t, p.v)"
+                r="5"
+                @pointerdown.stop="startCurvePoint($event, t, i)"
+                @dblclick.stop
+                @contextmenu.prevent.stop="removeCurvePoint(t, i)"
+              >
+                <title>{{ p.v.toFixed(2) }} at {{ formatTime(p.t) }}</title>
+              </circle>
+            </svg>
+            <svg
+              v-if="t.levels"
+              class="ztl-curve ztl-levels"
+              :class="{ shaped: t.levels.mode === 'shape' }"
+              :width="contentWidth"
+              :height="t.height ?? 30"
+              :style="{ '--ztl-curve': t.levels.color ?? 'var(--ztl-accent)' }"
+              @pointerdown="emit('select', `curve:${t.id}`, t.id, $event)"
+              @contextmenu.prevent.stop="
+                emit('context', { trackId: t.id }, timeAt($event.clientX), $event)
+              "
+            >
+              <line
+                v-if="t.levels.unit !== undefined"
+                class="ztl-cunit"
+                :x1="x(0)"
+                :x2="x(duration)"
+                :y1="cy(t, t.levels.unit)"
+                :y2="cy(t, t.levels.unit)"
+              />
+              <g
+                v-for="seg in t.levels.segments"
+                :key="seg.id"
+                class="ztl-lseg"
+                :class="{
+                  inherited: t.levels.mode === 'shape' ? seg.shapeInherited : seg.inherited,
+                }"
+                @dblclick.stop="t.levels.mode === 'shape' && addShapePoint($event, t, seg)"
+              >
+                <template v-if="t.levels.mode !== 'shape'">
+                  <rect
+                    class="ztl-larea"
+                    :x="x(seg.start) + 1"
+                    :y="cy(t, seg.v)"
+                    :width="Math.max(0, x(seg.end) - x(seg.start) - 2)"
+                    :height="Math.max(0, (t.height ?? 30) - cy(t, seg.v))"
+                  />
+                  <line
+                    class="ztl-lbar"
+                    :x1="x(seg.start) + 1"
+                    :x2="x(seg.end) - 1"
+                    :y1="cy(t, seg.v)"
+                    :y2="cy(t, seg.v)"
+                  />
+                  <line
+                    class="ztl-lhit"
+                    :x1="x(seg.start) + 1"
+                    :x2="x(seg.end) - 1"
+                    :y1="cy(t, seg.v)"
+                    :y2="cy(t, seg.v)"
+                    @pointerdown.stop="startLevel($event, t, seg.id)"
+                    @dblclick.stop="emit('level', t.id, seg.id, null)"
+                  >
+                    <title>{{ seg.title ?? seg.v.toFixed(2) }}</title>
+                  </line>
+                  <text
+                    class="ztl-cval"
+                    :x="x(seg.start) + 6"
+                    :y="cy(t, seg.v) > (t.height ?? 30) / 2 ? cy(t, seg.v) - 5 : cy(t, seg.v) + 13"
+                  >
+                    {{ seg.v.toFixed(2) }}
+                  </text>
+                </template>
+                <template v-else>
+                  <rect
+                    class="ztl-lpad"
+                    :x="x(seg.start)"
+                    :y="0"
+                    :width="Math.max(0, x(seg.end) - x(seg.start))"
+                    :height="t.height ?? 30"
+                  />
+                  <polygon class="ztl-carea" :points="shapeArea(t, seg)" />
+                  <polyline class="ztl-cline" :points="shapeLine(t, seg)" />
+                  <circle
+                    v-for="(p, i) in seg.shape ?? []"
+                    :key="'p' + i"
+                    class="ztl-cpt"
+                    :cx="shapeX(seg, p.x)"
+                    :cy="cy(t, p.y)"
+                    r="4"
+                    @pointerdown.stop="startShapePoint($event, t, seg, i)"
+                    @dblclick.stop
+                    @contextmenu.prevent.stop="removeShapePoint(t, seg, i)"
+                  >
+                    <title>×{{ p.y.toFixed(2) }} at {{ Math.round(p.x * 100) }}%</title>
+                  </circle>
+                </template>
+              </g>
+            </svg>
+            <div
+              v-for="item in t.items"
+              :key="item.id"
+              class="ztl-item"
+              :class="[
+                item.kind === 'marker' ? 'marker' : 'clip',
+                {
+                  on: isSelected(item.id),
+                  muted: item.muted,
+                  thumbed: !!item.thumb,
+                  ghost: item.ghost,
+                  lifted: held?.id === item.id,
+                },
+              ]"
+              :style="itemStyle(item)"
+              :title="item.title ?? item.label"
+              @pointerdown="startMove($event, t, item)"
+              @contextmenu.prevent.stop="
+                emit('context', { trackId: t.id, itemId: item.id }, timeAt($event.clientX), $event)
+              "
+              @dblclick.stop="emit('open', item.id, t.id)"
+            >
+              <img v-if="item.thumb" :src="item.thumb" alt="" draggable="false" />
+              <i v-if="item.icon" class="mdi ztl-icon" :class="iconClass(item.icon)" />
+              <span v-if="item.kind !== 'marker' && item.label" class="ztl-label">
+                {{ item.label }}
+              </span>
+              <span
+                v-if="item.tail && item.end != null && item.end > item.start"
+                class="ztl-tail"
+                :style="{
+                  width: `${Math.min(1, item.tail / (item.end - item.start)) * 100}%`,
+                }"
+                :title="item.tailLabel"
+              >
+                <span v-if="item.tailLabel" class="ztl-tail-label">{{ item.tailLabel }}</span>
+              </span>
+              <template v-if="item.kind !== 'marker' && item.end != null && item.end > item.start">
+                <span
+                  v-if="item.fadeIn"
+                  class="ztl-fade in"
+                  :style="{ width: `${Math.min(1, item.fadeIn / (item.end - item.start)) * 100}%` }"
+                />
+                <span
+                  v-if="item.fadeOut"
+                  class="ztl-fade out"
+                  :style="{
+                    width: `${Math.min(1, item.fadeOut / (item.end - item.start)) * 100}%`,
+                  }"
+                />
+                <template v-if="item.fadeable">
+                  <span
+                    class="ztl-fadeknob in"
+                    :class="{ set: item.fadeIn }"
+                    :style="{
+                      left: `${Math.min(1, (item.fadeIn ?? 0) / (item.end - item.start)) * 100}%`,
+                    }"
+                    :title="`Fade in${item.fadeIn ? ` ${item.fadeIn.toFixed(2)}s` : ''} — drag sideways`"
+                    @pointerdown.stop="startFade($event, t, item, 'in')"
+                  />
+                  <span
+                    class="ztl-fadeknob out"
+                    :class="{ set: item.fadeOut }"
+                    :style="{
+                      right: `${Math.min(1, (item.fadeOut ?? 0) / (item.end - item.start)) * 100}%`,
+                    }"
+                    :title="`Fade out${item.fadeOut ? ` ${item.fadeOut.toFixed(2)}s` : ''} — drag sideways`"
+                    @pointerdown.stop="startFade($event, t, item, 'out')"
+                  />
+                </template>
+              </template>
+              <span
+                v-if="item.progress != null"
+                class="ztl-progress"
+                :style="{ width: `${Math.min(Math.max(item.progress, 0), 1) * 100}%` }"
+              />
+              <span
+                v-if="
+                  item.kind !== 'marker' &&
+                  (item.resize ?? 'end') !== false &&
+                  item.resize !== 'start'
+                "
+                class="ztl-grip end"
+                @pointerdown.stop="startResize($event, t, item, 'end')"
+              />
+              <span
+                v-if="item.kind !== 'marker' && (item.resize === 'start' || item.resize === 'both')"
+                class="ztl-grip start"
+                @pointerdown.stop="startResize($event, t, item, 'start')"
+              />
+            </div>
+          </div>
+
+          <div v-for="g in guides" :key="g" class="ztl-guide" :style="{ left: `${x(g)}px` }" />
+          <div v-if="snapLine != null" class="ztl-snapline" :style="{ left: `${x(snapLine)}px` }" />
+          <div class="ztl-playhead" :style="{ transform: `translateX(${x(playhead)}px)` }">
+            <span />
+          </div>
         </div>
       </div>
     </div>
@@ -303,6 +351,7 @@
 </template>
 
 <script setup lang="ts">
+import '../lib/motion.css'
 // ZenTimeline — a small multi-track editor timeline. Tracks are rows of items on one clock:
 // clips (start → end, resizable at either edge) and markers (a point, often a thumbnail). A ruler
 // to click or drag-scrub the playhead, ctrl/⌘ + wheel to zoom, guides for boundaries that cross
@@ -337,6 +386,14 @@ export interface TimelineItem {
   commit?: 'live' | 'drop'
   /** 0–1: a progress fill along the clip's bottom edge (a render, an upload…). */
   progress?: number
+  /** Seconds at the clip's end drawn hatched — a held last frame, say — with `tailLabel` on it. */
+  tail?: number
+  tailLabel?: string
+  /** Seconds it fades in over at its start and out over at its end, drawn as ramps. */
+  fadeIn?: number
+  fadeOut?: number
+  /** Show handles at its top corners to drag its fades (emits `fade`). */
+  fadeable?: boolean
   /** Items with the same group move together (a video and its sound): dragging one shows the others
    *  following, and they never snap to each other. */
   group?: string
@@ -455,6 +512,8 @@ const emit = defineEmits<{
   shape: [trackId: string, segmentId: string, points: { x: number; y: number }[]]
   /** One of a track header's `actions` was clicked. */
   action: [trackId: string, actionId: string]
+  /** A clip's fade handle was dragged: its fade in or out, in seconds. */
+  fade: [itemId: string, edge: 'in' | 'out', seconds: number]
 }>()
 
 // --- reordering tracks by their headers ---------------------------------------------------------
@@ -474,8 +533,7 @@ function startHeadDrag(e: PointerEvent, track: TimelineTrack) {
   // Work in the headers' own coordinates: the timeline may be drawn scaled (a node on a zoomed
   // canvas) and its tracks scrolled, and screen pixels are neither.
   const scale = () => heads.getBoundingClientRect().height / Math.max(1, heads.offsetHeight)
-  const local = (clientY: number) =>
-    (clientY - heads.getBoundingClientRect().top) / scale() + heads.scrollTop
+  const local = (clientY: number) => (clientY - heads.getBoundingClientRect().top) / scale()
   const startY = local(e.clientY)
   let moved = false
   const move = (m: PointerEvent) => {
@@ -483,10 +541,11 @@ function startHeadDrag(e: PointerEvent, track: TimelineTrack) {
     if (!moved && Math.abs(y - startY) < 4) return
     moved = true
     // Near the top or bottom edge, scroll the tracks so a far target can be reached.
-    const view = (m.clientY - heads.getBoundingClientRect().top) / scale()
+    const sc = scroller.value
+    const view = sc ? (m.clientY - sc.getBoundingClientRect().top) / scale() : 0
     const edge = 22
-    if (scroller.value && view < edge + 24) scroller.value.scrollTop -= 8
-    else if (scroller.value && view > heads.clientHeight - edge) scroller.value.scrollTop += 8
+    if (sc && view < edge + 24) sc.scrollTop -= 8
+    else if (sc && view > sc.clientHeight - edge) sc.scrollTop += 8
     const rows = [...heads.querySelectorAll<HTMLElement>('.ztl-head.movable')]
     const next = rows.find(
       (h) => h.dataset.track !== track.id && y < h.offsetTop + h.offsetHeight / 2,
@@ -515,6 +574,8 @@ function startHeadDrag(e: PointerEvent, track: TimelineTrack) {
 }
 
 const scroller = ref<HTMLElement | null>(null)
+/** The tracks' content, beside the headers: where time 0 (less PAD) is on screen. */
+const bodyEl = ref<HTMLElement | null>(null)
 const viewWidth = ref(600)
 const scrollX = ref(0)
 const dropTrack = ref<string | null>(null)
@@ -526,7 +587,10 @@ const snapLine = ref<number | null>(null)
 let ro: ResizeObserver | null = null
 onMounted(() => {
   if (!scroller.value || typeof ResizeObserver === 'undefined') return
-  ro = new ResizeObserver(([e]) => (viewWidth.value = e?.contentRect.width ?? viewWidth.value))
+  // The headers sit inside the scroller, sticky at its left: the tracks see what's beside them.
+  ro = new ResizeObserver(([e]) => {
+    if (e) viewWidth.value = Math.max(1, e.contentRect.width - props.headWidth)
+  })
   ro.observe(scroller.value)
 })
 onBeforeUnmount(() => ro?.disconnect())
@@ -538,16 +602,7 @@ const contentWidth = computed(() => Math.max(viewWidth.value, props.duration * p
 
 function onScroll() {
   const el = scroller.value
-  if (!el) return
-  scrollX.value = el.scrollLeft
-  if (headsEl.value) headsEl.value.scrollTop = el.scrollTop
-}
-/** The headers don't scroll on their own; the wheel over them scrolls the tracks. */
-function onHeadsWheel(e: WheelEvent) {
-  const el = scroller.value
-  if (!el || e.ctrlKey || e.metaKey || e.altKey || el.scrollHeight <= el.clientHeight) return
-  e.preventDefault()
-  el.scrollTop += e.deltaY
+  if (el) scrollX.value = el.scrollLeft
 }
 
 // --- overlay scrollbar ----------------------------------------------------------------------------
@@ -810,10 +865,9 @@ function startShapePoint(e: PointerEvent, t: TimelineTrack, seg: Segment, i: num
 }
 
 function timeAt(clientX: number): number {
-  const el = scroller.value
-  if (!el) return 0
-  const rect = el.getBoundingClientRect()
-  const t = ((clientX - rect.left) / screenScale() + el.scrollLeft - PAD) / pps.value
+  const body = bodyEl.value
+  if (!body) return 0
+  const t = ((clientX - body.getBoundingClientRect().left) / screenScale() - PAD) / pps.value
   return Math.min(Math.max(t, 0), props.duration)
 }
 
@@ -920,6 +974,15 @@ function startMove(e: PointerEvent, track: TimelineTrack, item: TimelineItem): v
   drag(e, (t, ev) => emit('move', item.id, track.id, change(place(t, ev))))
 }
 
+function startFade(e: PointerEvent, track: TimelineTrack, item: TimelineItem, edge: 'in' | 'out') {
+  if (e.button !== 0 || item.end == null) return
+  emit('select', item.id, track.id, e)
+  const len = item.end - item.start
+  drag(e, (t) => {
+    const seconds = edge === 'in' ? t - item.start : item.end! - t
+    emit('fade', item.id, edge, Math.min(Math.max(0, Math.round(seconds * 100) / 100), len))
+  })
+}
 function startResize(
   e: PointerEvent,
   track: TimelineTrack,
@@ -958,7 +1021,8 @@ function onWheel(e: WheelEvent): void {
   zoom.value = Math.abs(next - fit.value) < 0.5 ? 0 : next
   requestAnimationFrame(() => {
     const rect = el.getBoundingClientRect()
-    el.scrollLeft = PAD + anchor * pps.value - (e.clientX - rect.left) / screenScale()
+    el.scrollLeft =
+      PAD + anchor * pps.value - ((e.clientX - rect.left) / screenScale() - props.headWidth)
   })
 }
 
@@ -984,8 +1048,8 @@ function follow(): void {
   const el = scroller.value
   if (!el) return
   const px = x(playhead.value)
-  if (px < el.scrollLeft + 20 || px > el.scrollLeft + el.clientWidth - 40)
-    el.scrollLeft = px - el.clientWidth * 0.2
+  if (px < el.scrollLeft + 20 || px > el.scrollLeft + viewWidth.value - 40)
+    el.scrollLeft = px - viewWidth.value * 0.2
 }
 
 defineExpose({ timeAt, follow })
@@ -1001,7 +1065,7 @@ defineExpose({ timeAt, follow })
   --ztl-row: color-mix(in srgb, var(--zen-text, #e5e5ea) 3%, transparent);
   --ztl-line: color-mix(in srgb, var(--zen-text, #e5e5ea) 9%, transparent);
   --ztl-accent: var(--zen-accent, #6366f1);
-  --ztl-playhead: #ff5a4f;
+  --ztl-playhead: var(--zen-playhead, #ff5a4f);
   display: flex;
   min-width: 0;
   overflow: hidden;
@@ -1011,12 +1075,21 @@ defineExpose({ timeAt, follow })
   user-select: none;
   touch-action: none;
 }
+/* The headers and the tracks are one scroll area, so they move together under the browser's own
+   scrolling: the headers are a column stuck to its left, the ruler a row stuck to its top. */
+.ztl-grid {
+  display: flex;
+  width: max-content;
+  min-width: 100%;
+}
 .ztl-heads {
-  position: relative;
+  position: sticky;
+  left: 0;
+  z-index: 8;
   flex: none;
-  overflow: hidden;
   width: var(--ztl-head);
   border-right: 1px solid var(--ztl-line);
+  background: var(--ztl-bg);
 }
 .ztl-corner {
   position: sticky;
@@ -1128,7 +1201,7 @@ defineExpose({ timeAt, follow })
   text-overflow: ellipsis;
 }
 /* Scrolls both ways: sideways when zoomed in, up and down when there are more tracks than the
-   timeline's height shows. The track headers follow its vertical scroll (onScroll). */
+   timeline's height shows — headers included. */
 .ztl-scroll {
   position: relative;
   flex: 1;
@@ -1235,14 +1308,40 @@ defineExpose({ timeAt, follow })
   background: var(--ztl-accent);
   content: '';
 }
+.ztl-tail {
+  position: absolute;
+  top: 0;
+  right: 0;
+  bottom: 0;
+  display: flex;
+  align-items: flex-end;
+  justify-content: center;
+  overflow: hidden;
+  border-left: 1px dashed color-mix(in srgb, var(--zen-text, #e5e5ea) 45%, transparent);
+  background: repeating-linear-gradient(
+    -45deg,
+    color-mix(in srgb, var(--zen-text, #e5e5ea) 14%, transparent) 0 4px,
+    transparent 4px 9px
+  );
+  pointer-events: none;
+}
+.ztl-tail-label {
+  padding: 0 4px 2px;
+  overflow: hidden;
+  color: var(--zen-text, #e5e5ea);
+  font-size: 10px;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+  opacity: 0.85;
+}
 .ztl-progress {
   position: absolute;
   bottom: 0;
   left: 0;
   height: 3px;
   border-radius: 0 2px 2px 0;
-  background: #ff5a5f;
-  transition: width 0.25s ease;
+  background: var(--ztl-playhead);
+  transition: width var(--zen-dur, 0.2s) ease;
   pointer-events: none;
 }
 .ztl-hbar {
@@ -1259,13 +1358,14 @@ defineExpose({ timeAt, follow })
   bottom: 2px;
   border-radius: 3px;
   background: color-mix(in srgb, var(--zen-text, #e5e5ea) 22%, transparent);
-  transition: background 0.12s;
+  transition: background var(--zen-dur-fast, 0.12s);
 }
 .ztl-hbar:hover .ztl-thumb {
   background: color-mix(in srgb, var(--zen-text, #e5e5ea) 38%, transparent);
 }
 .ztl-body {
   position: relative;
+  flex: none;
 }
 .ztl-ruler {
   position: sticky;
@@ -1371,6 +1471,53 @@ defineExpose({ timeAt, follow })
   font-size: 12px;
   opacity: 0.85;
 }
+/* A fade: the faded part darkened above a ramp from its edge to where it's fully in. */
+.ztl-fade {
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  pointer-events: none;
+}
+.ztl-fade.in {
+  left: 0;
+  background:
+    linear-gradient(
+      to top right,
+      transparent calc(50% - 0.75px),
+      rgb(255 255 255 / 70%) 50%,
+      transparent calc(50% + 0.75px)
+    ),
+    linear-gradient(to top right, transparent 50%, rgb(0 0 0 / 45%) 50%);
+}
+.ztl-fade.out {
+  right: 0;
+  background:
+    linear-gradient(
+      to top left,
+      transparent calc(50% - 0.75px),
+      rgb(255 255 255 / 70%) 50%,
+      transparent calc(50% + 0.75px)
+    ),
+    linear-gradient(to top left, transparent 50%, rgb(0 0 0 / 45%) 50%);
+}
+.ztl-fadeknob {
+  position: absolute;
+  top: 1px;
+  z-index: 2;
+  width: 9px;
+  height: 9px;
+  margin: 0 -4.5px;
+  border: 1px solid rgb(0 0 0 / 55%);
+  border-radius: 50%;
+  background: #fff;
+  cursor: ew-resize;
+  opacity: 0;
+  transition: opacity var(--zen-dur-fast, 0.12s);
+}
+.ztl-fadeknob.set,
+.ztl-item:hover .ztl-fadeknob {
+  opacity: 1;
+}
 .ztl-grip {
   position: absolute;
   top: 0;
@@ -1393,7 +1540,7 @@ defineExpose({ timeAt, follow })
   width: 1px;
   background: rgb(255 255 255 / 55%);
   opacity: 0;
-  transition: opacity 0.12s;
+  transition: opacity var(--zen-dur-fast, 0.12s);
 }
 .ztl-item:hover .ztl-grip::after {
   opacity: 1;
@@ -1404,7 +1551,7 @@ defineExpose({ timeAt, follow })
   height: 22px;
   overflow: hidden;
   transform: translate(-50%, -50%);
-  border: 2px solid var(--ztl-color, #f5c542);
+  border: 2px solid var(--ztl-color, var(--zen-marker, #f5c542));
   border-radius: 5px;
   background: var(--ztl-bg);
   cursor: grab;
@@ -1413,7 +1560,7 @@ defineExpose({ timeAt, follow })
   width: 12px;
   height: 12px;
   border-radius: 2px;
-  background: var(--ztl-color, #f5c542);
+  background: var(--ztl-color, var(--zen-marker, #f5c542));
   transform: translate(-50%, -50%) rotate(45deg);
 }
 .ztl-item.marker.on {
