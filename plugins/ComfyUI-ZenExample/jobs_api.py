@@ -1,8 +1,9 @@
 """Server-side test jobs for the Job Lab panel.
 
-POST /zenexample/jobs/{kind} starts a background task that reports progress with the
-`zenkit.job` websocket event, the protocol ZenKit's Jobs widget listens for. Each event
-carries the job's full state, so a client that connects mid-job still sees it correctly:
+POST /zenexample/jobs/{kind} (behind `request_guard.request_allowed`, like every route that
+changes state) starts a background task that reports progress with the `zenkit.job` websocket
+event, the protocol ZenKit's Jobs widget listens for. Each event carries the job's full state, so
+a client that connects mid-job still sees it correctly:
 
     {"id", "name", "status": "start" | "progress" | "done" | "error",
      "current", "total" (0 = indeterminate), "message", "source"}
@@ -15,6 +16,8 @@ import itertools
 import random
 
 from aiohttp import web
+
+from .request_guard import request_allowed
 
 try:
     from server import PromptServer
@@ -77,6 +80,8 @@ if _routes is not None:
 
     @_routes.post("/zenexample/jobs/{kind}")
     async def _start(request: web.Request) -> web.Response:
+        if (denied := request_allowed(request)) is not None:
+            return denied
         make = KINDS.get(request.match_info["kind"])
         if make is None:
             return web.json_response({"error": "unknown kind", "kinds": list(KINDS)}, status=404)

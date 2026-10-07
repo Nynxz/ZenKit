@@ -253,20 +253,9 @@
             <template v-else-if="name === 'ZenModal / ZenPopover / ZenContextMenu'">
               <div class="line">
                 <ZenButton @click="modal = true">Open modal</ZenButton>
-                <ZenButton ref="popAnchor" @click="pop = !pop">Popover</ZenButton>
+                <ZenButton @click="togglePop">Popover</ZenButton>
                 <ZenButton @click="menuAt">Context menu</ZenButton>
               </div>
-              <ZenModal v-model:open="modal" title="A modal" width="420px">
-                <p>Modal body. Escape or the × closes it.</p>
-                <template #footer>
-                  <ZenButton @click="modal = false">Cancel</ZenButton>
-                  <ZenButton variant="primary" @click="modal = false">OK</ZenButton>
-                </template>
-              </ZenModal>
-              <ZenPopover v-model:open="pop" :anchor="popEl">
-                <div class="popbody">A popover, anchored to its button.</div>
-              </ZenPopover>
-              <ZenContextMenu ref="menu" :items="MENU" />
             </template>
 
             <template v-else-if="name === 'JsonTree'">
@@ -284,6 +273,19 @@
         </div>
       </section>
     </div>
+
+    <!-- Outside the specimen loop: a template ref inside v-for is an array, not the component. -->
+    <ZenModal v-model:open="modal" title="A modal" width="420px">
+      <p>Modal body. Escape or the × closes it.</p>
+      <template #footer>
+        <ZenButton @click="modal = false">Cancel</ZenButton>
+        <ZenButton variant="primary" @click="modal = false">OK</ZenButton>
+      </template>
+    </ZenModal>
+    <ZenPopover v-model:open="pop" :anchor="popEl">
+      <div class="popbody">A popover, anchored to its button.</div>
+    </ZenPopover>
+    <ZenContextMenu ref="menu" :items="MENU" />
   </ZenView>
 </template>
 
@@ -427,8 +429,11 @@ const curve = ref<CurvePoint[]>([
 const accordion = ref<string | null>('a')
 const modal = ref(false)
 const pop = ref(false)
-const popAnchor = ref<{ $el?: HTMLElement } | null>(null)
-const popEl = computed(() => popAnchor.value?.$el ?? null)
+const popEl = ref<HTMLElement | null>(null)
+function togglePop(e: MouseEvent) {
+  popEl.value = e.currentTarget as HTMLElement
+  pop.value = !pop.value
+}
 const menu = ref<InstanceType<typeof ZenContextMenu> | null>(null)
 const MENU: ContextMenuItem[] = [
   { heading: 'Clip' },
