@@ -52,7 +52,12 @@
           <ZenToggleGroup v-model="sort" :options="SORTS" />
           <ZenToggleGroup v-model="size" :options="SIZES" />
         </div>
-        <div ref="gridEl" class="zmp-grid zen-scroll" :style="grid.containerStyle.value">
+        <div
+          ref="gridEl"
+          class="zmp-grid zen-scroll"
+          :style="grid.containerStyle.value"
+          @scroll.passive="onGridScroll"
+        >
           <div :style="grid.padTop.value" />
           <button
             v-for="(it, i) in shownCards"
@@ -63,13 +68,14 @@
             :title="it.ref"
             @click="onCard(it, grid.start.value + i, $event)"
             @dblclick="pickNow(it)"
-            @mouseenter="hover = it.ref"
-            @mouseleave="hover = ''"
+            @mouseenter="hoverStart(it.ref)"
+            @mouseleave="hoverEnd($event)"
           >
             <span class="zmp-thumb">
               <video
                 v-if="it.kind === 'video' && hover === it.ref"
                 :src="it.url"
+                preload="metadata"
                 muted
                 autoplay
                 loop
@@ -86,7 +92,8 @@
               </span>
             </span>
             <span class="zmp-name">{{ it.filename }}</span>
-            <span v-if="folder === null && it.folder" class="zmp-dir">{{ it.folder }}</span>
+            <!-- Every card has the line, empty or not, so all rows are one height. -->
+            <span v-if="folder === null" class="zmp-dir">{{ it.folder || '\u00a0' }}</span>
           </button>
           <div :style="grid.padBottom.value" />
           <div v-if="state === 'loading'" class="zmp-empty">
@@ -256,6 +263,31 @@ const size = ref('m')
 const picked = ref<string[]>([])
 const focusRef = ref('')
 const hover = ref('')
+// A video plays on a card only once the pointer rests on it: scrolling under a still pointer
+// passes it over every card, and each one would start loading its whole video.
+let hoverTimer = 0
+let scrolledAt = 0
+function hoverStart(ref: string) {
+  window.clearTimeout(hoverTimer)
+  hoverTimer = window.setTimeout(() => {
+    if (performance.now() - scrolledAt > 200) hover.value = ref
+  }, 250)
+}
+function onGridScroll() {
+  scrolledAt = performance.now()
+  window.clearTimeout(hoverTimer)
+  if (hover.value) hover.value = ''
+}
+function hoverEnd(e: MouseEvent) {
+  window.clearTimeout(hoverTimer)
+  // Let the decoder go now, not whenever the element is collected.
+  const video = (e.currentTarget as HTMLElement | null)?.querySelector('video')
+  if (video) {
+    video.removeAttribute('src')
+    video.load()
+  }
+  hover.value = ''
+}
 const dims = ref('')
 const dropping = ref(false)
 const gridEl = ref<HTMLElement | null>(null)

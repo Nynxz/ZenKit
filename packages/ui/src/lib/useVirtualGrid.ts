@@ -55,6 +55,9 @@ export function useVirtualGrid(
 
   const containerStyle = computed(() => ({
     gridTemplateColumns: `repeat(${columns.value}, minmax(0, 1fr))`,
+    // The spacers change height as you scroll; the browser's scroll anchoring would answer each
+    // change by moving the scroll position, which re-renders the slice, and so on.
+    overflowAnchor: 'none' as const,
   }))
   /** Spacers standing in for the rows above and below the rendered slice. */
   const padTop = computed(() => ({
@@ -67,11 +70,15 @@ export function useVirtualGrid(
     height: `${Math.max(0, (rows.value - lastRow.value) * step.value - gap)}px`,
   }))
 
-  /** Re-measure a row from the first rendered card (call after the slice renders). */
+  /** Re-measure a row from the tallest rendered card (call after the slice renders). It only
+   *  grows until the column width changes: measuring whichever card came first flipped between
+   *  shorter and taller cards as you scrolled, moving every row each time. */
   function measure(cardSelector: string) {
-    const card = scroller.value?.querySelector<HTMLElement>(cardSelector)
-    if (card && card.offsetHeight && Math.abs(card.offsetHeight - measured.value) > 0.5)
-      measured.value = card.offsetHeight
+    let tallest = 0
+    scroller.value?.querySelectorAll<HTMLElement>(cardSelector).forEach((card) => {
+      tallest = Math.max(tallest, card.offsetHeight)
+    })
+    if (tallest > measured.value + 0.5) measured.value = tallest
   }
   /** Scroll so item `index` is in view. */
   function reveal(index: number) {
