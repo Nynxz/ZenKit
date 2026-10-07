@@ -1,10 +1,18 @@
 import { app } from '@comfy/app'
 import { computed, ref, watch } from 'vue'
 
-import type { AgentEvent, StoredMessage, ThreadSummary, ToolResult } from './api'
+import type {
+  AgentEvent,
+  Decision,
+  StoredMessage,
+  ThreadSummary,
+  ToolResult,
+  ToolStatus,
+} from './api'
 import { agentApi, onAgentEvent } from './api'
 import { capabilityTools } from './capabilityTools'
 import { beginTurn, endTurn, runTool } from './graphTools'
+import { cancelRuns } from './runs'
 import type { Attachment } from './vision'
 import { snapshot } from './vision'
 
@@ -18,8 +26,10 @@ export type Item =
       callId: string
       name: string
       args: Record<string, unknown> | null
-      status: 'running' | 'done' | 'error'
+      status: ToolStatus
       result?: ToolResult
+      /** While status is `approval`: the token the user's decision is sent with. */
+      approval?: { token: string; sending: boolean }
     }
   | { kind: 'run'; promptIds: string[] }
   | { kind: 'notice'; text: string }
@@ -58,7 +68,7 @@ function itemsFrom(messages: StoredMessage[]): Item[] {
       if (!item) continue
       try {
         item.result = JSON.parse(message.content) as ToolResult
-        item.status = item.result.ok ? 'done' : 'error'
+        item.status = item.result.ok ? 'done' : item.result.declined ? 'declined' : 'error'
       } catch {
         item.status = 'error'
       }
@@ -95,6 +105,36 @@ function createConversation() {
   // The turn's abort signal, handed to the capabilities its tools run: stopping the turn (or its
   // end) cancels whatever they are still doing.
   let turnAbort = new AbortController()
+  // Runs this turn queued, so Stop can take them back off ComfyUI's queue.
+  let turnRuns: string[] = []
+  /** Tool calls waiting for the user's approval, oldest first. */
+  const awaiting = computed(() =>
+    items.value.filter(
+      (item): item is Extract<Item, { kind: 'tool' }> =>
+        item.kind === 'tool' && item.status === 'approval',
+    ),
+  )
+
+  const toolItem = (callId: string) =>
+    items.value.find(
+      (item): item is Extract<Item, { kind: 'tool' }> =>
+        item.kind === 'tool' && item.callId === callId,
+    )
+
+  /** Close every call still open when a turn ends or is stopped. */
+  function settleOpenCalls(reason: string): void {
+    for (const item of items.value) {
+      if (item.kind !== 'tool') continue
+      if (item.status === 'approval') {
+        item.status = 'declined'
+        item.result = { ok: false, declined: true, error: reason }
+        item.approval = undefined
+      } else if (item.status === 'running') {
+        item.status = 'error'
+        item.result = { ok: false, error: reason }
+      }
+    }
+  }
 
   function appendStream(kind: 'text' | 'thinking', delta: string): void {
     const last = items.value.at(-1)
@@ -106,10 +146,7 @@ function createConversation() {
     if (event.turn_id !== turnId.value) return
     if (event.type === 'text' || event.type === 'thinking') appendStream(event.type, event.delta)
     else if (event.type === 'tool') {
-      const existing = items.value.find(
-        (item): item is Extract<Item, { kind: 'tool' }> =>
-          item.kind === 'tool' && item.callId === event.call_id,
-      )
+      const existing = toolItem(event.call_id)
       const next = {
         kind: 'tool' as const,
         callId: event.call_id,
@@ -117,25 +154,46 @@ function createConversation() {
         args: event.args,
         status: event.status,
         result: event.result,
+        approval: undefined,
       }
       if (existing) Object.assign(existing, next)
       else items.value.push(next)
     } else if (event.type === 'notice') {
       items.value.push({ kind: 'notice', text: event.text })
+    } else if (event.type === 'approval_request') {
+      // The turn waits on the server until the user answers the card (AgentSteps).
+      const approval = { token: event.token, sending: false }
+      const existing = toolItem(event.call_id)
+      if (existing) Object.assign(existing, { status: 'approval', approval })
+      else
+        items.value.push({
+          kind: 'tool',
+          callId: event.call_id,
+          name: event.name,
+          args: event.args,
+          status: 'approval',
+          approval,
+        })
     } else if (event.type === 'tool_request') {
       // Every run one call queues shares a card, so a batch reads as one job.
       let card: Extract<Item, { kind: 'run' }> | null = null
+      const signal = turnAbort.signal
       void runTool(event.name, event.args, {
-        signal: turnAbort.signal,
+        signal,
         onRun: (promptId) => {
+          turnRuns.push(promptId)
+          if (signal.aborted) void stopRuns([promptId])
           if (card) return void card.promptIds.push(promptId)
           items.value.push({ kind: 'run', promptIds: [promptId] })
           card = items.value.at(-1) as Extract<Item, { kind: 'run' }>
         },
-      }).then((result) => agentApi.toolResult(event.call_id, result))
+      })
+        .then((result) => agentApi.toolResult(event.token, result))
+        .catch(() => undefined) // the turn was stopped meanwhile
     } else if (event.type === 'turn_end') {
       turnId.value = null
       turnAbort.abort()
+      settleOpenCalls(event.status === 'cancelled' ? 'Stopped.' : 'The reply ended.')
       endTurn()
       if (event.error) items.value.push({ kind: 'error', text: event.error })
       void refreshThreads()
@@ -155,6 +213,7 @@ function createConversation() {
     items.value.push({ kind: 'user', text: content, attachments: attached })
     turnId.value = crypto.randomUUID()
     turnAbort = new AbortController()
+    turnRuns = []
     beginTurn()
     const workflow = (app.graph as { serialize(): unknown }).serialize()
     try {
@@ -176,6 +235,8 @@ function createConversation() {
       if (!threadId.value)
         title.value = (content || attached[0]?.label || 'Attached media').slice(0, 80)
       threadId.value = sent.thread_id
+      // The server keeps the id this browser chose unless it was unusable.
+      if (turnId.value !== null) turnId.value = sent.turn_id
     } catch (error) {
       turnId.value = null
       items.value.push({
@@ -197,9 +258,46 @@ function createConversation() {
     attachments.value = attachments.value.filter((a) => a.ref !== ref)
   }
 
+  /** Answer an approval card. The server sends the call on to run, or tells the model no. */
+  async function decide(callId: string, decision: Decision): Promise<void> {
+    const item = toolItem(callId)
+    const approval = item?.approval
+    if (!item || !approval || approval.sending) return
+    approval.sending = true
+    try {
+      await agentApi.decide(approval.token, decision)
+      if (item.status === 'approval') item.status = decision === 'deny' ? 'declined' : 'running'
+      item.approval = undefined
+    } catch (error) {
+      approval.sending = false
+      items.value.push({
+        kind: 'error',
+        text: `Couldn't send your answer: ${error instanceof Error ? error.message : String(error)}`,
+      })
+    }
+  }
+
+  /** Report failed stop requests without pretending the runs were cancelled. */
+  async function stopRuns(ids: string[]): Promise<void> {
+    const failed = await cancelRuns(ids)
+    if (!failed.length) return
+    turnRuns.push(...failed.filter((id) => !turnRuns.includes(id)))
+    items.value.push({
+      kind: 'error',
+      text: `Couldn't stop ${failed.length} run${failed.length === 1 ? '' : 's'}. They may still execute; use ComfyUI's queue controls to stop them.`,
+    })
+  }
+
+  /** Stop the turn, pending approvals and runs it queued. */
   async function stop(): Promise<void> {
     turnAbort.abort()
-    if (turnId.value) await agentApi.cancel(turnId.value).catch(() => undefined)
+    settleOpenCalls('Stopped.')
+    const queued = turnRuns
+    turnRuns = []
+    await Promise.all([
+      stopRuns(queued),
+      turnId.value ? agentApi.cancel(turnId.value).catch(() => undefined) : undefined,
+    ])
   }
 
   async function open(id: string): Promise<void> {
@@ -244,8 +342,10 @@ function createConversation() {
     detach,
     items,
     busy,
+    awaiting,
     threads,
     send,
+    decide,
     stop,
     open,
     newChat,

@@ -173,29 +173,48 @@ TOOLS = [
     ),
 ]
 
-# How long the browser has to answer each tool; a run can take minutes.
+# How long the browser has to answer each tool; a run can take minutes. A turn's own deadline
+# (agent.TURN_SECONDS) bounds these too.
 TOOL_TIMEOUTS = {"queue_prompt": 3600, "wait_for_runs": 3600}
 
-
+# Tools that only read, which run without asking. Everything else (graph edits, runs, loading
+# media into a node, and any capability that doesn't declare itself read-only) waits for the
+# user's approval in the panel.
+READ_TOOLS = {"read_workflow", "find_models", "find_node_types", "check_layout", "view_layout", "wait_for_runs", "look_at"}
 CAPABILITY_TIMEOUT = 300
 _TOOL_NAME = re.compile(r"^[A-Za-z0-9_-]{1,64}$")
 
 
 def capability_tools(declared: object) -> tuple[list[dict], set[str]]:
     """Tools for the capabilities the browser has registered (sent with each message), and the
-    names of those that change things. Malformed entries and clashes with built-ins are dropped."""
+    names of those that may change things: declared `write`, or undeclared and not one of
+    ZenKit's known readers. Malformed entries and clashes with built-ins are dropped."""
     builtin = {t["function"]["name"] for t in TOOLS}
     tools: list[dict] = []
     writes: set[str] = set()
-    for item in declared if isinstance(declared, list) else []:
+    for item in (declared if isinstance(declared, list) else [])[:200]:
         if not isinstance(item, dict):
             continue
         name, description, params = item.get("name"), item.get("description"), item.get("parameters")
         if not isinstance(name, str) or not _TOOL_NAME.match(name) or name in builtin or not isinstance(description, str):
             continue
         schema = params if isinstance(params, dict) and params.get("type") == "object" else {"type": "object", "properties": {}}
-        tools.append({"type": "function", "function": {"name": name, "description": description, "parameters": schema}})
+        tools.append({"type": "function", "function": {"name": name, "description": description[:2000], "parameters": schema}})
         builtin.add(name)
-        if item.get("effect") == "write":
+        effect = item.get("effect")
+        if effect != "read":
             writes.add(name)
     return tools, writes
+
+
+def needs_approval(name: str, extra_names: set[str], writes: set[str]) -> bool:
+    """Whether a call waits for the user: anything not known to only read."""
+    if name in READ_TOOLS:
+        return False
+    return not (name in extra_names and name not in writes)
+
+
+def run_count(args: dict) -> int:
+    """How many runs a queue_prompt call would queue."""
+    variations = args.get("variations")
+    return len(variations) if isinstance(variations, list) and variations else 1

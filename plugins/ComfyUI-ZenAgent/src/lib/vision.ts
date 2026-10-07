@@ -14,11 +14,26 @@ export interface Attachment {
   label?: string
 }
 
+/** A media ref as something to show or send: its URL comes from ZenKit's media sources, never
+ *  from the ref itself. Throws when no source knows the ref. */
 export async function resolveMedia(ref: string): Promise<Attachment> {
   const zen = getZenKit()
-  if (!zen) return { ref, url: ref, kind: 'image' }
+  if (!zen) throw new Error('ZenKit is not available.')
   const info = await zen.media.resolve(ref)
   return { ref, url: info.url, kind: info.kind, label: info.label }
+}
+
+/** Whether a media URL may load by itself in the panel: an inline image, or a file served by
+ *  this ComfyUI (its /view route, or a URL a ZenKit media source built for a ref). */
+export function autoLoads(url: string, fromSource = false): boolean {
+  if (/^data:image\//i.test(url)) return true
+  try {
+    const u = new URL(url, location.href)
+    if (u.origin !== location.origin) return false
+    return fromSource || /(^|\/)(api\/)?view$/.test(u.pathname)
+  } catch {
+    return false
+  }
 }
 
 function load<T extends HTMLImageElement | HTMLVideoElement>(

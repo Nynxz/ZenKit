@@ -180,8 +180,8 @@ export async function queueRun(
     finishedAt: null,
   }
   runs[run.promptId] = run
-  onQueued(run.promptId)
   replayEarly(runs[run.promptId]!)
+  onQueued(run.promptId)
   return run.promptId
 }
 
@@ -224,4 +224,58 @@ export async function restoreRun(promptId: string): Promise<Run | null> {
   for (const [node, output] of Object.entries(entry.outputs ?? {})) addOutputs(run, node, output)
   runs[promptId] = run
   return runs[promptId]!
+}
+
+async function post(path: string, body: unknown): Promise<void> {
+  const response = await api.fetchApi(path, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(body),
+  })
+  if (!response.ok) throw new Error(`${path} returned HTTP ${response.status}.`)
+}
+
+/** Stop runs the agent queued: drop the waiting ones from ComfyUI's queue and interrupt the one
+ *  running (by prompt id, so a run of the user's own is left alone). Returns ids whose stop
+ *  request failed; those runs stay live so they can still finish or be stopped again. */
+export async function cancelRuns(promptIds: string[]): Promise<string[]> {
+  const open = promptIds.filter((id) => runs[id] && runs[id].finishedAt === null)
+  if (!open.length) return []
+  const failed = new Set<string>()
+  const fail = (id: string, error: unknown) => {
+    if (runs[id]!.finishedAt !== null) return
+    failed.add(id)
+    runs[id]!.error =
+      `Couldn't stop this run: ${error instanceof Error ? error.message : String(error)}`
+  }
+  const waiting = open.filter((id) => runs[id]!.status === 'queued')
+  let deleted = false
+  if (waiting.length) {
+    try {
+      await post('/queue', { delete: waiting })
+      deleted = true
+    } catch (error) {
+      waiting.forEach((id) => fail(id, error))
+    }
+  }
+  for (const id of open) {
+    const run = runs[id]!
+    if (run.finishedAt !== null) {
+      failed.delete(id)
+      continue
+    }
+    if (run.status === 'running') {
+      try {
+        await post('/interrupt', { prompt_id: id })
+        failed.delete(id)
+        if (run.finishedAt === null) run.error = null
+      } catch (error) {
+        fail(id, error)
+      }
+    } else if (deleted && waiting.includes(id)) {
+      // A successfully removed run never reports back, so it is closed here.
+      finish(run, 'interrupted', 'Stopped before it ran.')
+    }
+  }
+  return [...failed]
 }

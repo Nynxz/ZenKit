@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { ZenIconButton, ZenMenuItem, ZenPopover } from '@nynxz/zenkit-ui'
+import { ZenButton, ZenIconButton, ZenMenuItem, ZenPopover } from '@nynxz/zenkit-ui'
 import { computed, nextTick, onMounted, ref, watch } from 'vue'
 
 import type { Item } from '../lib/conversation'
@@ -27,6 +27,7 @@ const {
   detach,
   items,
   busy,
+  awaiting,
   threads,
   threadId,
   send,
@@ -97,6 +98,13 @@ async function submit(text = draft.value): Promise<void> {
   pinned = true
   void nextTick(resize)
   await send(text)
+}
+
+/** Scroll to the approval card the turn is waiting on and focus it. */
+function review(): void {
+  const card = list.value?.querySelector<HTMLElement>('[data-approval]')
+  card?.scrollIntoView({ block: 'center', behavior: 'smooth' })
+  card?.focus({ preventScroll: true })
 }
 
 function onKey(e: KeyboardEvent): void {
@@ -260,6 +268,11 @@ const when = (iso: string) =>
         </button>
       </div>
     </TransitionGroup>
+    <div v-if="awaiting.length" class="za-waiting" role="status">
+      <i class="mdi mdi-hand-back-left-outline" aria-hidden="true" />
+      <span>The agent is waiting for your approval.</span>
+      <ZenButton size="sm" variant="ghost" @click="review">Review</ZenButton>
+    </div>
     <div class="za-composer">
       <textarea
         ref="input"
@@ -553,6 +566,22 @@ const when = (iso: string) =>
 }
 .za-pending {
   color: var(--zen-muted);
+}
+.za-waiting {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin: 8px 8px 0;
+  padding: 4px 4px 4px 10px;
+  border-radius: var(--zen-radius);
+  background: color-mix(in srgb, var(--zen-accent) 12%, transparent);
+  font-size: 11.5px;
+}
+.za-waiting span {
+  flex: 1;
+}
+.za-waiting .mdi {
+  color: var(--zen-accent);
 }
 .za-composer {
   display: flex;

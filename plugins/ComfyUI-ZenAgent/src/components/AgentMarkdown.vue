@@ -1,12 +1,12 @@
 <script setup lang="ts">
-import DOMPurify from 'dompurify'
-import { marked } from 'marked'
 import { computed } from 'vue'
+
+import { renderMarkdown } from '../lib/markdown'
 
 const { text } = defineProps<{ text: string }>()
 
-// Model output is untrusted, so the rendered HTML is sanitised before it reaches the page.
-const html = computed(() => DOMPurify.sanitize(marked.parse(text, { async: false, breaks: true })))
+// Model output is untrusted: renderMarkdown keeps text formatting only (see lib/markdown.ts).
+const html = computed(() => renderMarkdown(text))
 </script>
 
 <template>
@@ -52,8 +52,25 @@ const html = computed(() => DOMPurify.sanitize(marked.parse(text, { async: false
 }
 .za-md :deep(h1),
 .za-md :deep(h2),
-.za-md :deep(h3) {
+.za-md :deep(h3),
+.za-md :deep(h4) {
   margin: 10px 0 6px;
   font-size: 13px;
+}
+.za-md :deep(blockquote) {
+  margin: 4px 0 8px;
+  padding-left: 10px;
+  border-left: 2px solid var(--zen-surface-border, var(--zen-border));
+  color: var(--zen-muted);
+}
+.za-md :deep(table) {
+  margin: 4px 0 8px;
+  border-collapse: collapse;
+}
+.za-md :deep(th),
+.za-md :deep(td) {
+  padding: 3px 8px;
+  border: 1px solid var(--zen-surface-border, var(--zen-border));
+  text-align: left;
 }
 </style>

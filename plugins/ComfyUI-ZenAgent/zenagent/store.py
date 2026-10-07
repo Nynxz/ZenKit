@@ -1,10 +1,14 @@
 """Conversations, kept as one JSON file per thread under <user>/zenagent/threads, in the
-OpenAI message format the model is sent (so tool calls and results replay exactly)."""
+OpenAI message format the model is sent (so tool calls and results replay exactly).
+
+Only one turn runs per thread at a time (agent.busy_threads), so a save never races another
+turn's; each write goes to its own temp file and replaces the thread atomically."""
 
 from __future__ import annotations
 
 import json
 import os
+import tempfile
 import uuid
 from datetime import datetime, timezone
 
@@ -46,10 +50,17 @@ def load(thread_id: str) -> dict | None:
 def save(thread: dict) -> None:
     thread["updated_at"] = now()
     path = _path(thread["id"])
-    tmp = path + ".tmp"
-    with open(tmp, "w", encoding="utf-8") as f:
-        json.dump(thread, f)
-    os.replace(tmp, path)
+    fd, tmp = tempfile.mkstemp(prefix=".thread-", suffix=".tmp", dir=os.path.dirname(path))
+    try:
+        with os.fdopen(fd, "w", encoding="utf-8") as f:
+            json.dump(thread, f)
+        os.replace(tmp, path)
+    except BaseException:
+        try:
+            os.remove(tmp)
+        except OSError:
+            pass
+        raise
 
 
 def delete(thread_id: str) -> None:

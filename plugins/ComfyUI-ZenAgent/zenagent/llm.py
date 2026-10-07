@@ -4,6 +4,7 @@ vLLM, a hosted API)."""
 from __future__ import annotations
 
 import json
+import logging
 from collections.abc import AsyncIterator
 from urllib.parse import urlsplit
 
@@ -11,10 +12,17 @@ import aiohttp
 
 from .config import LlmConfig
 
+log = logging.getLogger(__name__)
 
-def _headers(config: LlmConfig) -> dict[str, str]:
+
+class UpstreamError(RuntimeError):
+    """A failure the panel may show as is: it carries no text from the endpoint."""
+
+
+def _headers(config: LlmConfig, auth: bool = True) -> dict[str, str]:
+    """Request headers; the key only goes with requests under the configured base URL."""
     headers = {"Content-Type": "application/json"}
-    if config.api_key:
+    if config.api_key and auth:
         headers["Authorization"] = f"Bearer {config.api_key}"
     return headers
 
@@ -24,9 +32,9 @@ def _is_chat_model(model: dict) -> bool:
     return isinstance(model_id, str) and model.get("type") != "embeddings" and "embed" not in model_id.lower()
 
 
-async def _get_json(session: aiohttp.ClientSession, url: str, config: LlmConfig) -> dict | None:
+async def _get_json(session: aiohttp.ClientSession, url: str, config: LlmConfig, auth: bool = True) -> dict | None:
     try:
-        async with session.get(url, headers=_headers(config), timeout=aiohttp.ClientTimeout(total=3)) as res:
+        async with session.get(url, headers=_headers(config, auth), timeout=aiohttp.ClientTimeout(total=3)) as res:
             return await res.json() if res.status == 200 else None
     except (aiohttp.ClientError, TimeoutError, ValueError):
         return None
@@ -39,7 +47,8 @@ async def resolve_model(config: LlmConfig) -> str | None:
         return config.model
     origin = "{0.scheme}://{0.netloc}".format(urlsplit(config.base_url))
     async with aiohttp.ClientSession() as session:
-        lm_studio = await _get_json(session, f"{origin}/api/v0/models", config)
+        # LM Studio's own listing sits outside the base path, so it is asked without the key.
+        lm_studio = await _get_json(session, f"{origin}/api/v0/models", config, auth=False)
         for model in (lm_studio or {}).get("data", []):
             if model.get("state") == "loaded" and _is_chat_model(model):
                 return model["id"]
@@ -57,7 +66,7 @@ async def supports_vision(config: LlmConfig, model: str) -> bool:
         return config.vision == "on"
     origin = "{0.scheme}://{0.netloc}".format(urlsplit(config.base_url))
     async with aiohttp.ClientSession() as session:
-        lm_studio = await _get_json(session, f"{origin}/api/v0/models", config)
+        lm_studio = await _get_json(session, f"{origin}/api/v0/models", config, auth=False)
     return any(m.get("id") == model and m.get("type") == "vlm" for m in (lm_studio or {}).get("data", []))
 
 
@@ -85,11 +94,14 @@ async def stream_chat(
         body["tools"] = tools
     usage = None
     calls: dict[int, dict] = {}
+    # The turn's own deadline bounds the whole stream (agent.run_turn); this catches a stall.
     timeout = aiohttp.ClientTimeout(total=None, sock_read=300)
     async with aiohttp.ClientSession(timeout=timeout) as session:
         async with session.post(f"{config.base_url}/chat/completions", json=body, headers=_headers(config)) as res:
             if res.status != 200:
-                raise RuntimeError(f"{res.status} {(await res.text())[:300]}")
+                # The body stays in the server log: it may come from any URL the endpoint names.
+                log.warning("[ZenAgent] model endpoint answered %s: %s", res.status, (await res.text())[:500])
+                raise UpstreamError(f"The model endpoint answered HTTP {res.status}. Details are in the ComfyUI log.")
             async for raw in res.content:
                 line = raw.decode("utf-8", "replace").strip()
                 if not line.startswith("data:"):

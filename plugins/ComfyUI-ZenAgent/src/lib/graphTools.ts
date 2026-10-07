@@ -106,6 +106,41 @@ export function nodeLabel(node: GraphNode): string {
   return node.title && node.title !== node.type ? `${node.title} (${node.type})` : node.type
 }
 
+/** A node on the canvas by id, as the approval card describes it; null when there is none. */
+export function describeNode(
+  id: unknown,
+): { label: string; widgets: Record<string, unknown> } | null {
+  const node = graph().getNodeById(Number(id))
+  if (!node) return null
+  return {
+    label: `${nodeLabel(node)} #${node.id}`,
+    widgets: Object.fromEntries((node.widgets ?? []).map((w) => [w.name, w.value])),
+  }
+}
+
+// The model names media by ref (output/x.png, or a plugin's prefix such as stash:…). URLs and
+// paths are refused here, so a prompt-injected call can't make the browser fetch an address of
+// its choosing; ZenKit's media sources build every URL.
+const NOT_A_REF =
+  /^((https?|data|blob|javascript|vbscript|file|ftp|wss?|about|filesystem|view-source):|[/\\])/i
+
+/** A model-supplied media ref, checked and resolved; a clear error when it can't be used. */
+async function agentMedia(ref: unknown) {
+  const text = String(ref ?? '').trim()
+  if (!text || NOT_A_REF.test(text))
+    throw new Error(
+      `"${text}" is not a media ref. Use refs like output/ComfyUI_00012_.png (from run results, media_list or a plugin's search), not URLs or paths.`,
+    )
+  try {
+    return await resolveMedia(text)
+  } catch (error) {
+    throw new Error(
+      `Can't use "${text}": ${error instanceof Error ? error.message : String(error)} Use refs from run results or media_list.`,
+      { cause: error },
+    )
+  }
+}
+
 /** Set a widget; returns what it was and what it is now (a near-miss file name is resolved to the
  *  one option it means, e.g. "detail" → "style/Detail.safetensors"). */
 function setWidget(node: GraphNode, name: string, value: unknown): { from: unknown; to: unknown } {
@@ -500,7 +535,10 @@ const TOOLS: Record<
   async queue_prompt({ variations, wait = true }, hooks) {
     const list = variationsFrom(variations)
     const queued: string[] = []
-    for (const overrides of list) queued.push(await queueRun(hooks.onRun, overrides))
+    for (const overrides of list) {
+      if (hooks.signal?.aborted) throw new Error('Stopped by the user.')
+      queued.push(await queueRun(hooks.onRun, overrides))
+    }
     if (!wait) return { queued: queued.map((prompt_id) => ({ prompt_id, status: 'queued' })) }
     const done = await Promise.all(queued.map(waitForRun))
     return done.length === 1 ? runSummary(done[0]!) : { runs: done.map(runSummary) }
@@ -518,7 +556,7 @@ const TOOLS: Record<
       .filter((m): m is string => typeof m === 'string')
       .slice(0, 4)
     if (!refs.length) throw new Error('Give the media refs to look at.')
-    const images = await Promise.all(refs.map(async (ref) => snapshot(await resolveMedia(ref))))
+    const images = await Promise.all(refs.map(async (ref) => snapshot(await agentMedia(ref))))
     return { seen: refs, images }
   },
 
@@ -534,7 +572,8 @@ const TOOLS: Record<
       throw new Error(
         `${nodeLabel(node)} has no file widget${widget ? ` "${String(widget)}"` : ''}.`,
       )
-    const value = await zenKit().media.toInput(String(media))
+    const { ref } = await agentMedia(media)
+    const value = await zenKit().media.toInput(ref)
     const from = target.value
     target.value = value
     target.callback?.(value)

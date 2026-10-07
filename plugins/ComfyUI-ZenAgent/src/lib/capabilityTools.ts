@@ -17,7 +17,8 @@ export function capabilityTools(): CapabilityTool[] {
     name: toolName(c.id),
     description: c.description,
     parameters: c.params ?? { type: 'object', properties: {} },
-    effect: c.effect ?? 'read',
+    // Left undeclared, the server treats it as a write and asks the user first.
+    ...(c.effect ? { effect: c.effect } : {}),
   }))
 }
 

@@ -3,6 +3,7 @@ import { ref } from 'vue'
 
 import type { Item } from '../lib/conversation'
 import { focusNode } from '../lib/graphTools'
+import AgentApproval from './AgentApproval.vue'
 
 type ToolItem = Extract<Item, { kind: 'tool' }>
 
@@ -59,6 +60,8 @@ function phrase(step: ToolItem): { text: string; detail?: string } {
   const a = step.args ?? {}
   const r = (step.result?.ok ? step.result.result : undefined) as
     Record<string, unknown> | undefined
+  if (step.status === 'approval') return { text: 'Waiting for your approval', detail: step.name }
+  if (step.status === 'declined') return { text: `Declined: ${step.name.replace(/_/g, ' ')}` }
   switch (step.name) {
     case 'read_workflow':
       return {
@@ -235,11 +238,23 @@ function onClick(step: ToolItem): void {
         <span v-if="phrase(step).detail" class="zs-detail">{{ phrase(step).detail }}</span>
         <Transition name="zs-pop" mode="out-in">
           <i v-if="step.status === 'running'" key="r" class="mdi mdi-loading mdi-spin zs-state" />
+          <i
+            v-else-if="step.status === 'approval'"
+            key="a"
+            class="mdi mdi-hand-back-left-outline zs-state"
+          />
           <i v-else-if="step.status === 'done'" key="d" class="mdi mdi-check zs-state" />
+          <i v-else-if="step.status === 'declined'" key="x" class="mdi mdi-cancel zs-state" />
           <i v-else key="e" class="mdi mdi-alert-circle-outline zs-state" />
         </Transition>
       </button>
-      <div v-if="step.result && !step.result.ok && open !== step.callId" class="zs-error">
+      <AgentApproval v-if="step.status === 'approval' && step.approval" :step="step" />
+      <div
+        v-else-if="
+          step.result && !step.result.ok && step.status !== 'declined' && open !== step.callId
+        "
+        class="zs-error"
+      >
         {{ step.result.error }}
       </div>
       <div v-if="open === step.callId" class="zs-body">
@@ -316,6 +331,17 @@ function onClick(step: ToolItem): void {
 }
 .zs-step.done .zs-icon {
   color: var(--zen-text);
+}
+.zs-step.approval .zs-icon {
+  border-color: var(--zen-accent);
+  color: var(--zen-accent);
+}
+.zs-step.approval .zs-state {
+  color: var(--zen-accent);
+}
+.zs-step.declined .zs-text,
+.zs-step.declined .zs-icon {
+  color: var(--zen-muted);
 }
 .zs-step.error .zs-icon {
   border-color: color-mix(in srgb, var(--zen-danger) 60%, transparent);

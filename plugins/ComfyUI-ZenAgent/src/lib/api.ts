@@ -2,16 +2,27 @@ import type { Attachment } from './vision'
 import { api } from '@comfy/api'
 
 // Zen Agent's backend (zenagent/routes.py). Events for a turn arrive on ComfyUI's websocket as
-// the `zenagent` message, sent only to the browser that started the turn.
+// the `zenagent` message, sent only to the browser that started the turn. Answers to a turn's
+// calls (approvals, tool results, cancel) carry this browser's client id, which the server checks.
 
 export interface Settings {
   llm_url: string
   model: string | null
   max_tokens: number
   max_steps: number
+  /** Workflow runs one reply may queue. */
+  max_runs: number
   vision: 'auto' | 'on' | 'off'
+  /** Ask the user before every tool call that changes something (default on). */
+  ask_before_actions: boolean
   has_key: boolean
 }
+
+/** The user's answer to an approval card. */
+export type Decision = 'approve' | 'deny' | 'allow_turn'
+
+/** A tool call's state in the panel; `approval` waits for the user, `declined` they said no. */
+export type ToolStatus = 'running' | 'approval' | 'done' | 'error' | 'declined'
 
 export interface ThreadSummary {
   id: string
@@ -42,15 +53,22 @@ export type AgentEvent = { thread_id: string; turn_id: string } & (
       call_id: string
       name: string
       args: Record<string, unknown> | null
-      status: 'running' | 'done' | 'error'
+      status: ToolStatus
       result?: ToolResult
     }
-  | { type: 'tool_request'; call_id: string; name: string; args: Record<string, unknown> }
+  | {
+      type: 'approval_request' | 'tool_request'
+      token: string
+      call_id: string
+      name: string
+      args: Record<string, unknown>
+    }
   | { type: 'notice'; text: string }
   | { type: 'turn_end'; status: 'done' | 'error' | 'cancelled'; error: string | null }
 )
 
-export type ToolResult = { ok: true; result?: unknown } | { ok: false; error: string }
+export type ToolResult =
+  { ok: true; result?: unknown } | { ok: false; error: string; declined?: boolean }
 
 async function call<T>(path: string, init?: RequestInit): Promise<T> {
   const res = await api.fetchApi(`/zenagent${path}`, {
@@ -67,7 +85,8 @@ export interface CapabilityTool {
   name: string
   description: string
   parameters: unknown
-  effect: 'read' | 'write'
+  /** Undeclared means the server asks before running it, like `write`. */
+  effect?: 'read' | 'write'
 }
 
 export const agentApi = {
@@ -95,9 +114,21 @@ export const agentApi = {
         client_id: api.clientId,
       }),
     }),
-  cancel: (turnId: string) => call(`/turns/${turnId}/cancel`, { method: 'POST' }),
-  toolResult: (callId: string, result: ToolResult) =>
-    call(`/tools/${callId}`, { method: 'POST', body: JSON.stringify(result) }),
+  cancel: (turnId: string) =>
+    call(`/turns/${turnId}/cancel`, {
+      method: 'POST',
+      body: JSON.stringify({ client_id: api.clientId }),
+    }),
+  decide: (token: string, decision: Decision) =>
+    call(`/approvals/${token}`, {
+      method: 'POST',
+      body: JSON.stringify({ decision, client_id: api.clientId }),
+    }),
+  toolResult: (token: string, result: ToolResult) =>
+    call(`/tools/${token}`, {
+      method: 'POST',
+      body: JSON.stringify({ ...result, client_id: api.clientId }),
+    }),
 }
 
 export function onAgentEvent(listener: (event: AgentEvent) => void): () => void {
