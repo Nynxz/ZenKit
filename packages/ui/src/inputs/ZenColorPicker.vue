@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import '../lib/surface.css'
 // ZenColorPicker — a compact, themed colour control: a swatch trigger that opens a popover
 // (saturation/brightness box + hue slider + hex field + presets). No native OS dialog, so it
 // stays consistent with the rest of the UI. v-model is a `#rrggbb` string.
@@ -11,6 +12,8 @@ const props = withDefaults(
     presets?: string[]
     /** Swatch-only trigger, for a row that shows the value itself. */
     compact?: boolean
+    /** Dims it, and nothing inside takes clicks, typing or focus. */
+    disabled?: boolean
   }>(),
   {
     presets: () => ['#ff3b30', '#ffcc00', '#34c759', '#0a84ff', '#ffffff', '#000000'],
@@ -157,15 +160,24 @@ function pickPreset(c: string) {
   syncFromModel()
 }
 
+/** Under the trigger, or above it when there isn't room below and there's more above (by the
+ *  bottom taskbar, say); kept inside the window sideways. */
 function place() {
   const t = trigger.value?.getBoundingClientRect()
   if (!t) return
   const w = 196
+  const h = pop.value?.offsetHeight ?? 280
+  const below = window.innerHeight - t.bottom
+  const up = below < h + 14 && t.top > below
   popStyle.value = {
     left: Math.max(8, Math.min(t.left, window.innerWidth - w - 8)) + 'px',
-    top: t.bottom + 6 + 'px',
+    top: (up ? Math.max(8, t.top - 6 - h) : t.bottom + 6) + 'px',
     width: w + 'px',
   }
+}
+function onOutsideScroll(e: Event) {
+  if (pop.value?.contains(e.target as Node)) return
+  place()
 }
 function onDoc(e: PointerEvent) {
   const t = e.target as Node
@@ -187,6 +199,9 @@ function toggle() {
       window.addEventListener('pointerdown', onDoc, true)
       window.addEventListener('keydown', onKey, true)
       window.addEventListener('resize', place)
+      window.addEventListener('scroll', onOutsideScroll, true)
+      // Placed once more now its real height is known, to flip up if it doesn't fit below.
+      requestAnimationFrame(place)
     })
   } else closePop()
 }
@@ -197,13 +212,14 @@ function closePop() {
   window.removeEventListener('pointerdown', onDoc, true)
   window.removeEventListener('keydown', onKey, true)
   window.removeEventListener('resize', place)
+  window.removeEventListener('scroll', onOutsideScroll, true)
 }
 onBeforeUnmount(closePop)
 syncFromModel()
 </script>
 
 <template>
-  <div class="zcp" :class="{ compact }">
+  <div class="zcp" :class="{ compact, 'zen-off': disabled }" :inert="disabled || undefined">
     <button ref="trigger" type="button" class="zcp-trigger" @click="toggle">
       <span class="zcp-sw" :style="{ background: modelValue }" />
       <template v-if="!compact">
@@ -216,7 +232,7 @@ syncFromModel()
         v-if="open"
         ref="pop"
         data-zen-layer
-        class="zcp-pop"
+        class="zcp-pop zen-surface"
         :style="[popStyle, { zIndex: z }]"
         @pointerdown.stop
       >
@@ -331,10 +347,6 @@ syncFromModel()
   flex-direction: column;
   gap: 8px;
   padding: 8px;
-  background: var(--zen-chrome-bg, var(--zen-surface, #202026));
-  border: 1px solid var(--zen-surface-border, var(--zen-border, #34343c));
-  border-radius: var(--zen-radius-surface, var(--zen-radius, 7px));
-  box-shadow: 0 12px 32px rgba(0, 0, 0, 0.5);
 }
 .zcp-sv {
   position: relative;
@@ -421,5 +433,9 @@ syncFromModel()
   border-radius: 4px;
   border: 1px solid var(--zen-border, #34343c);
   cursor: pointer;
+}
+/* disabled: the same dimming as every ZenKit control; `inert` stops the input. */
+.zen-off {
+  opacity: 0.45;
 }
 </style>

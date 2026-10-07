@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import '../lib/motion.css'
 // ZenCheckbox — themed checkbox (v-model:boolean). For menus, dropdowns and option
 // lists where a switch would be too heavy. The tick uses --zen-accent-text so it stays
 // legible on light-primary themes (same contrast rule as primary buttons).
@@ -63,8 +64,8 @@ const emit = defineEmits<{ 'update:modelValue': [boolean] }>()
   background: var(--zen-input, #1b1b20);
   color: var(--zen-accent-text, #fff);
   transition:
-    background 0.1s ease,
-    border-color 0.1s ease;
+    background var(--zen-dur-fast, 0.12s) ease,
+    border-color var(--zen-dur-fast, 0.12s) ease;
 }
 .zen-check.on .box {
   background: var(--zen-accent, #6366f1);

@@ -30,6 +30,8 @@ const props = withDefaults(
     showSwap?: boolean
     showMp?: boolean
     showAspect?: boolean
+    /** Dims it, and nothing inside takes clicks, typing or focus. */
+    disabled?: boolean
   }>(),
   {
     min: MIN_DIMENSION,
@@ -106,7 +108,7 @@ function toggleLock() {
 </script>
 
 <template>
-  <div class="zen-dims">
+  <div class="zen-dims" :class="{ 'zen-off': disabled }" :inert="disabled || undefined">
     <ZenNumber
       bare
       class="zd-n"
@@ -191,5 +193,9 @@ function toggleLock() {
 }
 .zd-aspect {
   margin-left: auto;
+}
+/* disabled: the same dimming as every ZenKit control; `inert` stops the input. */
+.zen-off {
+  opacity: 0.45;
 }
 </style>

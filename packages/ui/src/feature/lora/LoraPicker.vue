@@ -233,7 +233,7 @@ function browseAll(close: () => void) {
 }
 .lp-star.on,
 .lp-star:hover {
-  color: #f5b301;
+  color: var(--zen-star, #f5b301);
 }
 .lp-browse {
   border: none;

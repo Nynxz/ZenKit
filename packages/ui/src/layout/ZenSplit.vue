@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import '../lib/motion.css'
 // ZenSplit — resizable panes with draggable gutters. The monitor | inspector split and the
 // bin / viewer / timeline stack, without each consumer re-deriving the pointer math.
 //
@@ -16,6 +17,7 @@
 // size. `update:sizes` fires once at the end of a drag, and on every keyboard step, double-click
 // reset, and collapse/expand — never per pointermove, so it's safe to persist straight off it.
 import { computed, ref, useId, watch } from 'vue'
+import ZenResizeHandle from './ZenResizeHandle.vue'
 
 export interface SplitPane {
   /** Initial size: > 1 = px, 0–1 = fraction of the flexible space, omitted = an even share. */
@@ -182,36 +184,28 @@ const lastPx: number[] = []
 // --- pointer ---------------------------------------------------------------------------------
 
 const active = ref(-1)
-function onPointerDown(e: PointerEvent, g: number) {
-  if (e.button !== 0) return
-  e.preventDefault()
-  const el = e.currentTarget as HTMLElement
-  el.setPointerCapture(e.pointerId)
-  const base = measure()
-  for (const i of [g, g + 1]) if (base[i]! > 0) lastPx[i] = base[i]!
-  const start = horizontal.value ? e.clientX : e.clientY
-  const scale = cssScale()
+let dragBase: number[] = []
+let dragFrom: number[] = []
+let dragStart = 0
+let dragScale = 1
+function onDragStart(e: PointerEvent, g: number) {
+  dragBase = measure()
+  dragFrom = [...cur.value]
+  for (const i of [g, g + 1]) if (dragBase[i]! > 0) lastPx[i] = dragBase[i]!
+  dragStart = horizontal.value ? e.clientX : e.clientY
+  dragScale = cssScale()
   dragging = true
   active.value = g
-
-  const move = (m: PointerEvent) => {
-    const d = ((horizontal.value ? m.clientX : m.clientY) - start) / scale
-    cur.value = trade(g, g, base[g]! + d, base)
-  }
-  const end = () => {
-    el.removeEventListener('pointermove', move)
-    el.removeEventListener('pointerup', end)
-    el.removeEventListener('pointercancel', end)
-    el.removeEventListener('lostpointercapture', end)
-    if (el.hasPointerCapture(e.pointerId)) el.releasePointerCapture(e.pointerId)
-    dragging = false
-    active.value = -1
-    commit(cur.value)
-  }
-  el.addEventListener('pointermove', move)
-  el.addEventListener('pointerup', end)
-  el.addEventListener('pointercancel', end)
-  el.addEventListener('lostpointercapture', end)
+}
+function onDragMove(e: PointerEvent, g: number) {
+  const delta = ((horizontal.value ? e.clientX : e.clientY) - dragStart) / dragScale
+  cur.value = trade(g, g, dragBase[g]! + delta, dragBase)
+}
+function onDragEnd(cancelled: boolean) {
+  dragging = false
+  active.value = -1
+  if (cancelled) cur.value = dragFrom
+  else commit(cur.value)
 }
 
 function onDblClick(g: number) {
@@ -222,30 +216,18 @@ function onDblClick(g: number) {
 
 // --- keyboard --------------------------------------------------------------------------------
 
-function onKeyDown(e: KeyboardEvent, g: number) {
+function nudge(g: number, pixels: number) {
+  const base = measure()
+  commit(trade(g, g, base[g]! + pixels, base))
+}
+function limit(g: number, edge: 'min' | 'max') {
+  const p = edge === 'min' ? g : g + 1
+  commit(trade(g, p, props.panes[p]!.min ?? 0, measure()))
+}
+function toggle(g: number) {
   const base = measure()
   const p = primary(g)
-  // +1 = move the gutter toward the end, which grows the left/top pane.
-  const dir =
-    e.key === (horizontal.value ? 'ArrowRight' : 'ArrowDown')
-      ? 1
-      : e.key === (horizontal.value ? 'ArrowLeft' : 'ArrowUp')
-        ? -1
-        : 0
-  let next: number[] | null = null
-  if (dir) {
-    const step = props.step * (e.shiftKey ? 5 : 1)
-    next = trade(g, p, base[p]! + dir * step * (p === g ? 1 : -1), base)
-  } else if (e.key === 'Home') {
-    next = trade(g, g, props.panes[g]!.min ?? 0, base)
-  } else if (e.key === 'End') {
-    next = trade(g, g + 1, props.panes[g + 1]!.min ?? 0, base)
-  } else if (e.key === 'Enter' && props.panes[p]!.collapsible) {
-    next = collapsedTo(g, p, base[p]! > 0, base)
-  }
-  if (!next) return
-  e.preventDefault()
-  commit(next)
+  if (props.panes[p]!.collapsible) commit(collapsedTo(g, p, base[p]! > 0, base))
 }
 
 function collapsedTo(g: number, p: number, shut: boolean, base: number[]): number[] {
@@ -311,22 +293,25 @@ defineExpose({ el: root, reset, collapse })
       >
         <slot :name="`pane-${i}`" />
       </div>
-      <div
+      <ZenResizeHandle
         v-if="i < panes.length - 1"
         class="zsp-gutter"
-        :class="{ active: active === i }"
-        role="separator"
-        tabindex="0"
-        :aria-orientation="horizontal ? 'vertical' : 'horizontal'"
-        :aria-controls="paneId(aria(i).p)"
-        :aria-valuenow="aria(i).now"
-        :aria-valuemin="aria(i).min"
-        :aria-valuemax="aria(i).max"
-        :aria-valuetext="aria(i).text"
-        :aria-label="`Resize pane ${aria(i).p + 1}`"
-        @pointerdown.stop="onPointerDown($event, i)"
-        @dblclick="onDblClick(i)"
-        @keydown="onKeyDown($event, i)"
+        :orientation="horizontal ? 'vertical' : 'horizontal'"
+        :variant="gutter"
+        :step="step"
+        :controls="paneId(aria(i).p)"
+        :value="aria(i).now"
+        :min="aria(i).min"
+        :max="aria(i).max"
+        :value-text="aria(i).text"
+        :label="`Resize pane ${aria(i).p + 1}`"
+        @drag-start="onDragStart($event, i)"
+        @drag-move="onDragMove($event, i)"
+        @drag-end="onDragEnd"
+        @reset="onDblClick(i)"
+        @nudge="nudge(i, $event)"
+        @limit="limit(i, $event)"
+        @toggle="toggle(i)"
       />
     </template>
   </div>
@@ -362,81 +347,5 @@ defineExpose({ el: root, reset, collapse })
 }
 .zsp-pane.collapsed {
   visibility: hidden;
-}
-
-/* A 1px line in the layout; the ::before widens the hit area to 6px without taking any room. */
-.zsp-gutter {
-  position: relative;
-  z-index: 1;
-  flex: 0 0 1px;
-  background: var(--zen-border, #34343c);
-  touch-action: none;
-  transition:
-    background 0.12s ease,
-    box-shadow 0.12s ease;
-}
-.zsp-gutter::before {
-  content: '';
-  position: absolute;
-}
-.zen-split.horizontal > .zsp-gutter {
-  cursor: col-resize;
-}
-.zen-split.horizontal > .zsp-gutter::before {
-  inset: 0 -2.5px;
-}
-.zen-split.vertical > .zsp-gutter {
-  cursor: row-resize;
-}
-.zen-split.vertical > .zsp-gutter::before {
-  inset: -2.5px 0;
-}
-.zsp-gutter:hover,
-.zsp-gutter.active {
-  background: var(--zen-accent, #6366f1);
-  box-shadow: 0 0 0 1px var(--zen-accent, #6366f1);
-}
-.zsp-gutter:focus-visible {
-  outline: 2px solid
-    var(--zen-focus-ring, color-mix(in srgb, var(--zen-accent, #6366f1) 60%, transparent));
-  outline-offset: 1px;
-}
-
-.zen-split.gutter-gap > .zsp-gutter {
-  flex-basis: 8px;
-  background: transparent;
-  box-shadow: none;
-}
-.zen-split.gutter-gap > .zsp-gutter::before {
-  inset: 0;
-}
-.zen-split.gutter-gap > .zsp-gutter::after {
-  content: '';
-  position: absolute;
-  inset: 50% auto auto 50%;
-  border-radius: 999px;
-  background: var(--zen-accent, #6366f1);
-  opacity: 0;
-  transform: translate(-50%, -50%);
-  transition: opacity 0.12s ease;
-}
-.zen-split.gutter-gap.horizontal > .zsp-gutter::after {
-  width: 3px;
-  height: 32px;
-}
-.zen-split.gutter-gap.vertical > .zsp-gutter::after {
-  width: 32px;
-  height: 3px;
-}
-.zen-split.gutter-gap > .zsp-gutter:hover::after,
-.zen-split.gutter-gap > .zsp-gutter.active::after {
-  opacity: 1;
-}
-
-@media (prefers-reduced-motion: reduce) {
-  .zen-split.gutter-gap > .zsp-gutter::after,
-  .zsp-gutter {
-    transition: none;
-  }
 }
 </style>

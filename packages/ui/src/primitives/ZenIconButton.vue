@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import '../lib/motion.css'
 // ZenIconButton — compact icon-only button (panel headers, toolbars). Icon-only, so its
 // accessible name falls back to the `title` attribute when no aria-label is given.
 import { useAttrs } from 'vue'
@@ -45,8 +46,8 @@ const attrs = useAttrs()
   color: var(--zen-muted, #9aa0aa);
   cursor: pointer;
   transition:
-    background 0.1s ease,
-    color 0.1s ease;
+    background var(--zen-dur-fast, 0.12s) ease,
+    color var(--zen-dur-fast, 0.12s) ease;
 }
 .zen-iconbtn:hover:not(:disabled) {
   background: color-mix(in srgb, var(--zen-text, #e5e5ea) 12%, transparent);

@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import '../lib/motion.css'
 // ZenSection — a titled, collapsible block. The "sechead" every inspector had hand-rolled: a
 // chevron, a title, soft meta text on the right, and a body that folds away.
 //
@@ -209,7 +210,7 @@ const bodyId = `${uid}-body`
   flex: 0 0 auto;
   font-size: 14px;
   color: var(--zen-muted, #9aa0aa);
-  transition: transform 0.18s ease;
+  transition: transform var(--zen-dur, 0.2s) ease;
 }
 .zen-section.open > .zs-head .zs-chev {
   transform: rotate(90deg);
@@ -250,7 +251,7 @@ const bodyId = `${uid}-body`
 .zs-wrap {
   display: grid;
   grid-template-rows: 0fr;
-  transition: grid-template-rows 0.2s ease;
+  transition: grid-template-rows var(--zen-dur, 0.2s) ease;
 }
 .zen-section.open > .zs-wrap {
   grid-template-rows: 1fr;
@@ -264,7 +265,7 @@ const bodyId = `${uid}-body`
 }
 .zen-section:not(.open) > .zs-wrap > .zs-clip {
   visibility: hidden;
-  transition: visibility 0s 0.2s;
+  transition: visibility 0s var(--zen-dur, 0.2s);
 }
 
 .zs-body {

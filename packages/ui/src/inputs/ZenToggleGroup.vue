@@ -3,10 +3,14 @@
 // the hand-rolled segmented controls (AssetBrowser roots/sort, MediaViewer mode).
 // `collapse`: options show only their icon, and the selected one slides open to show its label —
 // a compact switch that still says where you are.
+// A radio group to assistive tech and the keyboard: Tab lands on the chosen option, the arrow keys
+// (and Home/End) choose another.
+import '../lib/motion.css'
+import { nextTick } from 'vue'
 import { iconClass } from '../lib/icon'
 
 type Val = string
-defineProps<{
+const props = defineProps<{
   modelValue: Val
   options: { value: Val; label?: string; icon?: string; title?: string }[]
   collapse?: boolean
@@ -15,23 +19,48 @@ defineProps<{
   size?: 'sm' | 'md'
 }>()
 const emit = defineEmits<{ 'update:modelValue': [Val] }>()
+
+function onKey(e: KeyboardEvent) {
+  const n = props.options.length
+  const at = props.options.findIndex((o) => o.value === props.modelValue)
+  const to: Record<string, number> = {
+    ArrowRight: (at + 1) % n,
+    ArrowDown: (at + 1) % n,
+    ArrowLeft: (at - 1 + n) % n,
+    ArrowUp: (at - 1 + n) % n,
+    Home: 0,
+    End: n - 1,
+  }
+  const i = to[e.key]
+  if (i === undefined || !n || props.disabled) return
+  e.preventDefault()
+  const group = e.currentTarget as HTMLElement
+  emit('update:modelValue', props.options[i]!.value)
+  // Focus follows the choice, once the group has re-rendered with it.
+  void nextTick(() => group.querySelectorAll<HTMLButtonElement>('.zen-tg-b')[i]?.focus())
+}
 </script>
 
 <template>
   <div
     class="zen-tg"
     :class="{ 'zen-tg-collapse': collapse, sm: size === 'sm', disabled }"
-    role="tablist"
+    role="radiogroup"
+    @keydown="onKey"
   >
     <button
-      v-for="o in options"
+      v-for="(o, i) in options"
       :key="String(o.value)"
       type="button"
       class="zen-tg-b"
       :class="{ on: o.value === modelValue }"
       :title="o.title || o.label"
-      role="tab"
-      :aria-selected="o.value === modelValue"
+      role="radio"
+      :aria-checked="o.value === modelValue"
+      :aria-label="o.label ? undefined : o.title"
+      :tabindex="
+        o.value === modelValue || (i === 0 && !options.some((x) => x.value === modelValue)) ? 0 : -1
+      "
       :disabled="disabled"
       @click="emit('update:modelValue', o.value)"
     >
@@ -76,8 +105,8 @@ const emit = defineEmits<{ 'update:modelValue': [Val] }>()
   font-family: inherit;
   cursor: pointer;
   transition:
-    background 0.1s ease,
-    color 0.1s ease;
+    background var(--zen-dur-fast, 0.12s) ease,
+    color var(--zen-dur-fast, 0.12s) ease;
 }
 .zen-tg-b + .zen-tg-b {
   border-left: 1px solid var(--zen-border, #34343c);
@@ -104,9 +133,9 @@ const emit = defineEmits<{ 'update:modelValue': [Val] }>()
   gap: 0;
   padding: 4px 7px;
   transition:
-    background 0.18s ease,
-    color 0.18s ease,
-    gap 0.22s ease;
+    background var(--zen-dur, 0.2s) ease,
+    color var(--zen-dur, 0.2s) ease,
+    gap var(--zen-dur, 0.2s) ease;
 }
 .zen-tg.zen-tg-collapse .zen-tg-l {
   display: inline-grid;
@@ -115,8 +144,8 @@ const emit = defineEmits<{ 'update:modelValue': [Val] }>()
   opacity: 0;
   white-space: nowrap;
   transition:
-    grid-template-columns 0.22s ease,
-    opacity 0.18s ease;
+    grid-template-columns var(--zen-dur, 0.2s) ease,
+    opacity var(--zen-dur, 0.2s) ease;
 }
 .zen-tg.zen-tg-collapse .zen-tg-l > span {
   min-width: 0;

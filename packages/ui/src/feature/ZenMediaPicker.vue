@@ -630,7 +630,7 @@ function date(seconds: number) {
   aspect-ratio: 1;
   overflow: hidden;
   border-radius: var(--zen-radius, 7px);
-  background: #0b0b0e;
+  background: var(--zen-media-bg, #0b0b0e);
 }
 .zmp-thumb img,
 .zmp-thumb video {
@@ -645,8 +645,8 @@ function date(seconds: number) {
   height: 100%;
   background: linear-gradient(
     160deg,
-    color-mix(in srgb, var(--zen-accent, #6366f1) 22%, #0b0b0e),
-    #0b0b0e
+    color-mix(in srgb, var(--zen-accent, #6366f1) 22%, var(--zen-media-bg, #0b0b0e)),
+    var(--zen-media-bg, #0b0b0e)
   );
   color: color-mix(in srgb, var(--zen-accent, #6366f1) 70%, white);
   font-size: 34px;
@@ -723,7 +723,7 @@ function date(seconds: number) {
   aspect-ratio: 1;
   overflow: hidden;
   border-radius: var(--zen-radius, 7px);
-  background: #0b0b0e;
+  background: var(--zen-media-bg, #0b0b0e);
 }
 .zmp-big img,
 .zmp-big video {

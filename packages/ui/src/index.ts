@@ -17,6 +17,7 @@ export { default as ZenField } from './layout/ZenField.vue'
 //   ZenSplit    resizable panes with draggable/keyboard gutters, canvas-zoom aware.
 export { default as ZenSection } from './layout/ZenSection.vue'
 export { default as ZenSections } from './layout/ZenSections.vue'
+export { default as ZenResizeHandle } from './layout/ZenResizeHandle.vue'
 export { default as ZenSplit } from './layout/ZenSplit.vue'
 export type { SplitPane } from './layout/ZenSplit.vue'
 
@@ -82,6 +83,8 @@ export { default as ZenMenuSeparator } from './overlays/ZenMenuSeparator.vue'
 export { default as ZenModal } from './overlays/ZenModal.vue'
 export { default as ZenWindow } from './overlays/ZenWindow.vue'
 export { default as ZenContextMenu } from './overlays/ZenContextMenu.vue'
+// ZenPeek: hold Shift over a thumbnail (`data-peek`) to see it large.
+export { default as ZenPeek } from './feature/ZenPeek.vue'
 export type { ContextMenuAction, ContextMenuItem } from './overlays/ZenContextMenu.vue'
 
 // feature
@@ -127,3 +130,4 @@ export { default as ZenFolderTree } from './data/ZenFolderTree.vue'
 export type { FolderTreeEntry } from './data/ZenFolderTree.vue'
 
 export type { LightboxItem, ComboItem } from './types'
+export { safeLinkUrl, safeMediaUrl } from './lib/safeUrl'

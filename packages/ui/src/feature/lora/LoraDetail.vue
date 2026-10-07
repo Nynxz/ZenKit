@@ -46,7 +46,7 @@
             :title="lib.isFav(name) ? 'Remove bookmark' : 'Bookmark'"
             @click="lib.toggleFav(name)"
           />
-          <a v-if="info?.url" class="ld-link" :href="info.url" target="_blank" rel="noopener">
+          <a v-if="pageUrl" class="ld-link" :href="pageUrl" target="_blank" rel="noopener">
             <i class="mdi mdi-open-in-new" />
             Civitai
           </a>
@@ -81,7 +81,7 @@
       </div>
     </section>
 
-    <section v-if="examples.length" class="ld-sec">
+    <section v-if="examples.length" class="ld-sec ld-examples">
       <h4>
         Examples
         <span class="ld-count">{{ examples.length }}</span>
@@ -96,54 +96,80 @@
           Mature
         </button>
       </h4>
-      <div class="ld-gallery">
-        <button
-          v-for="(ex, i) in examples"
-          :key="ex.url || i"
-          type="button"
-          class="ld-tile"
-          :class="{ sel: i === sel, blur: blurred(ex) }"
-          :style="tileStyle(ex)"
-          @click="sel = i"
-        >
-          <video
-            v-if="ex.kind === 'video'"
-            :src="srcOf(ex) + '#t=0.1'"
-            preload="metadata"
-            muted
-            @loadedmetadata="measureVideo(ex, $event)"
-            @error="onMediaError(ex)"
-          />
-          <img
-            v-else
-            :src="thumbOf(ex)"
-            loading="lazy"
-            @load="measureImage(ex, $event)"
-            @error="onMediaError(ex)"
-          />
-          <i v-if="ex.kind === 'video'" class="mdi mdi-play-circle ld-badge" />
-        </button>
-      </div>
-
-      <div v-if="current" class="ld-example">
-        <button
-          type="button"
-          class="ld-ex-media"
-          :class="{ blur: blurred(current) }"
-          title="Open fullscreen"
-          @click="openExamples"
-        >
-          <video
-            v-if="current.kind === 'video'"
-            :src="srcOf(current)"
-            autoplay
-            muted
-            loop
-            playsinline
-            @error="onMediaError(current)"
-          />
-          <img v-else :src="srcOf(current)" @error="onMediaError(current)" />
-        </button>
+      <!-- The viewer: the chosen example large, a filmstrip of all of them under it (it keeps the
+           chosen one in view), and its generation details beside it when there's room. -->
+      <div class="ld-viewer" tabindex="0" @keydown="onViewerKey">
+        <div class="ld-look">
+          <div v-if="current" class="ld-stage" :class="{ blur: blurred(current) }">
+            <button
+              type="button"
+              class="ld-stage-media"
+              title="Open fullscreen"
+              @click="openExamples"
+            >
+              <video
+                v-if="current.kind === 'video'"
+                :key="srcOf(current)"
+                :src="srcOf(current)"
+                autoplay
+                muted
+                loop
+                playsinline
+                @error="onMediaError(current)"
+              />
+              <img
+                v-else
+                :key="srcOf(current)"
+                :src="srcOf(current)"
+                @error="onMediaError(current)"
+              />
+            </button>
+            <template v-if="examples.length > 1">
+              <button type="button" class="ld-nav prev" title="Previous (←)" @click="step(-1)">
+                <i class="mdi mdi-chevron-left" />
+              </button>
+              <button type="button" class="ld-nav next" title="Next (→)" @click="step(1)">
+                <i class="mdi mdi-chevron-right" />
+              </button>
+            </template>
+            <span class="ld-counter">{{ sel + 1 }} / {{ examples.length }}</span>
+          </div>
+          <div
+            v-if="examples.length > 1"
+            ref="strip"
+            class="ld-strip zen-scroll"
+            @wheel="onStripWheel"
+          >
+            <button
+              v-for="(ex, i) in examples"
+              :key="ex.url || i"
+              type="button"
+              class="ld-thumb"
+              :class="{ sel: i === sel, blur: blurred(ex) }"
+              :style="{ width: `${thumbWidth(ex)}px` }"
+              :data-i="i"
+              :title="`Example ${i + 1}`"
+              @click="sel = i"
+            >
+              <video
+                v-if="ex.kind === 'video'"
+                :src="srcOf(ex) + '#t=0.1'"
+                preload="metadata"
+                muted
+                @loadedmetadata="measureVideo(ex, $event)"
+                @error="onMediaError(ex)"
+              />
+              <img
+                v-else
+                :src="thumbOf(ex)"
+                loading="lazy"
+                @load="measureImage(ex, $event)"
+                @error="onMediaError(ex)"
+              />
+              <i v-if="ex.kind === 'video'" class="mdi mdi-play-circle ld-badge" />
+            </button>
+          </div>
+        </div>
         <div class="ld-params">
           <div v-for="p in prompts" :key="p.key" class="ld-prompt">
             <div class="ld-k">
@@ -219,13 +245,14 @@
 </template>
 
 <script setup lang="ts">
-import { computed, onBeforeUnmount, ref, watch } from 'vue'
+import { computed, nextTick, onBeforeUnmount, ref, watch } from 'vue'
 import ZenButton from '../../primitives/ZenButton.vue'
 import ZenIconButton from '../../primitives/ZenIconButton.vue'
 import ZenLightbox from '../ZenLightbox.vue'
 import type { LightboxItem } from '../../types'
 import '../../lib/scrollbar.css'
 
+import { safeLinkUrl, safeMediaUrl } from '../../lib/safeUrl'
 import * as lib from './loraLibrary'
 import { revealMature } from './loraState'
 import type { LoraExample, LoraInfo } from './types'
@@ -277,6 +304,8 @@ watch(
 const kind = computed(() => lib.previewKind(props.name) ?? info.value?.preview ?? null)
 const hasPreview = computed(() => !!kind.value || lib.hasThumb(props.name))
 const examples = computed(() => info.value?.images ?? [])
+/** The LoRA's page on the web, if its metadata gives a real http(s) one. */
+const pageUrl = computed(() => safeLinkUrl(info.value?.url))
 const current = computed<LoraExample | undefined>(() => examples.value[sel.value])
 const hasMature = computed(
   () => lib.blurMature.value && examples.value.some((e) => (e.nsfw_level ?? 0) >= MATURE_LEVEL),
@@ -292,8 +321,10 @@ function blurred(ex: LoraExample): boolean {
   return lib.blurMature.value && !revealMature.value && (ex.nsfw_level ?? 0) >= MATURE_LEVEL
 }
 
+/** Where an example loads from: its host copy, or `remote` once that failed. Both come from the
+ *  LoRA's metadata (untrusted), so only a safe media URL is used; anything else shows nothing. */
 function srcOf(ex: LoraExample): string {
-  return failed.value.has(ex.url) && ex.remote ? ex.remote : ex.url
+  return safeMediaUrl(failed.value.has(ex.url) && ex.remote ? ex.remote : ex.url) ?? ''
 }
 
 /** Civitai serves resized variants by swapping the `original=true` path segment. */
@@ -307,7 +338,8 @@ function onMediaError(ex: LoraExample) {
     failed.value = new Set(failed.value).add(ex.url)
 }
 
-const ROW_HEIGHT = 104
+/** Filmstrip thumbnails: one height, each as wide as its picture's shape (within limits). */
+const THUMB_H = 64
 
 function ratioOf(ex: LoraExample): number {
   const measured = ratios.value[ex.url]
@@ -315,11 +347,42 @@ function ratioOf(ex: LoraExample): number {
   return ex.width && ex.height ? ex.width / ex.height : 0.75
 }
 
-// Justified rows: each tile grows in proportion to its aspect ratio, so a row keeps one height.
-function tileStyle(ex: LoraExample) {
-  const r = ratioOf(ex)
-  return { flex: `${r} ${r} ${ROW_HEIGHT * r}px`, aspectRatio: String(r) }
+function thumbWidth(ex: LoraExample): number {
+  return Math.round(Math.min(Math.max(THUMB_H * ratioOf(ex), 40), 120))
 }
+
+// --- the viewer ---------------------------------------------------------------------------------
+const strip = ref<HTMLElement | null>(null)
+function step(by: number) {
+  const n = examples.value.length
+  if (n) sel.value = (sel.value + by + n) % n
+}
+function onViewerKey(e: KeyboardEvent) {
+  const by = {
+    ArrowLeft: -1,
+    ArrowRight: 1,
+    Home: -sel.value,
+    End: examples.value.length - 1 - sel.value,
+  }[e.key]
+  if (by === undefined) return
+  e.preventDefault()
+  step(by)
+}
+/** A mouse wheel scrolls the filmstrip sideways. */
+function onStripWheel(e: WheelEvent) {
+  const el = strip.value
+  if (!el || Math.abs(e.deltaX) > Math.abs(e.deltaY) || el.scrollWidth <= el.clientWidth) return
+  e.preventDefault()
+  el.scrollLeft += e.deltaY
+}
+// The chosen example's thumbnail stays in view, however it was chosen.
+watch(sel, (i) =>
+  nextTick(() =>
+    strip.value
+      ?.querySelector(`[data-i="${i}"]`)
+      ?.scrollIntoView({ block: 'nearest', inline: 'nearest' }),
+  ),
+)
 
 function setRatio(ex: LoraExample, w: number, h: number) {
   if (w > 0 && h > 0 && Math.abs(w / h - ratioOf(ex)) > 0.01)
@@ -579,42 +642,140 @@ function openExamples() {
   font-size: 11px;
   color: var(--zen-accent, #6366f1);
 }
-.ld-gallery {
+/* The viewer: stage and filmstrip, with the details beside them when the panel is wide enough. */
+/* The section is the container (a container can't restyle itself from its own query). */
+.ld-examples {
+  container: ld-examples / inline-size;
+}
+.ld-viewer {
   display: flex;
-  flex-wrap: wrap;
+  flex-direction: column;
+  gap: 12px;
+  outline: none;
+}
+.ld-look {
+  display: flex;
+  flex-direction: column;
   gap: 6px;
-}
-/* keeps the last row at natural size instead of stretching it to the full width */
-.ld-gallery::after {
-  content: '';
-  flex-grow: 1000000;
-}
-.ld-tile {
-  position: relative;
   min-width: 0;
-  padding: 0;
+}
+@container ld-examples (min-width: 560px) {
+  .ld-viewer {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) minmax(200px, 38%);
+    align-items: start;
+  }
+}
+.ld-stage {
+  position: relative;
+  display: flex;
+  height: 340px;
+  overflow: hidden;
   border: 1px solid var(--zen-border, #34343c);
   border-radius: var(--zen-radius, 7px);
-  background: var(--zen-input, #1b1b20);
-  overflow: hidden;
+  background: var(--zen-media-bg, #0b0b0e);
+}
+.ld-stage-media {
+  flex: 1;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 0;
+  padding: 0;
+  border: 0;
+  background: none;
+  cursor: zoom-in;
+}
+.ld-stage-media img,
+.ld-stage-media video {
+  display: block;
+  max-width: 100%;
+  max-height: 100%;
+  object-fit: contain;
+}
+.ld-nav {
+  position: absolute;
+  top: 50%;
+  display: grid;
+  place-items: center;
+  width: 30px;
+  height: 44px;
+  padding: 0;
+  border: 0;
+  border-radius: var(--zen-radius, 7px);
+  background: rgb(0 0 0 / 45%);
+  color: #fff;
+  font-size: 22px;
+  opacity: 0;
+  transform: translateY(-50%);
   cursor: pointer;
+  transition: opacity var(--zen-dur-fast, 0.12s) ease;
 }
-.ld-tile.sel {
+.ld-nav.prev {
+  left: 6px;
+}
+.ld-nav.next {
+  right: 6px;
+}
+.ld-stage:hover .ld-nav,
+.ld-nav:focus-visible {
+  opacity: 1;
+}
+.ld-nav:hover {
+  background: rgb(0 0 0 / 65%);
+}
+.ld-counter {
+  position: absolute;
+  right: 8px;
+  bottom: 8px;
+  padding: 2px 7px;
+  border-radius: 999px;
+  background: rgb(0 0 0 / 55%);
+  color: #fff;
+  font-size: 10.5px;
+  font-variant-numeric: tabular-nums;
+  pointer-events: none;
+}
+.ld-strip {
+  display: flex;
+  gap: 4px;
+  overflow-x: auto;
+  overflow-y: hidden;
+  padding-bottom: 4px;
+}
+.ld-thumb {
+  position: relative;
+  flex: none;
+  height: 64px;
+  padding: 0;
+  overflow: hidden;
+  border: 1px solid var(--zen-border, #34343c);
+  border-radius: calc(var(--zen-radius, 7px) - 2px);
+  background: var(--zen-media-bg, #0b0b0e);
+  opacity: 0.7;
+  cursor: pointer;
+  transition: opacity var(--zen-dur-fast, 0.12s) ease;
+}
+.ld-thumb:hover,
+.ld-thumb.sel {
+  opacity: 1;
+}
+.ld-thumb.sel {
   border-color: var(--zen-accent, #6366f1);
-  box-shadow: 0 0 0 1px var(--zen-accent, #6366f1);
+  box-shadow: inset 0 0 0 1px var(--zen-accent, #6366f1);
 }
-.ld-tile img,
-.ld-tile video {
+.ld-thumb img,
+.ld-thumb video {
+  display: block;
   width: 100%;
   height: 100%;
-  object-fit: contain;
-  display: block;
+  object-fit: cover;
 }
 .ld-badge {
   position: absolute;
-  right: 4px;
-  bottom: 4px;
-  font-size: 16px;
+  right: 3px;
+  bottom: 3px;
+  font-size: 14px;
   color: #fff;
   text-shadow: 0 1px 3px rgb(0 0 0 / 70%);
 }
@@ -622,33 +783,7 @@ function openExamples() {
 .blur video {
   filter: blur(14px);
 }
-.ld-example {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 12px;
-  align-items: flex-start;
-}
-.ld-ex-media {
-  flex: 1 1 220px;
-  max-width: 100%;
-  padding: 0;
-  border: 1px solid var(--zen-border, #34343c);
-  border-radius: var(--zen-radius, 7px);
-  background: var(--zen-input, #1b1b20);
-  overflow: hidden;
-  cursor: zoom-in;
-  display: flex;
-  justify-content: center;
-}
-.ld-ex-media img,
-.ld-ex-media video {
-  display: block;
-  max-width: 100%;
-  max-height: 380px;
-  object-fit: contain;
-}
 .ld-params {
-  flex: 1 1 220px;
   min-width: 0;
   display: flex;
   flex-direction: column;

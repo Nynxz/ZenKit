@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import '../lib/motion.css'
 // ZenCombo — searchable, pinnable picker (v-model). The "better dropdown": a typeahead
 // menu (teleported to <body> so it escapes panel/node overflow) with keyboard nav and
 // slots for custom row/selection rendering. Pass `pinned` values to float them up.
@@ -8,6 +9,7 @@ import { computed, nextTick, onBeforeUnmount, ref, useSlots, watch } from 'vue'
 import type { ComboItem } from '../types'
 import { inOtherLayer, openLayer, Z, type Layer } from '../overlays/layers'
 import '../lib/scrollbar.css'
+import '../lib/surface.css'
 
 type Val = string | number
 const props = withDefaults(
@@ -154,6 +156,12 @@ function place() {
 function measure() {
   if (listRef.value) viewportH.value = listRef.value.clientHeight
 }
+/** The page scrolled or resized under the open menu: keep it on its trigger. Scrolling inside the
+ *  menu (its list) is the menu's own business. */
+function onOutsideScroll(e: Event) {
+  if (menuRef.value?.contains(e.target as Node)) return
+  place()
+}
 function onScroll(e: Event) {
   scrollTop.value = (e.target as HTMLElement).scrollTop
 }
@@ -176,6 +184,8 @@ function openMenu() {
     measure()
     scrollToActive()
     window.addEventListener('pointerdown', onDoc, true)
+    window.addEventListener('scroll', onOutsideScroll, true)
+    window.addEventListener('resize', place)
   })
 }
 function close() {
@@ -184,6 +194,8 @@ function close() {
   layer?.release()
   layer = null
   window.removeEventListener('pointerdown', onDoc, true)
+  window.removeEventListener('scroll', onOutsideScroll, true)
+  window.removeEventListener('resize', place)
 }
 function pick(v: Val) {
   if (props.pickGuard?.(v)) return
@@ -266,7 +278,7 @@ onBeforeUnmount(close)
         v-if="open"
         ref="menuRef"
         data-zen-layer
-        class="zen-combo-menu"
+        class="zen-combo-menu zen-surface"
         :class="{ grid }"
         :style="[
           menuStyle,
@@ -397,7 +409,7 @@ onBeforeUnmount(close)
   font-size: 12px;
   cursor: pointer;
   text-align: left;
-  transition: border-color 0.12s ease;
+  transition: border-color var(--zen-dur-fast, 0.12s) ease;
 }
 .zc-trigger:hover:not(:disabled) {
   border-color: var(--zen-control-hover-border, var(--zen-accent, #6366f1));
@@ -429,7 +441,7 @@ onBeforeUnmount(close)
 .zc-caret {
   flex: none;
   color: var(--zen-muted, #9aa0aa);
-  transition: transform 0.12s ease;
+  transition: transform var(--zen-dur-fast, 0.12s) ease;
 }
 .zen-combo.open .zc-caret {
   transform: rotate(180deg);
@@ -444,13 +456,7 @@ onBeforeUnmount(close)
   display: flex;
   flex-direction: column;
   max-height: 360px;
-  background: var(--zen-chrome-bg, var(--zen-surface, #202026));
-  border: 1px solid var(--zen-surface-border, var(--zen-border, #34343c));
-  border-radius: var(--zen-radius-surface, var(--zen-radius, 7px));
-  box-shadow: 0 12px 34px rgba(0, 0, 0, 0.5);
   overflow: hidden;
-  font-family: var(--p-font-family, system-ui, sans-serif);
-  color: var(--zen-text, #e5e5ea);
 }
 .zen-combo-menu .zc-search {
   display: flex;

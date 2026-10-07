@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import '../lib/motion.css'
 // ZenSwitch — boolean toggle (v-model), optional on/off mdi icons.
 import { iconClass } from '../lib/icon'
 
@@ -40,8 +41,8 @@ const emit = defineEmits<{ 'update:modelValue': [boolean] }>()
   background: var(--zen-surface, #202026);
   cursor: pointer;
   transition:
-    background 0.15s ease,
-    border-color 0.15s ease;
+    background var(--zen-dur, 0.2s) ease,
+    border-color var(--zen-dur, 0.2s) ease;
 }
 .zen-switch.on {
   background: var(--zen-accent, #6366f1);
@@ -62,7 +63,7 @@ const emit = defineEmits<{ 'update:modelValue': [boolean] }>()
   display: flex;
   align-items: center;
   justify-content: center;
-  transition: transform 0.15s ease;
+  transition: transform var(--zen-dur, 0.2s) ease;
   box-shadow: 0 1px 2px rgba(0, 0, 0, 0.35);
 }
 .zen-switch.on .knob {

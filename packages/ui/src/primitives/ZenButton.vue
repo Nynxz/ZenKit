@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import '../lib/motion.css'
 // ZenButton — themed button. Variants: default | primary | ghost | danger.
 import { iconClass } from '../lib/icon'
 
@@ -47,10 +48,10 @@ withDefaults(
   background: var(--zen-control-bg, var(--zen-surface, #202026));
   color: var(--zen-text, #e5e5ea);
   transition:
-    border-color 0.12s ease,
-    background 0.12s ease,
-    color 0.12s ease,
-    filter 0.12s ease;
+    border-color var(--zen-dur-fast, 0.12s) ease,
+    background var(--zen-dur-fast, 0.12s) ease,
+    color var(--zen-dur-fast, 0.12s) ease,
+    filter var(--zen-dur-fast, 0.12s) ease;
 }
 .zen-btn:hover:not(:disabled) {
   border-color: var(--zen-control-hover-border, var(--zen-accent, #6366f1));

@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import '../lib/motion.css'
 // The most compact boolean: a small coloured shape, filled when on, hollow when off.
 //
 // Pick by how much the control should assert itself — ZenSwitch (42x23 pill) for a setting,
@@ -78,7 +79,7 @@ const vars = computed<Record<string, string> | undefined>(() =>
   border-radius: var(--zen-dot-radius, var(--zen-radius, 7px));
   border: 1px solid var(--zen-border, #34343c);
   background: var(--zen-input, #1b1b20);
-  transition: border-color 0.12s ease;
+  transition: border-color var(--zen-dur-fast, 0.12s) ease;
 }
 
 /* The fill. Absolutely positioned, so `inset` measures from inside the border and the gap
@@ -94,8 +95,8 @@ const vars = computed<Record<string, string> | undefined>(() =>
   transform: scale(0);
   opacity: 0;
   transition:
-    transform 0.12s ease,
-    opacity 0.12s ease;
+    transform var(--zen-dur-fast, 0.12s) ease,
+    opacity var(--zen-dur-fast, 0.12s) ease;
 }
 .zen-dot.on .mark {
   border-color: var(--zen-dot-on, var(--zen-accent, #6366f1));

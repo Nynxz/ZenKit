@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import '../lib/motion.css'
 // ZenLightbox — image/video viewer: wheel-zoom, drag-pan, rotate, slideshow.
 // `inline` fills its container (hosts like the Media Viewer draw their own chrome); otherwise an
 // immersive fullscreen overlay over the theme's background: the picture edge to edge, with a
@@ -11,6 +12,7 @@ import ZenPopover from '../overlays/ZenPopover.vue'
 import ZenSwitch from '../inputs/ZenSwitch.vue'
 import ZenSlider from '../inputs/ZenSlider.vue'
 import ZenMediaControls from './ZenMediaControls.vue'
+import { safeMediaUrl } from '../lib/safeUrl'
 import type { LightboxItem } from '../types'
 import { openLayer, Z } from '../overlays/layers'
 
@@ -291,11 +293,15 @@ function zoomBy(factor: number) {
 function rotateBy(deg: number) {
   rot.value = (rot.value + deg) % 360
 }
+/** The current item's src, when it's safe to offer as a download (see lib/safeUrl). */
+const downloadUrl = computed(() => safeMediaUrl(item.value?.src))
 function download() {
   const it = item.value
   if (!it) return
   const a = document.createElement('a')
-  a.href = it.src
+  const href = downloadUrl.value
+  if (!href) return
+  a.href = href
   a.download = (it.label || 'image').split('/').pop() || 'image'
   document.body.appendChild(a)
   a.click()
@@ -865,7 +871,12 @@ defineExpose({
               @click.stop="reset"
             />
             <span class="zlb-sep" />
-            <ZenIconButton icon="mdi mdi-download" title="Download" @click.stop="download" />
+            <ZenIconButton
+              v-if="downloadUrl"
+              icon="mdi mdi-download"
+              title="Download"
+              @click.stop="download"
+            />
           </div>
         </footer>
       </div>
@@ -930,8 +941,8 @@ defineExpose({
   gap: 8px;
   pointer-events: none;
   transition:
-    opacity 0.25s ease,
-    translate 0.25s ease;
+    opacity var(--zen-dur, 0.2s) ease,
+    translate var(--zen-dur, 0.2s) ease;
 }
 .zlb-top > *,
 .zlb-bottom > * {
@@ -1081,9 +1092,9 @@ defineExpose({
 .zlb-side.zlb-side-enter-active,
 .zlb-side.zlb-side-leave-active {
   transition:
-    translate 0.3s cubic-bezier(0.45, 0, 0.2, 1),
-    margin-right 0.3s cubic-bezier(0.45, 0, 0.2, 1),
-    opacity 0.22s ease;
+    translate var(--zen-dur, 0.2s) cubic-bezier(0.45, 0, 0.2, 1),
+    margin-right var(--zen-dur, 0.2s) cubic-bezier(0.45, 0, 0.2, 1),
+    opacity var(--zen-dur, 0.2s) ease;
 }
 .zlb-side.zlb-side-enter-from,
 .zlb-side.zlb-side-leave-to {
@@ -1292,7 +1303,7 @@ defineExpose({
   display: block;
   border-radius: var(--zen-radius, 7px);
   box-shadow: 0 24px 60px -20px rgba(0, 0, 0, 0.55);
-  transition: transform 0.05s linear;
+  transition: transform var(--zen-dur, 0.2s) linear;
 }
 .zlb.inline .zlb-media {
   box-shadow: none;
@@ -1343,7 +1354,7 @@ defineExpose({
   color: #fff;
   cursor: pointer;
   opacity: 0;
-  transition: opacity 0.16s ease;
+  transition: opacity var(--zen-dur, 0.2s) ease;
   mask-image: linear-gradient(to bottom, transparent, #000 30%, #000 70%, transparent);
 }
 .zlb-nav.prev {
@@ -1373,7 +1384,7 @@ defineExpose({
 .zlb-nav .mdi {
   font-size: 28px;
   filter: drop-shadow(0 1px 4px rgba(0, 0, 0, 0.6));
-  transition: translate 0.16s ease;
+  transition: translate var(--zen-dur, 0.2s) ease;
 }
 .zlb-nav.prev:hover .mdi {
   translate: -3px 0;

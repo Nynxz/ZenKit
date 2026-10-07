@@ -6,6 +6,7 @@
 // managing button) OR with v-model:open + :anchor (an element, a DOMRect, or an {x,y} point —
 // e.g. a right-click). The default slot is the content and receives { close }.
 import '../lib/scrollbar.css'
+import '../lib/surface.css'
 import { computed, nextTick, onBeforeUnmount, ref, watch } from 'vue'
 import { inOtherLayer, openLayer, Z, type Layer } from './layers'
 
@@ -21,10 +22,13 @@ const props = withDefaults(
     placement?: Placement
     offset?: number
     matchWidth?: boolean
+    /** Its ARIA role: `menu` (default) for a list of actions, `dialog` for anything else (a form,
+     *  a picker), `listbox` for a choice of values. */
+    role?: 'menu' | 'dialog' | 'listbox' | 'tooltip'
   }>(),
   // `open: undefined` keeps it uncontrolled when not bound: an absent boolean prop is otherwise
   // cast to `false`, which reads as controlled-and-closed and the trigger can never open it.
-  { open: undefined, placement: 'bottom-start', offset: 6, matchWidth: false },
+  { open: undefined, placement: 'bottom-start', offset: 6, matchWidth: false, role: 'menu' },
 )
 const emit = defineEmits<{ 'update:open': [boolean] }>()
 
@@ -160,9 +164,9 @@ defineExpose({ open: show, close, toggle })
       v-if="isOpen"
       ref="panelEl"
       data-zen-layer
-      class="zen-pop zen-scroll"
+      class="zen-pop zen-surface zen-scroll"
       :style="[panelStyle, { zIndex: z, visibility: ready ? 'visible' : 'hidden' }]"
-      role="menu"
+      :role="role"
     >
       <slot :close="close" />
     </div>
@@ -178,16 +182,9 @@ defineExpose({ open: show, close, toggle })
   z-index: 100000;
   min-width: 160px;
   max-width: min(360px, 92vw);
-  box-sizing: border-box;
   padding: 5px;
   display: flex;
   flex-direction: column;
   gap: 1px;
-  background: var(--zen-chrome-bg, var(--zen-surface, #202026));
-  border: 1px solid var(--zen-surface-border, var(--zen-border, #34343c));
-  border-radius: var(--zen-radius-surface, var(--zen-radius, 7px));
-  box-shadow: 0 10px 30px rgba(0, 0, 0, 0.5);
-  font-family: var(--p-font-family, system-ui, sans-serif);
-  color: var(--zen-text, #e5e5ea);
 }
 </style>

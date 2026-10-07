@@ -82,6 +82,7 @@
 </template>
 
 <script setup lang="ts">
+import '../lib/motion.css'
 // ZenMediaControls — a themed control bar for a <video> or <audio> element the host renders: play,
 // frame stepping, a scrubber (buffered range, hover time, drag to seek), loop, speed and volume.
 // It drives the element rather than owning it, so the host keeps the element wherever its own
@@ -396,7 +397,7 @@ defineExpose({ onKey, toggle, seek })
   border-radius: 2px;
   background: color-mix(in srgb, var(--zen-text, #e5e5ea) 14%, transparent);
   transform: translateY(-50%);
-  transition: height 0.1s;
+  transition: height var(--zen-dur-fast, 0.12s);
 }
 .zmc-bar:hover .zmc-track {
   height: 6px;
@@ -423,7 +424,7 @@ defineExpose({ onKey, toggle, seek })
   background: var(--zen-text, #e5e5ea);
   box-shadow: 0 1px 4px rgb(0 0 0 / 50%);
   transform: translate(-50%, -50%) scale(0);
-  transition: transform 0.1s;
+  transition: transform var(--zen-dur-fast, 0.12s);
 }
 .zmc-bar:hover .zmc-knob {
   transform: translate(-50%, -50%) scale(1);

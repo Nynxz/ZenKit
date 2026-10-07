@@ -2,7 +2,8 @@
   <div
     ref="box"
     class="zmi"
-    :class="{ focused, sized: height !== null }"
+    :class="{ focused, sized: height !== null, 'zen-off': disabled }"
+    :inert="disabled || undefined"
     :style="height !== null ? { height: `${height}px`, flex: 'none' } : undefined"
   >
     <div
@@ -60,8 +61,9 @@
       </div>
       <div
         v-if="open && matches.length"
+        ref="popEl"
         data-zen-layer
-        class="zmi-pop zen-scroll"
+        class="zmi-pop zen-surface zen-scroll"
         :style="{ left: `${popPos.x}px`, top: `${popPos.y}px`, zIndex: popZ }"
         @pointerdown.prevent
       >
@@ -71,7 +73,7 @@
           type="button"
           class="zmi-item"
           :class="{ on: i === active }"
-          @mouseenter="active = i"
+          @pointermove="active = i"
           @click="insert(item)"
         >
           <span class="zmi-thumb">
@@ -91,11 +93,13 @@
 </template>
 
 <script setup lang="ts">
+import '../lib/motion.css'
 // ZenMentionInput — a textarea that knows about @mentions: known ones are highlighted as you type,
 // unknown ones are flagged, and typing @ opens a filtered list (with thumbnails) at the caret.
 // Arrow keys move, Enter or Tab inserts, Escape closes. The text stays plain — `@name` — so the
 // consumer decides what a mention means.
 import '../lib/scrollbar.css'
+import '../lib/surface.css'
 import { computed, nextTick, onBeforeUnmount, onMounted, reactive, ref, watch } from 'vue'
 import { iconClass } from '../lib/icon'
 import { openLayer, zAbove, Z, type Layer } from '../overlays/layers'
@@ -114,6 +118,8 @@ const props = withDefaults(
     placeholder?: string
     /** A grip in the corner drags the box taller or shorter; past its height the text scrolls. */
     resizable?: boolean
+    /** Dims it, and nothing inside takes clicks, typing or focus. */
+    disabled?: boolean
   }>(),
   {
     placeholder: '',
@@ -128,6 +134,11 @@ const focused = ref(false)
 const open = ref(false)
 const query = ref('')
 const active = ref(0)
+const popEl = ref<HTMLElement | null>(null)
+// The keyboard's pick stays in view as the arrows walk past the list's edge.
+watch(active, () =>
+  nextTick(() => popEl.value?.children[active.value]?.scrollIntoView({ block: 'nearest' })),
+)
 const popPos = reactive({ x: 0, y: 0 })
 
 const known = computed(() => new Set(props.items.map((i) => i.key.toLowerCase())))
@@ -155,7 +166,7 @@ const matches = computed(() => {
     })
     .filter((x) => x.score >= 0)
     .sort((a, b) => a.score - b.score)
-  return scored.map((x) => x.item).slice(0, 8)
+  return scored.map((x) => x.item).slice(0, 50)
 })
 
 /** The @word being typed right before the caret, if any. */
@@ -319,6 +330,7 @@ onBeforeUnmount(() => layer?.release())
 // would be left behind, so they close instead.
 function onOuterScroll(e: Event) {
   if (e.target === area.value) return
+  if (e.target instanceof Node && popEl.value?.contains(e.target)) return
   peek.value = null
   open.value = false
 }
@@ -365,7 +377,7 @@ defineExpose({ focus: () => area.value?.focus() })
   border: 1px solid var(--zen-control-border, var(--zen-border, #34343c));
   border-radius: var(--zen-radius, 7px);
   background: var(--zen-field-bg, var(--zen-input, #1b1b20));
-  transition: border-color 0.12s ease;
+  transition: border-color var(--zen-dur-fast, 0.12s) ease;
 }
 .zmi.focused {
   border-color: var(--zen-accent, #6366f1);
@@ -474,7 +486,7 @@ defineExpose({ focus: () => area.value?.focus() })
   width: 100%;
   max-height: 180px;
   border-radius: calc(var(--zen-radius, 7px) - 2px);
-  background: #0b0b0e;
+  background: var(--zen-media-bg, #0b0b0e);
   object-fit: contain;
 }
 .zmi-peek > .mdi {
@@ -491,10 +503,6 @@ defineExpose({ focus: () => area.value?.focus() })
   max-height: 260px;
   overflow-y: auto;
   padding: 4px;
-  border: 1px solid var(--zen-surface-border, var(--zen-border, #34343c));
-  border-radius: var(--zen-radius, 7px);
-  background: var(--zen-surface, #202026);
-  box-shadow: 0 10px 30px rgb(0 0 0 / 45%);
 }
 .zmi-item {
   display: flex;
@@ -521,7 +529,7 @@ defineExpose({ focus: () => area.value?.focus() })
   height: 30px;
   overflow: hidden;
   border-radius: 5px;
-  background: #0b0b0e;
+  background: var(--zen-media-bg, #0b0b0e);
   color: var(--zen-muted, #9aa0aa);
 }
 .zmi-thumb img {
@@ -544,5 +552,9 @@ defineExpose({ focus: () => area.value?.focus() })
   font-size: 10.5px;
   white-space: nowrap;
   text-overflow: ellipsis;
+}
+/* disabled: the same dimming as every ZenKit control; `inert` stops the input. */
+.zen-off {
+  opacity: 0.45;
 }
 </style>

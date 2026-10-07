@@ -4,7 +4,7 @@
       v-if="open"
       ref="menuEl"
       data-zen-layer
-      class="zen-ctx zen-scroll"
+      class="zen-ctx zen-surface zen-scroll"
       role="menu"
       :style="{ left: `${pos.x}px`, top: `${pos.y}px`, zIndex: z }"
       @contextmenu.prevent
@@ -35,6 +35,7 @@
 // contextmenu handler; it opens where the pointer is, keeps itself on screen, and closes on a pick,
 // Escape, or a click anywhere else.
 import '../lib/scrollbar.css'
+import '../lib/surface.css'
 import { nextTick, onBeforeUnmount, reactive, ref } from 'vue'
 
 import { iconClass } from '../lib/icon'
@@ -109,11 +110,6 @@ defineExpose({ show, close })
   max-height: 70vh;
   overflow-y: auto;
   padding: 4px;
-  border: 1px solid var(--zen-surface-border, var(--zen-border, #34343c));
-  border-radius: var(--zen-radius, 7px);
-  background: var(--zen-surface, #202026);
-  box-shadow: 0 10px 30px rgb(0 0 0 / 45%);
-  color: var(--zen-text, #e5e5ea);
   font-size: 12px;
 }
 .zen-ctx-item {

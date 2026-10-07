@@ -1,5 +1,5 @@
 <template>
-  <div class="zce">
+  <div class="zce" :class="{ 'zen-off': disabled }" :inert="disabled || undefined">
     <div class="zce-box">
       <svg
         ref="svg"
@@ -82,6 +82,8 @@ const props = withDefaults(
     flat?: number
     xLabels?: [string, string]
     presets?: CurvePreset[]
+    /** Dims it, and nothing inside takes clicks, typing or focus. */
+    disabled?: boolean
   }>(),
   { min: 0, max: 1, unit: null, flat: 1, xLabels: () => ['start', 'end'], presets: () => [] },
 )
@@ -217,5 +219,9 @@ function drag(e: PointerEvent, i: number) {
 .zce-preset:hover {
   border-color: var(--zen-accent, #6366f1);
   color: var(--zen-text, #e5e5ea);
+}
+/* disabled: the same dimming as every ZenKit control; `inert` stops the input. */
+.zen-off {
+  opacity: 0.45;
 }
 </style>

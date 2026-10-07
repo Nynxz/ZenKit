@@ -1,5 +1,5 @@
 <template>
-  <div class="zres">
+  <div class="zres" :class="{ 'zen-off': disabled }" :inert="disabled || undefined">
     <div class="zres-sec">aspect ratio</div>
     <div class="zres-aspects">
       <button
@@ -110,6 +110,8 @@ const props = withDefaults(
     native?: (ratio: number) => Size
     maxSide?: number
     maxMp?: number
+    /** Dims it, and nothing inside takes clicks, typing or focus. */
+    disabled?: boolean
   }>(),
   {
     snap: 32,
@@ -320,5 +322,9 @@ const shape = computed(() => {
 }
 .zres-grow {
   flex: 1;
+}
+/* disabled: the same dimming as every ZenKit control; `inert` stops the input. */
+.zen-off {
+  opacity: 0.45;
 }
 </style>

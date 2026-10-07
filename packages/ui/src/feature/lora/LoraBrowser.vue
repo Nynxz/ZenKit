@@ -249,6 +249,7 @@
 </template>
 
 <script setup lang="ts">
+import '../../lib/motion.css'
 import { computed, nextTick, ref, watch } from 'vue'
 import ZenFolderTree from '../../data/ZenFolderTree.vue'
 import ZenInput from '../../inputs/ZenInput.vue'
@@ -494,7 +495,7 @@ function onKey(e: KeyboardEvent) {
   font-size: 15px;
 }
 .lb-folder .mdi-star {
-  color: #f5b301;
+  color: var(--zen-star, #f5b301);
 }
 .lb-fname {
   flex: 1;
@@ -577,7 +578,7 @@ function onKey(e: KeyboardEvent) {
   aspect-ratio: 3 / 4;
   overflow: hidden;
   border-radius: var(--zen-radius, 7px);
-  background: #0b0b0e;
+  background: var(--zen-media-bg, #0b0b0e);
 }
 .lb-img img,
 .lb-img video {
@@ -611,14 +612,14 @@ function onKey(e: KeyboardEvent) {
   top: 5px;
   right: 5px;
   opacity: 0;
-  transition: opacity 0.12s;
+  transition: opacity var(--zen-dur-fast, 0.12s);
 }
 .lb-card:hover .lb-star,
 .lb-star.on {
   opacity: 1;
 }
 .lb-star.on {
-  color: #f5b301;
+  color: var(--zen-star, #f5b301);
 }
 .lb-inuse {
   top: 5px;
@@ -705,7 +706,7 @@ function onKey(e: KeyboardEvent) {
   height: 26px;
   overflow: hidden;
   border-radius: 5px;
-  background: #0b0b0e;
+  background: var(--zen-media-bg, #0b0b0e);
   color: var(--zen-muted, #9aa0aa);
 }
 .lb-rthumb img {
@@ -745,7 +746,7 @@ function onKey(e: KeyboardEvent) {
   opacity: 1;
 }
 .lb-rstar.on {
-  color: #f5b301;
+  color: var(--zen-star, #f5b301);
 }
 
 /* details */

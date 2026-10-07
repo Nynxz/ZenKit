@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import '../lib/motion.css'
 import { nextTick, onMounted, ref, watch } from 'vue'
 // ZenInput — themed text/number/textarea field (v-model). type='textarea' renders a
 // resizable <textarea>; otherwise a single-line <input :type>. Emits numbers for type='number'.
@@ -88,7 +89,7 @@ function onInput(e: Event) {
   border-radius: var(--zen-radius, 7px);
   height: var(--zen-control-h, 28px);
   padding: 0 9px;
-  transition: border-color 0.12s ease;
+  transition: border-color var(--zen-dur-fast, 0.12s) ease;
 }
 .zen-input::placeholder {
   color: var(--zen-muted, #9aa0aa);

@@ -1,0 +1,15 @@
+/* The floating surface every ZenKit pop-up shares — context menus, popovers, the select, combo and
+ * mention lists, the colour picker: one background, border, radius and shadow, and ComfyUI's font
+ * (teleported to <body>, they don't inherit the panel's). Add class="zen-surface"; a component
+ * keeps only its own size, padding and layout. Zero specificity, so a component can still tune
+ * one property. Tokens: --zen-chrome-bg, --zen-surface-border, --zen-radius-surface,
+ * --zen-shadow-pop. */
+:where(.zen-surface) {
+  box-sizing: border-box;
+  border: 1px solid var(--zen-surface-border, var(--zen-border, #34343c));
+  border-radius: var(--zen-radius-surface, var(--zen-radius, 7px));
+  background: var(--zen-chrome-bg, var(--zen-surface, #202026));
+  box-shadow: var(--zen-shadow-pop, 0 10px 30px rgb(0 0 0 / 45%));
+  color: var(--zen-text, #e5e5ea);
+  font-family: var(--p-font-family, system-ui, sans-serif);
+}
