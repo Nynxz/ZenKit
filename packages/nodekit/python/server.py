@@ -10,15 +10,37 @@ route modules guard on it. `route()` is the namespaced path, the Python twin of 
 
         @routes.get(route("studio/state"))
         async def studio_state(request): ...
+
+        @routes.post(route("studio/state"))
+        async def studio_save(request):
+            if (denied := request_allowed(request)) is not None:
+                return denied
+            ...
+
+`request_allowed()` is the guard for every route that changes state (POST, PUT, PATCH, DELETE,
+or a GET with side effects beyond a cache). ComfyUI's own origin middleware stops cross-site
+pages but not DNS rebinding, and it trusts a request with no Content-Type check; the guard adds:
+
+1. Host: while ComfyUI listens only on loopback (the default), the Host header must name
+   loopback (localhost, 127.0.0.1, [::1]). With `--listen <addr>` that address is allowed too;
+   with a wildcard (`--listen` alone, 0.0.0.0, ::) the Host isn't checked, since the user chose
+   to expose the server.
+2. Origin: when present, its host:port must equal the Host header's.
+3. Content type: a state-changing request with a body must send `application/json`, which a
+   cross-site form can't without a CORS preflight.
+
+A refused request gets a 403 with a short JSON error, logged once per path.
 """
 
 from __future__ import annotations
 
+import logging
 from typing import Any
+from urllib.parse import urlsplit
 
-from .identity import route
+from .identity import LOG_PREFIX, route
 
-__all__ = ["prompt_server", "route", "routes", "send"]
+__all__ = ["prompt_server", "request_allowed", "route", "routes", "send"]
 
 try:
     from server import PromptServer
@@ -40,3 +62,77 @@ def send(event: str, payload: dict[str, Any], client_id: str | None = None) -> b
     except Exception:  # noqa: BLE001
         return False
     return True
+
+
+_LOOPBACK = frozenset({"localhost", "127.0.0.1", "::1"})
+_WILDCARD = frozenset({"", "0.0.0.0", "::"})
+_UNSAFE_METHODS = frozenset({"POST", "PUT", "PATCH", "DELETE"})
+_DEFAULT_PORTS = {"http": 80, "https": 443, "ws": 80, "wss": 443}
+_logged: set[str] = set()
+
+
+def _listen_hosts() -> frozenset[str] | None:
+    """The host names a request may use, or None when ComfyUI listens on every interface."""
+    try:
+        from comfy.cli_args import args
+
+        listen = str(getattr(args, "listen", "127.0.0.1") or "")
+    except Exception:  # noqa: BLE001 - outside ComfyUI: assume its loopback default
+        listen = "127.0.0.1"
+    names = {part.strip().strip("[]").lower() for part in listen.split(",")}
+    if names & _WILDCARD:
+        return None
+    return _LOOPBACK | names
+
+
+def _host_port(netloc: str, scheme: str) -> tuple[str, int | None] | None:
+    """(hostname, port) from a Host header or an Origin's netloc; None when it doesn't parse."""
+    try:
+        parts = urlsplit(f"//{netloc}")
+        host, port = parts.hostname, parts.port
+    except ValueError:
+        return None
+    if not host or parts.username is not None or parts.path:
+        return None
+    return host.lower(), port if port is not None else _DEFAULT_PORTS.get(scheme)
+
+
+def _deny(request, reason: str):
+    from aiohttp import web
+
+    if request.path not in _logged:
+        _logged.add(request.path)
+        logging.warning(
+            "%s refused %s %s: %s (logged once per path)",
+            LOG_PREFIX,
+            request.method,
+            request.path,
+            reason,
+        )
+    return web.json_response({"error": f"forbidden: {reason}"}, status=403)
+
+
+def request_allowed(request):
+    """None when `request` may change state; else the 403 response to return. See the module
+    docstring for the rules."""
+    scheme = request.scheme
+    host = _host_port(request.headers.get("Host", ""), scheme)
+    if host is None:
+        return _deny(request, "missing or malformed Host header")
+    allowed = _listen_hosts()
+    if allowed is not None and host[0] not in allowed:
+        return _deny(request, f"Host {host[0]!r} is not an address this server listens on")
+
+    origin = request.headers.get("Origin")
+    if origin is not None:
+        parts = urlsplit(origin)
+        if _host_port(parts.netloc, parts.scheme.lower()) != host:
+            return _deny(request, "Origin does not match Host")
+
+    if (
+        request.method in _UNSAFE_METHODS
+        and request.body_exists
+        and request.content_type != "application/json"
+    ):
+        return _deny(request, "state-changing requests must send application/json")
+    return None

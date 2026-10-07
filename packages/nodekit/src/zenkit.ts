@@ -8,6 +8,7 @@ export {
   COMFY_ASSET_MIME,
   getZenKit,
   mediaKindOf,
+  parseMediaRef,
   openViewer,
   whenZen,
   ZEN_IMAGE_MIME,

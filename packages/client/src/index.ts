@@ -2,6 +2,8 @@
 // It owns the ZenKit contract (./contract, types only): consumers import every ZenKit type from
 // here, with `import type`.
 export type * from './contract'
+export { mediaKindOf, parseMediaRef } from './mediaRefs'
+import { mediaKindOf } from './mediaRefs'
 import type {
   Capability,
   AppRegistration,
@@ -558,21 +560,6 @@ export interface DroppedImage {
   /** True when `url` is an object URL this call minted from a local File. The caller owns it and
    *  must `URL.revokeObjectURL` when done, or the blob is pinned for the life of the document. */
   objectUrl?: boolean
-}
-
-const VIDEO_EXT = /\.(mp4|webm|mov|mkv|avi|m4v)(\?|#|$)/i
-const AUDIO_EXT = /\.(mp3|wav|flac|ogg|oga|m4a|aac|opus)(\?|#|$)/i
-
-/** Guess the media kind from a filename or url. A `data:` URI is read from its media type,
- *  since it has no extension to go on. Anything else, GIF included, is an image (the default,
- *  matching ChannelImage). */
-export function mediaKindOf(nameOrUrl: string): 'image' | 'video' | 'audio' {
-  const s = nameOrUrl || ''
-  const data = /^data:(image|video|audio)\//i.exec(s)
-  if (data) return data[1]!.toLowerCase() as 'image' | 'video' | 'audio'
-  if (VIDEO_EXT.test(s)) return 'video'
-  if (AUDIO_EXT.test(s)) return 'audio'
-  return 'image'
 }
 
 function fileNameFromUrl(url: string): string | undefined {

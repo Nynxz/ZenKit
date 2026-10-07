@@ -9,7 +9,9 @@ const MODES = ['light', 'dark'] as const
  *  malformed file can't inject anything but CSS custom-property values. `css`,
  *  when present, must be a string — it's injected verbatim into a `<style>` (it
  *  can't run script), so it's kept as-is, not sanitized; themes are trusted,
- *  local content. */
+ *  local content. `splash.html` / `splash.css` are kept as given here too: they
+ *  only reach ComfyUI's boot splash through core's `syncThemeSplash`, which
+ *  sanitises them first (no script, handlers or remote URLs). */
 export function parsePack(data: unknown): ThemePack | null {
   if (!data || typeof data !== 'object') return null
   const d = data as Record<string, unknown>

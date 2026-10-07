@@ -35,7 +35,16 @@ export { createPackMedia, type MediaInfo, type PackMedia } from './packMedia'
 // client's own (bundled, see zenkit.ts).
 export { registerSlotLink } from './zenGraph'
 export { openViewer, type ViewerHandle, type ViewerItem, type ViewerOpenOptions } from './zenkit'
-export { openZenPanel, hasZenPanels, type ZenPanelSpec, type ZenPanelHandle } from './zenPanel'
+export {
+  openZenPanel,
+  hasZenPanels,
+  registerZenPanel,
+  type ZenPanelEntry,
+  type ZenPanelSpec,
+  type ZenPanelHandle,
+} from './zenPanel'
+export { highlightNode, revealNode } from './highlightNode'
+export { registerZenCapability, type ZenCapability } from './zenCapability'
 
 // Prefer the identity-bound versions from createNodekit over these.
 export { registerNodes, discoverNodes } from './registerNodes'

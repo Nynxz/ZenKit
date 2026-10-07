@@ -119,7 +119,8 @@ zenkit-nodekit check-widgets   # CI: every widget_type() has its widgets/*.vue, 
 The vendored package gives the pack `NAMESPACE`, `CATEGORY`, `node_id()`, `route()`; `widget_type()`
 and friends; node autodiscovery; the media routes below; `Job` progress events; and a
 `comfy_entrypoint` that wires them up. Your own route modules are listed in pack.json
-(`"python": { "routes": ["server.api"] }`) and registered by the same setup. Details:
+(`"python": { "routes": ["server.api"] }`) and registered by the same setup; routes that change
+state start with `server.request_allowed(request)` (Host, Origin and JSON checks). Details:
 [Nodekit pack pattern](https://github.com/Nynxz/ZenKit/wiki/Nodekit-Pack-Pattern#python-helpers-zenkit-nodekit-sync).
 
 ## Adding a widget is adding a file
@@ -147,7 +148,7 @@ ZenKit's `zen.media`.
 | `readMediaDrop`   | The refs a drop carries; desktop files are uploaded (`upload` hook to reuse server files) |
 | `hasMediaDrop`    | For `dragover`                                                                            |
 | `uploadMediaFile` | Upload into `input/<subfolder>` via ComfyUI's `/upload/image`                             |
-| `mediaRefUrl`     | A `/view` URL for a ref; `viewUrl` does the same for a saved-file record                  |
+| `mediaRefUrl`     | A `/view` URL for a ref (never a URL ref itself); `viewUrl` does the same for a record    |
 | `mediaKind`       | `'image' \| 'video' \| 'audio'` by extension (GIF is an image)                            |
 | `mediaLibrary`    | Browses ComfyUI's folders for `ZenMediaPicker` (from `createNodekit`)                     |
 | `thumbUrl`        | A cached JPEG poster for a ref, from the pack's route (from `createNodekit`)              |

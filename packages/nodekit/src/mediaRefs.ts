@@ -7,29 +7,25 @@ import { api } from '@comfy/api'
 import { viewUrl } from './viewUrl'
 // ZEN_IMAGE_MIME: what ZenKit's drag sources (Media Viewer, Asset Browser, Stash…) put on a drag.
 // COMFY_ASSET_MIME: ComfyUI's own asset browser.
-import { COMFY_ASSET_MIME, mediaKindOf, ZEN_IMAGE_MIME } from './zenkit'
+import { COMFY_ASSET_MIME, mediaKindOf, parseMediaRef, ZEN_IMAGE_MIME } from './zenkit'
 
-const FOLDERS = ['input', 'output', 'temp']
-
-/** `output/sub/name.png` → its folder, subfolder and name; null for anything else. */
-export function parseMediaRef(
-  ref: string,
-): { type: string; subfolder: string; filename: string } | null {
-  const [type, ...rest] = ref.split('/')
-  const filename = rest.pop()
-  if (!type || !filename || !FOLDERS.includes(type)) return null
-  return { type, subfolder: rest.join('/'), filename }
-}
+export { parseMediaRef } from './zenkit'
 
 /** What a ref (or file name) holds, from its extension; GIF is an image. The client's
  *  `mediaKindOf`, under the name packs know it by. */
 export const mediaKind: (ref: string) => 'image' | 'video' | 'audio' = mediaKindOf
 
-/** A URL that shows the ref's file. */
+/** A URL that shows the ref's file. Only ComfyUI refs (`input/`, `output/`, `temp/`) resolve;
+ *  anything else (an http:/data:/blob: URL, a `/path`, a malformed ref) never becomes its own
+ *  URL. It gets a `/view` request ComfyUI always refuses (400), so `<img>`/`<video>` show their
+ *  error state and a HEAD check reports the file missing, without fetching what the ref names.
+ *  Use `parseMediaRef` to tell the two apart up front. */
 export function mediaRefUrl(ref: string): string {
   const parsed = parseMediaRef(ref)
-  return parsed ? viewUrl(parsed) : ref
+  return parsed ? viewUrl(parsed) : notARefUrl()
 }
+
+const notARefUrl = () => (api as { apiURL: (p: string) => string }).apiURL('/view?filename=')
 
 function refFromViewUrl(url: string): string | null {
   try {

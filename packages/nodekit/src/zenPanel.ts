@@ -7,7 +7,7 @@
 
 import { createApp, type Component } from 'vue'
 
-import { getZenKit } from './zenkit'
+import { getZenKit, whenZen } from './zenkit'
 
 export interface ZenPanelSpec {
   /** Stable id. Opening the same id again focuses the existing panel instead of duplicating. */
@@ -86,5 +86,51 @@ export function openZenPanel(spec: ZenPanelSpec, component: Component): ZenPanel
     }
   } catch {
     return null
+  }
+}
+
+export interface ZenPanelEntry extends Omit<ZenPanelSpec, 'onClose'> {
+  /** Groups it under the pack in ZenKit's Start menu. */
+  plugin?: string
+}
+
+/**
+ * List `component` in ZenKit's Start menu (the taskbar launcher) as a panel anyone can open,
+ * and reopen it after a reload if it was open. Waits for ZenKit; resolves to an unregister fn,
+ * or null without ZenKit — the pack then offers its own way in.
+ */
+export async function registerZenPanel(
+  entry: ZenPanelEntry,
+  component: Component,
+): Promise<(() => void) | null> {
+  const zen = await whenZen()
+  if (!zen?.panels?.register) return null
+  try {
+    const off = zen.panels.register({
+      id: entry.id,
+      title: entry.title,
+      icon: entry.icon,
+      plugin: entry.plugin,
+      persist: entry.persist,
+      open: () =>
+        zen.panels.open({
+          id: entry.id,
+          title: entry.title,
+          icon: entry.icon,
+          width: entry.width,
+          height: entry.height,
+          minWidth: entry.minWidth,
+          minHeight: entry.minHeight,
+          persist: entry.persist,
+          render(el: HTMLElement) {
+            const app = createApp(component, entry.props ?? {})
+            app.mount(el)
+            return () => app.unmount()
+          },
+        }),
+    })
+    return typeof off === 'function' ? off : () => {}
+  } catch {
+    return () => {}
   }
 }

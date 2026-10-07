@@ -15,6 +15,9 @@ GET /<ns>/media/find?size=&sha256=       {"ref": "input/sub/name.png" | null}: a
                                          the input folder with exactly these bytes, so a drop
                                          reuses it instead of uploading a copy
 
+All four are read-only (thumb only fills a cache), but each still runs `server.request_allowed`,
+so a DNS-rebound page can't list, probe or fill the cache through them.
+
 A GIF is an image here, as everywhere in ZenKit: its thumbnail and info come from its first frame.
 PyAV is optional: without it, video thumbnails fail with 415 and `media_info` reports only an
 image's size (everything else null).
@@ -27,6 +30,7 @@ import hashlib
 import os
 
 from .identity import DISPLAY_NAME, NAMESPACE, route
+from .server import request_allowed
 
 try:
     import folder_paths
@@ -243,6 +247,8 @@ def register(routes) -> None:
 
     @routes.get(route("media"))
     async def media_list(request):
+        if (denied := request_allowed(request)) is not None:
+            return denied
         folder = request.query.get("type", "input")
         if folder not in FOLDERS:
             return web.json_response(
@@ -255,6 +261,8 @@ def register(routes) -> None:
 
     @routes.get(route("media/info"))
     async def media_file_info(request):
+        if (denied := request_allowed(request)) is not None:
+            return denied
         path = resolve(request.query.get("ref", ""))
         if not path or not kind_of(path):
             return web.json_response({"error": "not found"}, status=404)
@@ -266,6 +274,8 @@ def register(routes) -> None:
 
     @routes.get(route("media/find"))
     async def media_find(request):
+        if (denied := request_allowed(request)) is not None:
+            return denied
         try:
             size = int(request.query.get("size", ""))
         except ValueError:
@@ -276,6 +286,8 @@ def register(routes) -> None:
 
     @routes.get(route("media/thumb"))
     async def media_thumb(request):
+        if (denied := request_allowed(request)) is not None:
+            return denied
         query = request.query
         base = _base(query.get("type", "input"))
         path = _under(base, query.get("name", "")) if base else None

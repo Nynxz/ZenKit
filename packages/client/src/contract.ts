@@ -196,8 +196,8 @@ export interface ChannelImage {
  *  Give an explicit `url`, or `filename`(+subfolder/type) to resolve via /view. */
 export interface ChannelInput {
   url?: string
-  /** Its media ref, when the producer knows it. Otherwise ZenKit derives one: from
-   *  `filename`/`subfolder`/`type` for a ComfyUI file, else the `url` itself. */
+  /** Its media ref, when the producer knows it. Otherwise ZenKit derives one from
+   *  `filename`/`subfolder`/`type` for a ComfyUI file; a plain `url` gets none. */
   ref?: string
   filename?: string
   subfolder?: string
@@ -614,7 +614,7 @@ export interface ZenCapabilities {
 /** A short string naming one image / video / audio wherever it lives, so results can be
  *  handed from one capability to the next. Built in: ComfyUI files as
  *  `output/<subfolder/>name.png` (also `input/…`, `temp/…`); plugins add their own prefixes
- *  (e.g. `stash:…`); any http(s) or data URL also works. */
+ *  (e.g. `stash:…`). URLs (http:, data:, blob:, `/path`) are not refs and are refused. */
 export type MediaRef = string
 
 export interface MediaInfo {
@@ -636,7 +636,8 @@ export interface MediaSource {
 export interface ZenMedia {
   registerSource(source: MediaSource): () => void
   resolve(ref: MediaRef): Promise<MediaInfo>
-  /** A ComfyUI loader widget value for the media, copying it into the input folder if needed. */
+  /** A ComfyUI loader widget value for the media. A registered source without its own `toInput`
+   *  has its (same-origin, blob: or data:) URL copied into the input folder. */
   toInput(ref: MediaRef): Promise<string>
   /** The ref for a ComfyUI file, as `executed` / history outputs describe them. */
   fromComfyFile(file: { filename: string; subfolder?: string; type?: string }): MediaRef
