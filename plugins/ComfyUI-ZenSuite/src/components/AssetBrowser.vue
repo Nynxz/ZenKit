@@ -1,6 +1,12 @@
 <template>
   <div class="ob">
     <div class="toolbar">
+      <ZenIconButton
+        :active="foldersOpen"
+        icon="mdi mdi-file-tree-outline"
+        :title="foldersOpen ? 'Hide folders' : 'Show folders'"
+        @click="toggleFolders"
+      />
       <ZenSelect
         v-if="roots.length > 1"
         class="rootsel"
@@ -12,6 +18,15 @@
         <i class="mdi mdi-magnify"></i>
         <input v-model="filter" placeholder="filter…" spellcheck="false" />
       </div>
+      <span class="fbtn">
+        <ZenIconButton
+          :active="filterOpen || types.length > 0"
+          icon="mdi mdi-filter-variant"
+          title="Filter by type"
+          @click="openFilter"
+        />
+        <span v-if="types.length" class="fbadge">{{ types.length }}</span>
+      </span>
       <ZenIconButton
         :active="viewOpen"
         icon="mdi mdi-tune-variant"
@@ -35,6 +50,23 @@
     </div>
 
     <div class="body">
+      <aside v-if="foldersOpen" class="folders zen-scroll">
+        <button
+          type="button"
+          class="allrow"
+          :class="{ on: folder === null }"
+          @click="folder = null"
+        >
+          <i class="mdi mdi-folder-multiple-outline" />
+          <span>All</span>
+          <span class="n">{{ typed.length }}</span>
+        </button>
+        <ZenFolderTree
+          v-model="folder"
+          :folders="folderTree"
+          :storage-key="`zensuite.assets.open.${root}`"
+        />
+      </aside>
       <div class="ob-scroll" ref="scrollEl" @scroll="onScroll">
         <ZenEmpty v-if="!filtered.length" class="empty">
           {{ loading ? 'scanning ' + root + '…' : 'no ' + root + ' assets found' }}
@@ -68,6 +100,7 @@
                   alt=""
                 />
                 <i v-else-if="it.kind === 'audio'" class="mdi mdi-music-note vid"></i>
+                <i v-else-if="it.kind === 'model3d'" class="mdi mdi-cube-outline vid"></i>
                 <i v-else class="mdi mdi-file-outline vid"></i>
                 <span v-if="it.kind === 'video'" class="kbadge">
                   <i class="mdi mdi-play-circle"></i>
@@ -78,6 +111,24 @@
         </div>
       </div>
     </div>
+
+    <!-- type filter: none ticked shows every type -->
+    <ZenPopover v-model:open="filterOpen" :anchor="filterAnchor" placement="bottom-end">
+      <div class="vm">
+        <div class="vm-h">Type</div>
+        <ZenCheckbox
+          v-for="k in KINDS"
+          :key="k.kind"
+          :model-value="types.includes(k.kind)"
+          :disabled="!kindCount[k.kind] && !types.includes(k.kind)"
+          :label="`${k.label} · ${kindCount[k.kind] ?? 0}`"
+          @update:model-value="(on: boolean) => toggleType(k.kind, on)"
+        />
+        <ZenMenuItem v-if="types.length" icon="mdi mdi-filter-remove-outline" @select="types = []">
+          Show every type
+        </ZenMenuItem>
+      </div>
+    </ZenPopover>
 
     <!-- view menu (sort / order / card size) -->
     <ZenPopover v-model:open="viewOpen" :anchor="viewAnchor" placement="bottom-end">
@@ -137,6 +188,9 @@ import {
   ZenPopover,
   ZenMenuItem,
   ZenEmpty,
+  ZenCheckbox,
+  ZenFolderTree,
+  type FolderTreeEntry,
 } from '@nynxz/zenkit-ui'
 import { setImageDragData, openViewer, useJob, type ViewerItem } from '@nynxz/zenkit-client'
 import { app } from '@comfy/app'
@@ -254,9 +308,86 @@ onBeforeUnmount(() => {
   ro?.disconnect()
 })
 
+// --- type filter and folders -----------------------------------------------
+const KINDS: { kind: AssetItem['kind']; label: string }[] = [
+  { kind: 'image', label: 'Images' },
+  { kind: 'video', label: 'Videos' },
+  { kind: 'audio', label: 'Audio' },
+  { kind: 'model3d', label: '3D' },
+  { kind: 'other', label: 'Other' },
+]
+function remembered<T>(key: string, fallback: T): T {
+  try {
+    const raw = localStorage.getItem(key)
+    return raw === null ? fallback : (JSON.parse(raw) as T)
+  } catch {
+    return fallback
+  }
+}
+function remember(key: string, value: unknown) {
+  try {
+    localStorage.setItem(key, JSON.stringify(value))
+  } catch {
+    // a remembered view is a convenience
+  }
+}
+/** The types shown; none means every type. */
+const types = ref<AssetItem['kind'][]>(remembered('zensuite.assets.types', []))
+watch(types, (v) => remember('zensuite.assets.types', v))
+function toggleType(kind: AssetItem['kind'], on: boolean) {
+  types.value = on ? [...types.value, kind] : types.value.filter((k) => k !== kind)
+}
+const filterOpen = ref(false)
+const filterAnchor = ref<HTMLElement | null>(null)
+function openFilter(e: MouseEvent) {
+  filterAnchor.value = e.currentTarget as HTMLElement
+  filterOpen.value = !filterOpen.value
+}
+const foldersOpen = ref<boolean>(remembered('zensuite.assets.folders', false))
+function toggleFolders() {
+  foldersOpen.value = !foldersOpen.value
+  remember('zensuite.assets.folders', foldersOpen.value)
+  nextTick(remeasure)
+}
+/** The folder shown (with everything under it); null is every folder. */
+const folder = ref<string | null>(null)
+
+const inFolder = (it: AssetItem) =>
+  folder.value === null ||
+  it.subfolder === folder.value ||
+  it.subfolder.startsWith(folder.value + '/')
+/** In the folder, before the type filter: what the type counts are of. */
+const foldered = computed(() => items.value.filter(inFolder))
+const kindCount = computed(() => {
+  const n: Partial<Record<AssetItem['kind'], number>> = {}
+  for (const it of foldered.value) n[it.kind] = (n[it.kind] ?? 0) + 1
+  return n
+})
+/** Every folder, counting the files of the shown types anywhere inside it. */
+const typed = computed(() =>
+  types.value.length ? items.value.filter((i) => types.value.includes(i.kind)) : items.value,
+)
+const folderTree = computed<FolderTreeEntry[]>(() => {
+  const n = new Map<string, number>()
+  for (const it of typed.value) {
+    if (!it.subfolder) continue
+    const parts = it.subfolder.split('/')
+    for (let i = 1; i <= parts.length; i++) {
+      const path = parts.slice(0, i).join('/')
+      n.set(path, (n.get(path) ?? 0) + 1)
+    }
+  }
+  // The picked folder stays in the tree when the type filter empties it, so it can be seen and left.
+  if (folder.value && !n.has(folder.value)) n.set(folder.value, 0)
+  return [...n].sort((a, b) => a[0].localeCompare(b[0])).map(([path, count]) => ({ path, count }))
+})
+
 const filtered = computed(() => {
   const f = filter.value.trim().toLowerCase()
-  const list = f ? items.value.filter((i) => i.rel.toLowerCase().includes(f)) : items.value.slice()
+  const shown = types.value.length
+    ? foldered.value.filter((i) => types.value.includes(i.kind))
+    : foldered.value
+  const list = f ? shown.filter((i) => i.rel.toLowerCase().includes(f)) : shown.slice()
   const dir = asc.value ? 1 : -1
   list.sort((a, b) => {
     if (sortKey.value === 'name') return a.name.localeCompare(b.name) * dir
@@ -293,8 +424,10 @@ const gridStyle = computed(() => ({
 
 // Lightbox items mirror the (sorted/filtered) grid order; images use the full
 // /view file so zoom is crisp, videos stream from /view too.
+const VIEWABLE = new Set<AssetItem['kind']>(['image', 'video', 'audio'])
+const viewable = computed(() => filtered.value.filter((it) => VIEWABLE.has(it.kind)))
 const lbItems = computed<ViewerItem[]>(() =>
-  filtered.value.map((it) => ({
+  viewable.value.map((it) => ({
     src: viewUrl(it, root.value),
     kind: it.kind === 'video' ? 'video' : it.kind === 'audio' ? 'audio' : 'image',
     label: it.name,
@@ -303,7 +436,7 @@ const lbItems = computed<ViewerItem[]>(() =>
   })),
 )
 
-watch([filter, sortKey, asc], () => {
+watch([filter, sortKey, asc, types, folder], () => {
   if (scrollEl.value) scrollEl.value.scrollTop = 0
   scrollTop.value = 0
 })
@@ -322,13 +455,18 @@ function openView(e: MouseEvent) {
 function setRoot(r: AssetRoot) {
   if (root.value === r) return
   root.value = r
+  folder.value = null
   if (scrollEl.value) scrollEl.value.scrollTop = 0
   scrollTop.value = 0
   selected.value = null
   load()
 }
+/** Opens the grid's i-th file: in the shared viewer, or in a new tab for what it can't show (3D). */
 function openAt(i: number) {
-  if (i >= 0) openViewer(lbItems.value, { index: i }) // shared host viewer (same as everywhere)
+  const it = filtered.value[i]
+  if (!it) return
+  if (!VIEWABLE.has(it.kind)) return void window.open(viewUrl(it, root.value), '_blank')
+  openViewer(lbItems.value, { index: viewable.value.indexOf(it) })
 }
 
 // right-click context menu — a ZenPopover anchored at the cursor point.
@@ -721,6 +859,62 @@ function openSelectedThenClose() {
   flex: 1;
   min-height: 0;
   display: flex;
+}
+.folders {
+  flex: 0 0 200px;
+  min-width: 0;
+  overflow-y: auto;
+  padding: 6px 4px;
+  border-right: 1px solid var(--zen-border, #3a3a44);
+}
+.allrow {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  width: 100%;
+  padding: 3px 6px;
+  border: 0;
+  border-radius: var(--zen-radius-sm, 4px);
+  background: none;
+  color: inherit;
+  font: inherit;
+  font-size: 12px;
+  text-align: left;
+  cursor: pointer;
+}
+.allrow:hover {
+  background: var(--zen-hover, rgb(255 255 255 / 6%));
+}
+.allrow.on {
+  background: var(
+    --zen-accent-soft,
+    color-mix(in srgb, var(--zen-accent, #6366f1) 22%, transparent)
+  );
+}
+.allrow .n {
+  margin-left: auto;
+  color: var(--zen-muted, #9aa0aa);
+  font-size: 11px;
+}
+.fbtn {
+  position: relative;
+  display: inline-flex;
+}
+.fbadge {
+  position: absolute;
+  top: -3px;
+  right: -3px;
+  min-width: 14px;
+  height: 14px;
+  padding: 0 3px;
+  border-radius: 7px;
+  background: var(--zen-accent, #6366f1);
+  color: var(--zen-accent-text, #fff);
+  font-size: 9px;
+  font-weight: 700;
+  line-height: 14px;
+  text-align: center;
+  pointer-events: none;
 }
 .ob-scroll {
   flex: 1;

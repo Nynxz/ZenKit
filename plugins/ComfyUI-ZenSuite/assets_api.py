@@ -41,6 +41,7 @@ except Exception as e:  # pragma: no cover - only outside a running server
 _IMAGE_EXTS = {".png", ".jpg", ".jpeg", ".webp", ".gif", ".bmp", ".tiff", ".tif", ".avif"}
 _VIDEO_EXTS = {".mp4", ".webm", ".mkv", ".mov", ".avi", ".m4v"}
 _AUDIO_EXTS = {".mp3", ".wav", ".flac", ".ogg", ".oga", ".m4a", ".aac", ".opus"}
+_MODEL3D_EXTS = {".glb", ".gltf", ".obj", ".fbx", ".ply", ".stl", ".usdz"}
 _MAX_FILES = 20000
 # Below this file count a scan is effectively instant — skip job events so the
 # global progress chip doesn't flash on every refresh of a small directory.
@@ -96,6 +97,8 @@ def _kind(ext: str) -> str:
         return "video"
     if ext in _AUDIO_EXTS:
         return "audio"
+    if ext in _MODEL3D_EXTS:
+        return "model3d"
     return "other"
 
 
@@ -348,7 +351,7 @@ def _scan(root: str, emit=None) -> list[dict]:
     for dirpath, _dirs, files in os.walk(base):
         for f in files:
             ext = os.path.splitext(f)[1].lower()
-            if ext in _IMAGE_EXTS or ext in _VIDEO_EXTS or ext in _AUDIO_EXTS:
+            if ext in _IMAGE_EXTS or ext in _VIDEO_EXTS or ext in _AUDIO_EXTS or ext in _MODEL3D_EXTS:
                 paths.append((dirpath, f, ext))
                 if len(paths) >= _MAX_FILES:
                     break

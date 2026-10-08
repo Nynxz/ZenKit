@@ -8,7 +8,7 @@ export interface AssetItem {
   name: string
   subfolder: string
   ext: string
-  kind: 'image' | 'video' | 'audio' | 'other'
+  kind: 'image' | 'video' | 'audio' | 'model3d' | 'other'
   mtime: number
   size: number
   has_workflow: boolean
