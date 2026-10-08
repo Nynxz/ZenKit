@@ -80,10 +80,15 @@
               :class="{ sel: selected && selected.rel === it.rel }"
               :title="
                 DRAGGABLE.has(it.kind)
-                  ? it.name + ' — drag onto a node to use it as an input'
+                  ? it.name +
+                    ' — drag onto a node to use it as an input · hold Shift to see it large'
                   : it.name
               "
               :draggable="DRAGGABLE.has(it.kind)"
+              :data-peek="VIEWABLE.has(it.kind) ? viewUrl(it, root) : undefined"
+              :data-peek-kind="VIEWABLE.has(it.kind) ? it.kind : undefined"
+              :data-peek-label="it.name"
+              :data-peek-detail="it.subfolder || undefined"
               @click="selectItem(it)"
               @dblclick="openAt(startRow * cols + i)"
               @dragstart="onDragStart($event, it)"
@@ -111,6 +116,9 @@
         </div>
       </div>
     </div>
+
+    <!-- hold Shift over a tile to see it large -->
+    <ZenPeek />
 
     <!-- type filter: none ticked shows every type -->
     <ZenPopover v-model:open="filterOpen" :anchor="filterAnchor" placement="bottom-end">
@@ -190,6 +198,7 @@ import {
   ZenEmpty,
   ZenCheckbox,
   ZenFolderTree,
+  ZenPeek,
   type FolderTreeEntry,
 } from '@nynxz/zenkit-ui'
 import { setImageDragData, openViewer, useJob, type ViewerItem } from '@nynxz/zenkit-client'
