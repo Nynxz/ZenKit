@@ -108,6 +108,17 @@ function onKey(e: KeyboardEvent) {
     background var(--zen-dur-fast, 0.12s) ease,
     color var(--zen-dur-fast, 0.12s) ease;
 }
+/* The ends round to the group's inner edge, so a selected end's ring follows the corner instead of
+   being cut by it. */
+.zen-tg-b:first-child {
+  border-radius: calc(var(--zen-radius, 7px) - 1px) 0 0 calc(var(--zen-radius, 7px) - 1px);
+}
+.zen-tg-b:last-child {
+  border-radius: 0 calc(var(--zen-radius, 7px) - 1px) calc(var(--zen-radius, 7px) - 1px) 0;
+}
+.zen-tg-b:only-child {
+  border-radius: calc(var(--zen-radius, 7px) - 1px);
+}
 .zen-tg-b + .zen-tg-b {
   border-left: 1px solid var(--zen-border, #34343c);
 }
@@ -121,7 +132,8 @@ function onKey(e: KeyboardEvent) {
   color: var(--zen-text, #e5e5ea);
 }
 .zen-tg-b.on {
-  background: color-mix(in srgb, var(--zen-accent, #6366f1) 20%, transparent);
+  background: color-mix(in srgb, var(--zen-accent, #6366f1) 22%, transparent);
+  box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--zen-accent, #6366f1) 55%, transparent);
   color: var(--zen-accent, #6366f1);
 }
 .zen-tg-b .mdi {
