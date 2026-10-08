@@ -641,7 +641,24 @@ function startBar(e: PointerEvent) {
   target.addEventListener('pointerup', up)
   target.addEventListener('pointercancel', up)
 }
-const x = (t: number) => PAD + t * pps.value
+/** One screen pixel in the timeline's own CSS pixels. Inside a node on a zoomed canvas the timeline
+ *  is drawn scaled, so a CSS pixel is rarely a whole screen pixel: edges placed between screen
+ *  pixels are antialiased each a little differently, and anything moving shimmers. Every position
+ *  is snapped to it, so all of them land on the screen's own grid. */
+const pxStep = ref(1)
+function measureStep() {
+  const step = 1 / (screenScale() * (window.devicePixelRatio || 1))
+  if (Number.isFinite(step) && step > 0 && Math.abs(step - pxStep.value) > 1e-4) pxStep.value = step
+}
+let stepTimer = 0
+onMounted(() => {
+  measureStep()
+  // The canvas zoom changes without any event the timeline can see, so it is checked a few
+  // times a second: one measurement, and a re-render only when it changed.
+  stepTimer = window.setInterval(measureStep, 250)
+})
+onBeforeUnmount(() => window.clearInterval(stepTimer))
+const x = (t: number) => Math.round((PAD + t * pps.value) / pxStep.value) * pxStep.value
 const snapTo = (t: number) => Math.round(t / props.snap) * props.snap
 
 const allItems = () => props.tracks.flatMap((t) => t.items)
@@ -877,7 +894,10 @@ const isSelected = (id: string) =>
 function itemStyle(item: TimelineItem) {
   const left = x(held.value?.with.has(item.id) ? item.start + held.value.delta : item.start)
   if (item.kind === 'marker') return { left: `${left}px`, '--ztl-color': item.color }
-  const width = Math.max(6, ((item.end ?? item.start) - item.start) * pps.value)
+  const end = held.value?.with.has(item.id)
+    ? (item.end ?? item.start) + held.value.delta
+    : (item.end ?? item.start)
+  const width = Math.max(6, x(end) - left)
   return { left: `${left}px`, width: `${width}px`, '--ztl-color': item.color }
 }
 
@@ -1612,14 +1632,13 @@ defineExpose({ timeAt, follow })
   box-shadow: 0 0 4px var(--zen-accent, #6366f1);
   pointer-events: none;
 }
-/* Moved with a transform, not `left`: it slides on the compositor in sub-pixel steps every frame
-   of playback without a layout. */
+/* Moved with a transform, not `left`, so playback needs no layout. No layer of its own: inside a
+   scaled node a separate layer is rasterized at a scale of its own and the line blurs as it moves. */
 .ztl-playhead {
   position: absolute;
   top: 0;
   bottom: 0;
   left: 0;
-  will-change: transform;
   z-index: 6;
   width: 0;
   border-left: 1px solid var(--ztl-playhead);
