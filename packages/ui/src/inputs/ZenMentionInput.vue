@@ -23,7 +23,7 @@
       class="zmi-area"
       :value="modelValue"
       :placeholder="placeholder"
-      spellcheck="false"
+      :spellcheck="spellcheck"
       @input="onInput"
       @keydown="onKey"
       @click="followCaret"
@@ -120,10 +120,13 @@ const props = withDefaults(
     resizable?: boolean
     /** Dims it, and nothing inside takes clicks, typing or focus. */
     disabled?: boolean
+    /** The browser's spelling check (and its suggestions on right-click). */
+    spellcheck?: boolean
   }>(),
   {
     placeholder: '',
     resizable: false,
+    spellcheck: true,
   },
 )
 const emit = defineEmits<{ 'update:modelValue': [value: string] }>()
