@@ -83,8 +83,8 @@ withDefaults(
   color: var(--zen-accent-text, #fff);
 }
 .zen-btn.primary:hover:not(:disabled) {
-  border-color: color-mix(in srgb, var(--zen-accent, #6366f1) 85%, var(--zen-accent-text, #fff));
-  background: color-mix(in srgb, var(--zen-accent, #6366f1) 85%, var(--zen-accent-text, #fff));
+  border-color: color-mix(in srgb, var(--zen-accent, #6366f1) 72%, var(--zen-accent-text, #fff));
+  background: color-mix(in srgb, var(--zen-accent, #6366f1) 72%, var(--zen-accent-text, #fff));
 }
 .zen-btn.ghost {
   background: transparent;
