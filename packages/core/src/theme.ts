@@ -337,6 +337,20 @@ html[data-zen-theme-pack] .bg-primary-background,
 html[data-zen-theme-pack] .bg-primary-background *,
 html[data-zen-theme-pack] [data-testid='queue-button'],
 html[data-zen-theme-pack] [data-testid='queue-button'] * { color: var(--primary-foreground) !important; }
+/* ComfyUI now draws Run (and its options chevron) as an 'inverted' button — a plain foreground
+   fill — rather than in the primary colour. Under a theme pack it takes the theme's accent
+   again; the stop (destructive) and subscribe states keep ComfyUI's own colours. */
+html[data-zen-theme-pack] [data-testid='queue-button'].bg-base-foreground,
+html[data-zen-theme-pack] [data-testid='queue-mode-menu-trigger'].bg-base-foreground {
+  background: var(--primary-background, var(--primary)) !important;
+}
+html[data-zen-theme-pack] [data-testid='queue-button'].bg-base-foreground:hover,
+html[data-zen-theme-pack] [data-testid='queue-mode-menu-trigger'].bg-base-foreground:hover,
+html[data-zen-theme-pack] [data-testid='queue-mode-menu-trigger'].bg-base-foreground[data-state='open'] {
+  background: var(--primary-background-hover, var(--primary-background, var(--primary))) !important;
+}
+html[data-zen-theme-pack] [data-testid='queue-mode-menu-trigger'].bg-base-foreground,
+html[data-zen-theme-pack] [data-testid='queue-mode-menu-trigger'].bg-base-foreground * { color: var(--primary-foreground) !important; }
 html[data-zen-theme-pack] .lg-node,
 html[data-zen-theme-pack] .comfy-menu,
 html[data-zen-theme-pack] .comfyui-body-top,
