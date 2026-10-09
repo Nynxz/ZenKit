@@ -463,7 +463,9 @@ html[data-zen-theme-pack] .p-overlaypanel,
 html[data-zen-theme-pack] .p-select-overlay,
 html[data-zen-theme-pack] .p-autocomplete-overlay,
 html[data-zen-theme-pack] .p-multiselect-overlay,
-html[data-zen-theme-pack] .comfy-command-menu { border-radius: var(--zen-radius, 10px) !important; }
+html[data-zen-theme-pack] .comfy-command-menu,
+html[data-zen-theme-pack] [data-reka-menu-content],
+html[data-zen-theme-pack] [data-reka-popper-content-wrapper] > [role="dialog"] { border-radius: var(--zen-radius, 10px) !important; }
 /* The actionbar's inline run-progress bar uses fixed Tailwind rounding (rounded-[7px]/[5px]/
    -md) that ignores the theme — pin it (and its fill) to the theme radius. */
 html[data-zen-theme-pack] [data-testid="queue-inline-progress"],
