@@ -50,8 +50,8 @@ const APP_HOST_ATTR = 'data-zen-app-bg'
 const APP_HOST_CSS = `
 [${APP_HOST_ATTR}] { background-color: transparent; }
 [${APP_HOST_ATTR}] #linearCenterPanel { background-image: none; }
-[${APP_HOST_ATTR}] .p-splitter,
-[${APP_HOST_ATTR}] .p-splitterpanel:not(.arrange-panel) { background: transparent; }
+[${APP_HOST_ATTR}] [data-panel-group],
+[${APP_HOST_ATTR}] [data-panel]:not(.arrange-panel) { background: transparent; }
 [${APP_HOST_ATTR}] .arrange-panel {
   background-color: color-mix(in srgb, var(--comfy-menu-bg) 78%, transparent);
   backdrop-filter: blur(14px);

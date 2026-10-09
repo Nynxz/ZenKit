@@ -1,5 +1,9 @@
 // Appearance controls, as NATIVE ComfyUI settings — same reasoning as backgroundSettings.ts.
-// Category paths must be unique (see layoutSettings.ts).
+//
+// NB: every `category` path must be UNIQUE. ComfyUI builds the settings tree by the full path and
+// assigns `node.data = setting` at the leaf, so two settings sharing a path collapse into one and
+// only the last registered is rendered — silently. The third element is a key, not a group label;
+// the user reads `name`, and the second element is what groups them.
 import { app } from '@comfy/app'
 import { theme } from '@nynxz/zenkit-core'
 

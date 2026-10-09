@@ -13,7 +13,7 @@ import {
 } from '@nynxz/zenkit-ui'
 import { STORE_KEY, type PanelStore } from '../panelStore'
 import { APP_STORE_KEY, type AppStore } from '../appStore'
-import { canvasGutter, TASKBAR_H, taskbarFloats, taskbarFootprint } from '../tiling'
+import { canvasGutter, TASKBAR_H, taskbarFloats } from '../tiling'
 import { theme } from '../theme'
 import { activeWidgets } from '../taskbarWidgets'
 import { isPinned, togglePin, pinnedIds } from '../pins'
@@ -497,23 +497,6 @@ watch(
 )
 
 // --- ComfyUI canvas controls are now the built-in `zenkit:canvas-controls` taskbar widget ---
-// ComfyUI's app-mode container is a full-height p-splitter sized `100% - tabs` — it ignores
-// the taskbar strip the canvas grid reserves, so it covers the taskbar. Trim its height by
-// the taskbar height (only when the taskbar is at the bottom). Always on; tracks position.
-function applyAppModeFit() {
-  const id = 'zenkit-appmode-fit'
-  let el = document.getElementById(id) as HTMLStyleElement | null
-  if (!el) {
-    el = document.createElement('style')
-    el.id = id
-    document.head.appendChild(el)
-  }
-  const h = taskbarFootprint(store)
-  el.textContent = `.p-splitter.p-splitter-horizontal.bg-comfy-menu-secondary-bg{height:calc(100% - var(--workflow-tabs-height, 0px) - ${h}px)!important}`
-}
-watch(() => [store.state.taskbarPos, store.state.taskbarFloating], applyAppModeFit)
-onMounted(applyAppModeFit)
-onBeforeUnmount(() => document.getElementById('zenkit-appmode-fit')?.remove())
 function clickComfy(b: ComfyBtn) {
   try {
     b.el.click()

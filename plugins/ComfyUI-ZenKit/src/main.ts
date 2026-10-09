@@ -1,7 +1,6 @@
 import { app } from '@comfy/app'
 import { registerBackgroundSettings } from './backgroundSettings'
 import { registerAppearanceSettings } from './appearanceSettings'
-import { registerLayoutSettings } from './layoutSettings'
 import {
   fetchThemes,
   installZenKit,
@@ -40,7 +39,6 @@ if (detachedPanel) {
 // BEFORE the runtime install) so ComfyUI has them in hand when it replays stored values on load —
 // including in detached-panel mode, where the runtime install is skipped entirely.
 registerBackgroundSettings()
-registerLayoutSettings()
 registerAppearanceSettings()
 
 app.registerExtension({

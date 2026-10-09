@@ -39,7 +39,6 @@ const parts = () =>
 const HOLDS = [
   '.sidebar-content-container',
   `:is(${RAIL}, ${TOGGLE}) [aria-expanded="true"]`,
-  '.p-tieredmenu-overlay',
   '[role="menu"][data-state="open"]',
 ].join(', ')
 const held = () => !!document.querySelector(HOLDS)

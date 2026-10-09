@@ -1014,7 +1014,7 @@ export function createPanelStore(bus: ZenBus) {
   //  • the opened panel (`.sidebar-content-container`) becomes a glassy, rounded, inset
   //    card (the solid bg lives on the `.side-bar-panel`/`.comfyui-body-left` wrapper, so
   //    those go transparent — the canvas shows in the gaps);
-  //  • the resize gutter (`.p-splitter-gutter`) blends in (still draggable).
+  //  • the resize gutter (`[data-resize-handle]`) blends in (still draggable).
   // The icon rail / toolbar buttons are deliberately left untouched — only the content pops.
   // A frontend that already draws the open panel as its own card (paneled layout,
   // `.separated-panel`) is left alone; restyling it too stacks two outlines.
@@ -1028,19 +1028,19 @@ export function createPanelStore(bus: ZenBus) {
         /* EVERY sidebar wrapper transparent — ONLY the rounded card below is glassy.
            The solid block is the splitter panel's bg-comfy-menu-bg. NB: ComfyUI only
            adds the .side-bar-panel class on the LEFT — on the RIGHT it's just a bare
-           .p-splitterpanel with bg-comfy-menu-bg, so we target it by what it CONTAINS
+           splitter panel with bg-comfy-menu-bg, so we target it by what it CONTAINS
            (the sidebar content) with :has() to cover both sides. */
         body.zen-inset-sb .side-bar-panel:not(.separated-panel),
-        body.zen-inset-sb .p-splitterpanel:not(.separated-panel):has(> .sidebar-content-container),
-        body.zen-inset-sb .p-splitterpanel:not(.separated-panel):has(.sidebar-content-container),
+        body.zen-inset-sb [data-panel]:not(.separated-panel):has(> .sidebar-content-container),
+        body.zen-inset-sb [data-panel]:not(.separated-panel):has(.sidebar-content-container),
         body.zen-inset-sb .comfyui-body-left,
-        body.zen-inset-sb .p-splitter { background: transparent !important; box-shadow: none !important; }
+        body.zen-inset-sb [data-panel-group] { background: transparent !important; box-shadow: none !important; }
 
         /* the opened panel → a glassy rounded card, inset on all sides by ComfyUI's own
            --spacing unit (pt-1 / 4px) so the gap matches the rest of the UI and the card
            floats free of every edge. height:100% minus top+bottom inset so the bottom
            rounding doesn't overflow. overflow-y-auto kept (clips to the corners). */
-        body.zen-inset-sb .p-splitterpanel:not(.separated-panel) .sidebar-content-container {
+        body.zen-inset-sb [data-panel]:not(.separated-panel) .sidebar-content-container {
           height: calc(100% - (var(--spacing, 0.25rem) * 2)) !important;
           margin: var(--spacing, 0.25rem) !important;
           border-radius: var(--zen-radius, 12px);
@@ -1052,15 +1052,15 @@ export function createPanelStore(bus: ZenBus) {
         /* the resize gutter is the divider you drag — keep it full-height and flush with
            the panel edge (no inset/padding) so the grab sits right on the edge, and give it
            a subtle themed line so the divider is visible on dark AND light themes. */
-        body.zen-inset-sb .p-splitter-gutter {
+        body.zen-inset-sb [data-resize-handle] {
           background: color-mix(in srgb, var(--zen-border, #3a3a44) 70%, transparent) !important;
         }
         /* …EXCEPT the gutter touching the restyled sidebar (.side-bar-panel): that side is a
            free-floating glass card, so its resize edge should blend, not show a hard divider.
            ComfyUI puts .side-bar-panel on whichever side the sidebar is docked, so cover both
            — the gutter directly after a left-docked sidebar, or before a right-docked one. */
-        body.zen-inset-sb .side-bar-panel + .p-splitter-gutter,
-        body.zen-inset-sb .p-splitter-gutter:has(+ .side-bar-panel) {
+        body.zen-inset-sb .side-bar-panel + [data-resize-handle],
+        body.zen-inset-sb [data-resize-handle]:has(+ .side-bar-panel) {
           background: transparent !important;
         }
 
@@ -1069,10 +1069,10 @@ export function createPanelStore(bus: ZenBus) {
            gutter (grab sits on the card's own edge) — but KEEP the corners rounded so the card
            still reads as a rounded panel. The card keeps floating on its other three sides.
            Mirror for left/right-docked. */
-        body.zen-inset-sb .side-bar-panel:not(.separated-panel):has(+ .p-splitter-gutter) .sidebar-content-container {
+        body.zen-inset-sb .side-bar-panel:not(.separated-panel):has(+ [data-resize-handle]) .sidebar-content-container {
           margin-right: 0 !important;
         }
-        body.zen-inset-sb .p-splitter-gutter + .side-bar-panel:not(.separated-panel) .sidebar-content-container {
+        body.zen-inset-sb [data-resize-handle] + .side-bar-panel:not(.separated-panel) .sidebar-content-container {
           margin-left: 0 !important;
         }
 
@@ -1087,7 +1087,7 @@ export function createPanelStore(bus: ZenBus) {
            .sidebar-content-container, so they already get the glass card — blend their
            header bar (normally solid --zen-surface) so the whole thing reads as one
            cohesive floating card. */
-        body.zen-inset-sb .p-splitterpanel:not(.separated-panel) .sidebar-content-container .zk-sb-bar {
+        body.zen-inset-sb [data-panel]:not(.separated-panel) .sidebar-content-container .zk-sb-bar {
           background: color-mix(in srgb, var(--zen-surface, #202026) 40%, transparent) !important;
           border-bottom-color: color-mix(in srgb, var(--zen-border, #3a3a44) 60%, transparent) !important;
         }`,

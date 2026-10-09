@@ -149,26 +149,12 @@ const COMFY_MAPPINGS: Array<[string, string[]]> = [
   ['--p-button-secondary-hover-background', ['--accent', '--secondary']],
   ['--p-button-secondary-border-color', ['--border']],
   ['--p-button-secondary-color', ['--secondary-foreground', '--foreground']],
-  ['--p-togglebutton-background', ['--secondary', '--input']],
-  ['--p-togglebutton-border-color', ['--border']],
-  ['--p-togglebutton-color', ['--foreground']],
-  ['--p-togglebutton-checked-background', ['--primary-background-hover', '--accent', '--primary']],
-  [
-    '--p-togglebutton-checked-border-color',
-    ['--primary-background-hover', '--accent', '--primary'],
-  ],
-  ['--p-togglebutton-checked-color', ['--foreground']],
   ['--p-form-field-background', ['--input', '--secondary']],
   ['--p-form-field-color', ['--foreground']],
   ['--p-form-field-border-color', ['--border']],
   ['--p-form-field-placeholder-color', ['--muted-foreground']],
   ['--p-tooltip-background', ['--popover', '--card', '--background']],
   ['--p-tooltip-color', ['--popover-foreground', '--card-foreground', '--foreground']],
-  ['--p-slider-track-background', ['--input', '--secondary', '--border']],
-  ['--p-slider-track-active-background', ['--primary']],
-  ['--p-slider-range-background', ['--primary']],
-  ['--p-slider-handle-background', ['--primary']],
-  ['--p-slider-handle-content-background', ['--primary-foreground', '--background']],
 
   // ComfyUI 1.44.9 (Tailwind-era) semantic vars the chrome actually reads — the old
   // --p-button-* alone don't recolor buttons/menus on current ComfyUI.
@@ -200,6 +186,19 @@ const COMFY_MAPPINGS: Array<[string, string[]]> = [
   ['--node-stroke', ['--border']],
   ['--node-border', ['--border']],
   ['--node-stroke-selected', ['--ring', '--primary']],
+  // The design-system tokens ComfyUI's reka-era components read (menus, cards, tooltips).
+  ['--border-subtle', ['--border']],
+  ['--tertiary-background', ['--muted', '--secondary']],
+  ['--tertiary-background-hover', ['--accent', '--secondary']],
+  ['--inverted-background-hover', ['--muted-foreground', '--foreground']],
+  ['--interface-panel-hover-surface', ['--accent', '--secondary']],
+  ['--interface-button-hover-surface', ['--accent', '--secondary']],
+  ['--modal-card-border-highlighted', ['--ring', '--primary']],
+  ['--modal-card-placeholder-background', ['--muted', '--secondary']],
+  ['--modal-card-tag-background', ['--muted', '--secondary']],
+  ['--node-component-tooltip-surface', ['--popover', '--card', '--background']],
+  ['--node-component-tooltip', ['--popover-foreground', '--card-foreground', '--foreground']],
+  ['--node-component-tooltip-border', ['--border']],
   // The "blue" — PrimeVue primary palette (set at runtime) + ComfyUI's brand blue.
   ['--p-primary-400', ['--primary']],
   ['--p-primary-500', ['--primary']],
@@ -404,38 +403,14 @@ html[data-zen-theme-pack] .comfy-menu button,
 html[data-zen-theme-pack] .comfy-menu label {
   color: var(--node-component-slot-text, var(--foreground)) !important;
 }
-html[data-zen-theme-pack] .p-button.p-button-primary,
-html[data-zen-theme-pack] .p-splitbutton .p-button-primary {
+html[data-zen-theme-pack] .p-button.p-button-primary {
   background: var(--p-button-primary-background, var(--primary-background, var(--primary))) !important;
   border-color: var(--p-button-primary-border-color, var(--primary-background, var(--primary))) !important;
   color: var(--p-button-primary-color, var(--primary-foreground, var(--foreground))) !important;
 }
-html[data-zen-theme-pack] .p-button.p-button-primary:hover,
-html[data-zen-theme-pack] .p-splitbutton .p-button-primary:hover {
+html[data-zen-theme-pack] .p-button.p-button-primary:hover {
   background: var(--p-button-primary-hover-background, var(--primary-background-hover, var(--primary))) !important;
   border-color: var(--p-button-primary-hover-border-color, var(--primary-background-hover, var(--primary))) !important;
-}
-html[data-zen-theme-pack] .p-togglebutton,
-html[data-zen-theme-pack] .p-togglebutton .p-togglebutton-content { color: var(--p-togglebutton-color, var(--foreground)) !important; }
-html[data-zen-theme-pack] .p-togglebutton.p-togglebutton-checked,
-html[data-zen-theme-pack] .p-togglebutton.p-togglebutton-checked:hover {
-  background: var(--p-togglebutton-checked-background, var(--primary-background-hover, var(--accent, var(--primary)))) !important;
-  border-color: var(--p-togglebutton-checked-border-color, var(--primary-background-hover, var(--accent, var(--primary)))) !important;
-}
-/* The checked toggle sits on the accent — its label AND icon must contrast THAT, not the
-   page bg. --accent-foreground is the pack's contrast colour for the accent; force it on
-   every descendant so the icon (e.g. the cursor-mode glyph) isn't left white. */
-html[data-zen-theme-pack] .p-togglebutton.p-togglebutton-checked,
-html[data-zen-theme-pack] .p-togglebutton.p-togglebutton-checked * {
-  color: var(--accent-foreground, var(--primary-foreground, var(--foreground))) !important;
-  fill: var(--accent-foreground, var(--primary-foreground, var(--foreground))) !important;
-}
-html[data-zen-theme-pack] .p-inputtext,
-html[data-zen-theme-pack] .p-select,
-html[data-zen-theme-pack] .p-inputnumber-input {
-  background: var(--p-form-field-background, var(--input-surface, var(--input))) !important;
-  border-color: var(--p-form-field-border-color, var(--border)) !important;
-  color: var(--p-form-field-color, var(--foreground)) !important;
 }
 /* Nodes 2.0 inline widget controls (combo/select triggers, number & text inputs, …) don't
    carry their own text colour the way the multiline <textarea> does. The textarea has
@@ -458,26 +433,14 @@ html[data-zen-theme-pack] [data-testid="node-inner-wrapper"] input,
 html[data-zen-theme-pack] [data-testid="node-inner-wrapper"] select {
   color: var(--component-node-foreground, var(--foreground)) !important;
 }
-/* PrimeVue / ComfyUI overlay menus (tiered/context/command menus, dropdown + autocomplete
-   popovers) keep their own fixed border-radius, so they look "weirdly rounded" against a
-   theme — pin them to the theme radius. Also drive PrimeVue's radius scale so anything that
-   reads the tokens (rather than these classes) follows along too. */
+/* ComfyUI's menus and popovers keep their own fixed border-radius, so they look "weirdly
+   rounded" against a theme — pin them to the theme radius. Also drive PrimeVue's radius scale
+   for what still renders through it (dialogs, tooltips). */
 html[data-zen-theme-pack] {
   --p-border-radius-md: var(--zen-radius, 10px);
   --p-border-radius-lg: var(--zen-radius, 10px);
   --p-border-radius-xl: var(--zen-radius, 10px);
 }
-html[data-zen-theme-pack] .p-tieredmenu,
-html[data-zen-theme-pack] .p-tieredmenu-overlay,
-html[data-zen-theme-pack] .p-menu,
-html[data-zen-theme-pack] .p-menu-overlay,
-html[data-zen-theme-pack] .p-contextmenu,
-html[data-zen-theme-pack] .p-popover,
-html[data-zen-theme-pack] .p-overlaypanel,
-html[data-zen-theme-pack] .p-select-overlay,
-html[data-zen-theme-pack] .p-autocomplete-overlay,
-html[data-zen-theme-pack] .p-multiselect-overlay,
-html[data-zen-theme-pack] .comfy-command-menu,
 html[data-zen-theme-pack] [data-reka-menu-content],
 html[data-zen-theme-pack] [data-reka-popper-content-wrapper] > [role="dialog"] { border-radius: var(--zen-radius, 10px) !important; }
 /* The actionbar's inline run-progress bar uses fixed Tailwind rounding (rounded-[7px]/[5px]/
@@ -488,9 +451,7 @@ html[data-zen-theme-pack] [data-testid="queue-inline-progress"] * { border-radiu
    doesn't reliably contrast the row text across themes -> the row "goes dark" and is
    unreadable. Replace it with a subtle text-tint that always contrasts (and keep the row's
    own readable text colour). */
-html[data-zen-theme-pack] [class~="group/tree-node"]:hover,
-html[data-zen-theme-pack] .p-tree-node-content:hover,
-html[data-zen-theme-pack] .p-tree-node-selectable:not(.p-tree-node-selected):hover {
+html[data-zen-theme-pack] [class~="group/tree-node"]:hover {
   background: color-mix(in srgb, var(--zen-text, #fff) 10%, transparent) !important;
   color: var(--zen-text, var(--foreground)) !important;
 }
@@ -504,11 +465,6 @@ html[data-zen-theme-pack] .side-bar-button-selected,
 html[data-zen-theme-pack] .side-bar-button-selected *:not(.sidebar-icon-badge):not(.sidebar-icon-badge *) {
   color: var(--primary, var(--accent, var(--foreground))) !important;
 }
-/* A genuinely accent-FILLED highlight (PrimeVue p-highlight) does need contrast text. */
-html[data-zen-theme-pack] .side-tool-bar-container .p-button.p-highlight,
-html[data-zen-theme-pack] .side-tool-bar-container .p-button.p-highlight * {
-  color: var(--primary-foreground, var(--foreground)) !important;
-}
 /* Canvas zoom/fit controls (reparented into the Zen taskbar) keep ComfyUI's white
    icon/text — unreadable on a light taskbar. Use the taskbar's own text colour. */
 html[data-zen-theme-pack] .zen-canvasctl,
@@ -516,8 +472,6 @@ html[data-zen-theme-pack] .zen-canvasctl * { color: var(--zen-text, var(--foregr
 /* …and strip the button backgrounds inside them — the theme's button/toggle highlight
    makes the cursor-mode control look permanently "on". Leave just the icons. */
 html[data-zen-theme-pack] .zen-canvasctl button,
-html[data-zen-theme-pack] .zen-canvasctl .p-button,
-html[data-zen-theme-pack] .zen-canvasctl .p-togglebutton,
 html[data-zen-theme-pack] .zen-canvasctl .bg-interface-panel-selected-surface {
   background: transparent !important; border-color: transparent !important; box-shadow: none !important;
 }

@@ -18,7 +18,6 @@ import { registerTaskbarWidget } from './taskbarWidgets'
 import { registerBuiltinTaskbarWidgets } from './builtinTaskbarWidgets'
 import { createStorage } from './storage'
 import { startBackground, backgrounds } from './background'
-import { startSidebarPin } from './sidebarPin'
 import { startGroups } from './groups'
 import { createChannels } from './channels'
 import { createJobs } from './jobs'
@@ -95,16 +94,12 @@ export function installZenKit(opts: InstallOptions = {}): ZenKitApi {
   hostApp.provide(APP_STORE_KEY, appStore)
   hostApp.mount(hostEl)
 
-  // Keep ComfyUI's native dialogs / context menus / toasts ABOVE the ZenKit panel
-  // overlay (z 1500), so a panel never covers a native modal. (ZenKit's own
-  // teleported menus sit at 100000, above these — they're transient.)
-  ensureStyle(
-    'zenkit-native-overlay-z',
-    '.p-dialog-mask,.p-overlay-mask,.comfy-modal,.p-contextmenu,.p-tieredmenu,.p-menu.p-component,.p-toast,.p-confirmdialog,.p-confirmpopup{z-index:2000!important}',
-  )
+  // Keep ComfyUI's legacy modals (ComfyDialog, clipspace) ABOVE the ZenKit panel overlay
+  // (z 1500). Its dialogs, menus and toasts already stack from 1700 up and lift their own
+  // popovers over the open dialog — forcing a z-index on those would bury the popovers.
+  ensureStyle('zenkit-native-overlay-z', '.comfy-modal{z-index:2000!important}')
 
   startBackground() // themed canvas grid behind the node graph
-  startSidebarPin() // keep ComfyUI's sidebar at a fixed px width when docks resize the graph
   startGroups() // themed (rounded) node groups; native drag/resize left untouched
 
   // Sync ZenKit theme switches with ComfyUI + comfyui-desktop (native titlebar / .dark-theme),
