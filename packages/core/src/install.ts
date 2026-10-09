@@ -16,6 +16,7 @@ import { activate, attachWorkspaces, toggleWorkspace, workspacesApi, ws } from '
 import { startSidebar } from './sidebar'
 import { registerTaskbarWidget } from './taskbarWidgets'
 import { registerBuiltinTaskbarWidgets } from './builtinTaskbarWidgets'
+import { registerInboxWidget } from './inboxWidget'
 import { createStorage } from './storage'
 import { startBackground, backgrounds } from './background'
 import { startGroups } from './groups'
@@ -84,6 +85,7 @@ export function installZenKit(opts: InstallOptions = {}): ZenKitApi {
   startSidebar(store, bus) // host pinned panels in ComfyUI's native sidebar (no-op if unavailable)
 
   registerBuiltinTaskbarWidgets(store, appStore)
+  registerInboxWidget()
 
   // Host overlay injected into body (renders panels + docks + the taskbar).
   const hostEl = document.createElement('div')
