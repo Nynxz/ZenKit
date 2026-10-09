@@ -347,7 +347,7 @@ html[data-zen-theme-pack] [data-testid='queue-mode-menu-trigger'].bg-base-foregr
 html[data-zen-theme-pack] [data-testid='queue-button'].bg-base-foreground:hover,
 html[data-zen-theme-pack] [data-testid='queue-mode-menu-trigger'].bg-base-foreground:hover,
 html[data-zen-theme-pack] [data-testid='queue-mode-menu-trigger'].bg-base-foreground[data-state='open'] {
-  background: var(--primary-background-hover, var(--primary-background, var(--primary))) !important;
+  background: color-mix(in srgb, var(--primary-background, var(--primary)) 82%, var(--primary-foreground, #fff)) !important;
 }
 html[data-zen-theme-pack] [data-testid='queue-mode-menu-trigger'].bg-base-foreground,
 html[data-zen-theme-pack] [data-testid='queue-mode-menu-trigger'].bg-base-foreground * { color: var(--primary-foreground) !important; }
