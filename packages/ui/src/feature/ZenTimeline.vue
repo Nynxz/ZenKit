@@ -248,10 +248,14 @@
                   thumbed: !!item.thumb,
                   ghost: item.ghost,
                   lifted: held?.id === item.id,
+                  droptarget: dropItem === item.id,
+                  'join-start': joins.has(`${item.id}:start`),
+                  'join-end': joins.has(`${item.id}:end`),
                 },
               ]"
               :style="itemStyle(item)"
               :title="item.title ?? item.label"
+              :data-item-id="item.id"
               :data-peek="item.peek?.src"
               :data-peek-kind="item.peek?.kind"
               :data-peek-label="item.peek?.label"
@@ -510,7 +514,8 @@ const emit = defineEmits<{
   open: [itemId: string, trackId: string]
   move: [itemId: string, trackId: string, change: { start?: number; end?: number }]
   context: [target: TimelineTarget, time: number, event: MouseEvent]
-  drop: [trackId: string, time: number, event: DragEvent]
+  /** `itemId`: the item it was dropped onto, if any (to replace what it holds, say). */
+  drop: [trackId: string, time: number, event: DragEvent, itemId: string | null]
   dblclick: [trackId: string, time: number]
   /** A movable track was dragged to sit before `beforeId` (null: after the last movable track). */
   reorder: [trackId: string, beforeId: string | null]
@@ -589,6 +594,12 @@ const bodyEl = ref<HTMLElement | null>(null)
 const viewWidth = ref(600)
 const scrollX = ref(0)
 const dropTrack = ref<string | null>(null)
+/** The item a drag is over: dropped there, it lands on that item rather than at a time. */
+const dropItem = ref<string | null>(null)
+const itemUnder = (e: DragEvent) =>
+  e.target instanceof Element
+    ? (e.target.closest('[data-item-id]')?.getAttribute('data-item-id') ?? null)
+    : null
 /** An item being dragged with `commit: 'drop'`: where it is drawn until it is let go. */
 /** An item being dragged (commit: 'drop'): where it would land, and the others moving with it. */
 const held = ref<{ id: string; start: number; delta: number; with: Set<string> } | null>(null)
@@ -916,6 +927,28 @@ function timeAt(clientX: number): number {
 const isSelected = (id: string) =>
   Array.isArray(props.selected) ? props.selected.includes(id) : props.selected === id
 
+/** Where clips on a track touch — one ends where the next begins, to within half a pixel — as
+ *  `<id>:end` and `<id>:start`: their inner corners are squared and a seam drawn between them, so
+ *  two pieces of one take read as two. Not for clips being dragged (they're on their way). */
+const joins = computed(() => {
+  const out = new Set<string>()
+  const moving = held.value?.with
+  for (const t of props.tracks) {
+    const row = t.items
+      .filter((i) => i.kind !== 'marker' && i.end != null && i.end > i.start && !moving?.has(i.id))
+      .sort((a, b) => a.start - b.start)
+    for (let i = 1; i < row.length; i++) {
+      const a = row[i - 1]!
+      const b = row[i]!
+      if (Math.abs(a.end! - b.start) * pps.value < 0.5) {
+        out.add(`${a.id}:end`)
+        out.add(`${b.id}:start`)
+      }
+    }
+  }
+  return out
+})
+
 function itemStyle(item: TimelineItem) {
   const left = x(held.value?.with.has(item.id) ? item.start + held.value.delta : item.start)
   if (item.kind === 'marker') return { left: `${left}px`, '--ztl-color': item.color }
@@ -1075,17 +1108,21 @@ function onDragOver(e: DragEvent, trackId: string): void {
   e.preventDefault()
   if (e.dataTransfer) e.dataTransfer.dropEffect = 'copy'
   dropTrack.value = trackId
-  snapEdge(timeAt(e.clientX), new Set(), e, trackOf(trackId))
+  dropItem.value = itemUnder(e)
+  if (dropItem.value) snapLine.value = null
+  else snapEdge(timeAt(e.clientX), new Set(), e, trackOf(trackId))
 }
 function onDragLeave(): void {
   dropTrack.value = null
+  dropItem.value = null
   snapLine.value = null
 }
 function onDrop(e: DragEvent, trackId: string): void {
   dropTrack.value = null
+  dropItem.value = null
   const at = snapEdge(timeAt(e.clientX), new Set(), e, trackOf(trackId))
   snapLine.value = null
-  emit('drop', trackId, at, e)
+  emit('drop', trackId, at, e, itemUnder(e))
 }
 
 /** Keep the playhead in view (call while playing). */
@@ -1110,6 +1147,8 @@ defineExpose({ timeAt, follow })
   --ztl-row: color-mix(in srgb, var(--zen-text, #e5e5ea) 3%, transparent);
   --ztl-line: color-mix(in srgb, var(--zen-text, #e5e5ea) 9%, transparent);
   --ztl-accent: var(--zen-accent, #6366f1);
+  /* The line between two clips that touch. */
+  --ztl-seam: color-mix(in srgb, var(--zen-text, #e5e5ea) 62%, transparent);
   --ztl-playhead: var(--zen-playhead, #ff5a4f);
   display: flex;
   min-width: 0;
@@ -1473,10 +1512,39 @@ defineExpose({ timeAt, follow })
   background: color-mix(in srgb, var(--ztl-color, var(--ztl-accent)) 42%, var(--ztl-bg));
   cursor: pointer;
 }
+/* Touching clips: square where they meet, and a seam there — a hairline in the theme's text colour
+   between the two clips' own dark edges, with a notch top and bottom, as an editor marks a cut. */
+.ztl-item.clip.join-start {
+  border-left-color: var(--ztl-seam);
+  border-top-left-radius: 0;
+  border-bottom-left-radius: 0;
+}
+.ztl-item.clip.join-end {
+  border-top-right-radius: 0;
+  border-bottom-right-radius: 0;
+}
+.ztl-item.clip.join-start::before {
+  content: '';
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  left: 0;
+  z-index: 1;
+  width: 5px;
+  background:
+    linear-gradient(135deg, var(--ztl-seam) 3px, transparent 3px) top left / 5px 5px no-repeat,
+    linear-gradient(45deg, var(--ztl-seam) 3px, transparent 3px) bottom left / 5px 5px no-repeat;
+  pointer-events: none;
+}
 .ztl-item.clip.on {
   border-color: var(--zen-text, #e5e5ea);
   box-shadow: 0 0 0 1px var(--zen-text, #e5e5ea) inset;
   background: color-mix(in srgb, var(--ztl-color, var(--ztl-accent)) 62%, var(--ztl-bg));
+}
+.ztl-item.droptarget {
+  z-index: 3;
+  outline: 2px solid var(--ztl-accent);
+  outline-offset: 1px;
 }
 .ztl-item.lifted {
   z-index: 3;
