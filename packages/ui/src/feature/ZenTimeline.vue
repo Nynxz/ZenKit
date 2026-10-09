@@ -252,6 +252,9 @@
               ]"
               :style="itemStyle(item)"
               :title="item.title ?? item.label"
+              :data-peek="item.peek?.src"
+              :data-peek-kind="item.peek?.kind"
+              :data-peek-label="item.peek?.label"
               @pointerdown="startMove($event, t, item)"
               @contextmenu.prevent.stop="
                 emit('context', { trackId: t.id, itemId: item.id }, timeAt($event.clientX), $event)
@@ -372,6 +375,8 @@ export interface TimelineItem {
   title?: string
   color?: string
   thumb?: string
+  /** Shown large while Shift is held over it (ZenPeek): a media URL, its kind and a caption. */
+  peek?: { src: string; kind?: 'image' | 'video' | 'audio'; label?: string }
   icon?: string
   muted?: boolean
   /** A placeholder (an empty slot to fill): drawn dashed, never dragged. */
@@ -458,6 +463,11 @@ export interface TimelineTrack {
   levels?: TimelineLevels
   actions?: TimelineTrackAction[]
   height?: number
+  /** Its items snap only to the edges of items on these tracks (and to 0, the playhead and
+   *  `snapPoints`) — keyframes onto shots, say — instead of to everything. */
+  snapTo?: string[]
+  /** This track's magnet reach in px, over the timeline's `magnet`. */
+  magnet?: number
   items: TimelineItem[]
 }
 export interface TimelineTarget {
@@ -662,6 +672,7 @@ const x = (t: number) => Math.round((PAD + t * pps.value) / pxStep.value) * pxSt
 const snapTo = (t: number) => Math.round(t / props.snap) * props.snap
 
 const allItems = () => props.tracks.flatMap((t) => t.items)
+const trackOf = (id: string) => props.tracks.find((t) => t.id === id)
 /** An item and everything that moves with it: its group, and the rest of the selection if it is
  *  selected. */
 function companions(item: TimelineItem): Set<string> {
@@ -678,11 +689,20 @@ function companions(item: TimelineItem): Set<string> {
 }
 /** The nearest snap target to any of `edges`, within the magnet's reach: how far to shift them,
  *  and where the line goes. Null when nothing is in reach (or snapping is off / Alt is held). */
-function magnetize(edges: number[], skip: Set<string>, e?: { altKey: boolean }) {
+function magnetize(
+  edges: number[],
+  skip: Set<string>,
+  e?: { altKey: boolean },
+  track?: TimelineTrack,
+) {
   if (props.magnet === false || e?.altKey) return null
-  const reach = props.magnet / pps.value
+  const reach = (track?.magnet ?? props.magnet) / pps.value
   const targets = [0, playhead.value, ...props.snapPoints]
-  for (const o of allItems())
+  const snapTo = track?.snapTo
+  const from = snapTo
+    ? props.tracks.filter((t) => snapTo.includes(t.id)).flatMap((t) => t.items)
+    : allItems()
+  for (const o of from)
     if (!skip.has(o.id) && !o.ghost) targets.push(o.start, ...(o.end != null ? [o.end] : []))
   let best: { shift: number; at: number } | null = null
   for (const edge of edges)
@@ -694,8 +714,13 @@ function magnetize(edges: number[], skip: Set<string>, e?: { altKey: boolean }) 
   return best
 }
 /** `t` caught by the magnet (showing the line), else on the grid. */
-function snapEdge(t: number, skip: Set<string>, e?: { altKey: boolean }): number {
-  const m = magnetize([t], skip, e)
+function snapEdge(
+  t: number,
+  skip: Set<string>,
+  e?: { altKey: boolean },
+  track?: TimelineTrack,
+): number {
+  const m = magnetize([t], skip, e, track)
   snapLine.value = m?.at ?? null
   return m ? m.at : snapTo(t)
 }
@@ -969,7 +994,7 @@ function startMove(e: PointerEvent, track: TimelineTrack, item: TimelineItem): v
   const clamp = (t: number) => Math.min(Math.max(t, 0), props.duration - length)
   const place = (t: number, ev: PointerEvent) => {
     const start = clamp(t - offset)
-    const m = magnetize(item.end == null ? [start] : [start, start + length], together, ev)
+    const m = magnetize(item.end == null ? [start] : [start, start + length], together, ev, track)
     snapLine.value = m?.at ?? null
     return m ? clamp(start + m.shift) : clamp(snapTo(start))
   }
@@ -1013,7 +1038,7 @@ function startResize(
   emit('select', item.id, track.id, e)
   const together = companions(item)
   drag(e, (t, ev) => {
-    const at = snapEdge(t, together, ev)
+    const at = snapEdge(t, together, ev, track)
     emit('move', item.id, track.id, edge === 'start' ? { start: at } : { end: at })
   })
 }
@@ -1050,7 +1075,7 @@ function onDragOver(e: DragEvent, trackId: string): void {
   e.preventDefault()
   if (e.dataTransfer) e.dataTransfer.dropEffect = 'copy'
   dropTrack.value = trackId
-  snapEdge(timeAt(e.clientX), new Set(), e)
+  snapEdge(timeAt(e.clientX), new Set(), e, trackOf(trackId))
 }
 function onDragLeave(): void {
   dropTrack.value = null
@@ -1058,7 +1083,7 @@ function onDragLeave(): void {
 }
 function onDrop(e: DragEvent, trackId: string): void {
   dropTrack.value = null
-  const at = snapEdge(timeAt(e.clientX), new Set(), e)
+  const at = snapEdge(timeAt(e.clientX), new Set(), e, trackOf(trackId))
   snapLine.value = null
   emit('drop', trackId, at, e)
 }
