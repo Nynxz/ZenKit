@@ -2,13 +2,15 @@
 //
 // The "ZenKit Themes" entry is a real ComfyUI menu command, so PrimeVue renders and
 // state-manages it (native highlighting, survives ComfyUI updates). We only attach a hover
-// handler to its rendered DOM to open our own popup.
+// handler to its rendered DOM to open our own popup. Both menu renderers are handled: the reka
+// Menu ComfyUI uses now, and the older PrimeVue TieredMenu.
 
 import { theme } from './theme'
 import type { ThemeMode } from './theme'
 import { listComfyPalettes, getComfyPalette, applyComfyPalette } from './comfyTheme'
 
-const MENU_SEL = '.comfy-command-menu'
+const MENU_SEL = '.comfy-command-menu' // PrimeVue TieredMenu (older ComfyUI)
+const REKA_MENU_SEL = '[data-reka-menu-content]'
 const ITEM_LABEL = 'ZenKit Themes' // matches the command label registered in the plugin
 const WIRED = 'data-zen-themes-wired' // our native item, once hover-wired
 const COMFY_MARK = 'data-zen-comfy-theme' // ComfyUI's native "Theme" <li>, once tagged
@@ -19,12 +21,13 @@ const CLOSE_DELAY = 140 // hover-intent grace when moving between the item and t
 
 const STYLE = `
 /* a right chevron on our native item so it reads as "opens something" */
-[${WIRED}] .p-menubar-item-link::after { content:'\\203A'; margin-left:auto; opacity:.65; font-size:14px; line-height:1; }
+[${WIRED}] .p-menubar-item-link::after,
+[${WIRED}][role='menuitem']::after { content:'\\203A'; margin-left:auto; opacity:.65; font-size:14px; line-height:1; }
 
 /* Styled with the ZenKit theme tokens (the same ones the panels use) so it matches the
    active theme — not ComfyUI's own menu vars, which may be unset or off-theme. */
 #${POPUP_ID} {
-  position:fixed; z-index:100001; display:none; flex-direction:column; width:240px; max-height:min(70vh, 440px);
+  position:fixed; z-index:100001; display:none; pointer-events:auto; flex-direction:column; width:240px; max-height:min(70vh, 440px);
   overflow:hidden; background:var(--zen-chrome-bg, var(--zen-surface, #1f1f25));
   color:var(--zen-text, #e5e5ea);
   border:1px solid var(--zen-surface-border, var(--zen-border, #34343c));
@@ -215,6 +218,10 @@ export function createComfyThemeMenu() {
     // Hover-intent: staying on the popup keeps it open; leaving it closes (after the grace).
     popup.addEventListener('mouseenter', cancelClose)
     popup.addEventListener('mouseleave', scheduleClose)
+    // The popup lives outside ComfyUI's menu, so a press in it would count as "outside" and
+    // dismiss the menu (removing our anchor) before the click lands. Keep both inside.
+    popup.addEventListener('pointerdown', (e) => e.stopPropagation())
+    popup.addEventListener('mousedown', (e) => e.preventDefault())
     renderPopup()
     return popup
   }
@@ -277,24 +284,24 @@ export function createComfyThemeMenu() {
   // On, we take theming over: ComfyUI's native "Theme" item is hidden (its palettes live in our
   // popup's Comfy tab). Off, ours is hidden and ComfyUI's comes back.
   function applyVisibility() {
-    for (const li of document.querySelectorAll<HTMLElement>(`${MENU_SEL} [${COMFY_MARK}]`))
+    for (const li of document.querySelectorAll<HTMLElement>(`[${COMFY_MARK}]`))
       li.style.display = enabled ? 'none' : ''
-    for (const li of document.querySelectorAll<HTMLElement>(`${MENU_SEL} [${WIRED}]`))
+    for (const li of document.querySelectorAll<HTMLElement>(`[${WIRED}]`))
       li.style.display = enabled ? '' : 'none'
   }
 
   // Hiding an item can leave two separators touching — or one at either end — which draws as a
   // double rule. Keep one per run of visible items.
-  function collapseSeparators(list: HTMLElement) {
+  function collapseSeparators(list: HTMLElement, rows: string) {
     for (const li of list.querySelectorAll<HTMLElement>(`:scope > [${SEP_MARK}]`)) {
       li.style.display = ''
       li.removeAttribute(SEP_MARK)
     }
     let previous: 'start' | 'item' | 'separator' = 'start'
     let trailing: HTMLElement | null = null
-    for (const li of list.querySelectorAll<HTMLElement>(':scope > li')) {
+    for (const li of list.querySelectorAll<HTMLElement>(rows)) {
       if (li.style.display === 'none') continue
-      const separator = /separator/.test(li.className)
+      const separator = li.getAttribute('role') === 'separator' || /separator/.test(li.className)
       if (separator && previous !== 'item') {
         li.style.display = 'none'
         li.setAttribute(SEP_MARK, '1')
@@ -310,17 +317,23 @@ export function createComfyThemeMenu() {
   }
 
   function scan() {
-    for (const menu of document.querySelectorAll<HTMLElement>(MENU_SEL)) {
-      for (const li of menu.querySelectorAll<HTMLElement>('li')) {
-        const label = li.querySelector('.p-menubar-item-label')?.textContent?.trim()
-        if (label === ITEM_LABEL) wire(li)
-        else if (label && /^theme$/i.test(label) && !li.hasAttribute(COMFY_MARK))
-          li.setAttribute(COMFY_MARK, '1')
-      }
+    const items = [
+      ...document.querySelectorAll<HTMLElement>(`${MENU_SEL} li`),
+      ...document.querySelectorAll<HTMLElement>(`${REKA_MENU_SEL} > [role^='menuitem']`),
+    ]
+    for (const item of items) {
+      const label = (
+        item.querySelector('.p-menubar-item-label') ?? item.querySelector(':scope > span')
+      )?.textContent?.trim()
+      if (label === ITEM_LABEL) wire(item)
+      else if (label && /^theme$/i.test(label) && !item.hasAttribute(COMFY_MARK))
+        item.setAttribute(COMFY_MARK, '1')
     }
     applyVisibility()
     for (const list of document.querySelectorAll<HTMLElement>(`${MENU_SEL} ul`))
-      collapseSeparators(list)
+      collapseSeparators(list, ':scope > li')
+    for (const list of document.querySelectorAll<HTMLElement>(REKA_MENU_SEL))
+      collapseSeparators(list, ':scope > *')
     // The anchor was removed (menu closed/rebuilt) → drop the popup.
     if (anchor && !anchor.isConnected) closePopup()
   }
