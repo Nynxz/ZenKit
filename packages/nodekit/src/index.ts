@@ -13,6 +13,9 @@ export {
   type DragSurfaceOptions,
 } from './useDragSurface'
 export { viewUrl } from './viewUrl'
+// The drag data ZenKit's own media sources set (its Media Viewer, Asset Browser): drops into
+// ComfyUI, another ZenKit surface or another app take it as that file.
+export { setImageDragData } from '../../client/src/index'
 export {
   hasMediaDrop,
   mediaKind,
