@@ -14,6 +14,7 @@
               movable: t.movable,
               lifted: headDrag?.id === t.id,
               'has-actions': !!t.actions?.length,
+              inline: headActions === 'inline',
             }"
             :data-track="t.id"
             :title="t.movable ? `${t.title ?? t.label} — drag to reorder` : (t.title ?? t.label)"
@@ -246,6 +247,7 @@
                   on: isSelected(item.id),
                   muted: item.muted,
                   thumbed: !!item.thumb,
+                  banded: !!(item.frames || item.wave),
                   ghost: item.ghost,
                   lifted: held?.id === item.id,
                   droptarget: dropItem === item.id,
@@ -258,18 +260,49 @@
               :data-item-id="item.id"
               :data-peek="item.peek?.src"
               :data-peek-kind="item.peek?.kind"
+              :data-peek-id="item.peek?.id"
               :data-peek-label="item.peek?.label"
+              :data-peek-detail="item.peek?.detail"
               @pointerdown="startMove($event, t, item)"
               @contextmenu.prevent.stop="
                 emit('context', { trackId: t.id, itemId: item.id }, timeAt($event.clientX), $event)
               "
               @dblclick.stop="emit('open', item.id, t.id)"
             >
-              <img v-if="item.thumb" :src="item.thumb" alt="" draggable="false" />
+              <img v-if="item.thumb && !item.frames" :src="item.thumb" alt="" draggable="false" />
+              <span v-if="item.frames" class="ztl-frames" aria-hidden="true">
+                <img
+                  v-for="f in framesOf(item, t)"
+                  :key="f.at"
+                  :src="f.src"
+                  :style="{ left: `${f.left}px`, width: `${f.width}px` }"
+                  alt=""
+                  loading="lazy"
+                  draggable="false"
+                />
+              </span>
+              <svg
+                v-if="item.wave?.length"
+                class="ztl-wave"
+                :viewBox="`0 0 ${item.wave.length} 100`"
+                preserveAspectRatio="none"
+                aria-hidden="true"
+              >
+                <path :d="wavePath(item.wave)" />
+              </svg>
               <i v-if="item.icon" class="mdi ztl-icon" :class="iconClass(item.icon)" />
               <span v-if="item.kind !== 'marker' && item.label" class="ztl-label">
                 {{ item.label }}
               </span>
+              <span v-for="b in item.badges ?? []" :key="b" class="ztl-badge">{{ b }}</span>
+              <span
+                v-for="m in item.marks ?? []"
+                :key="m.t"
+                class="ztl-mark"
+                :class="{ strong: m.strong }"
+                :style="{ left: `${x(m.t) - x(item.start)}px` }"
+                :title="m.label"
+              />
               <span
                 v-if="item.tail && item.end != null && item.end > item.start"
                 class="ztl-tail"
@@ -337,6 +370,16 @@
           </div>
 
           <div v-for="g in guides" :key="g" class="ztl-guide" :style="{ left: `${x(g)}px` }" />
+          <div
+            v-if="box"
+            class="ztl-marquee"
+            :style="{
+              left: `${box.left}px`,
+              top: `${box.top}px`,
+              width: `${box.width}px`,
+              height: `${box.height}px`,
+            }"
+          />
           <div v-if="snapLine != null" class="ztl-snapline" :style="{ left: `${x(snapLine)}px` }" />
           <div class="ztl-playhead" :style="{ transform: `translateX(${x(playhead)}px)` }">
             <span />
@@ -379,8 +422,26 @@ export interface TimelineItem {
   title?: string
   color?: string
   thumb?: string
-  /** Shown large while Shift is held over it (ZenPeek): a media URL, its kind and a caption. */
-  peek?: { src: string; kind?: 'image' | 'video' | 'audio'; label?: string }
+  /** Shown large while Shift is held over it (ZenPeek): a media URL, its kind and a caption, or
+   *  (`kind: 'custom'`) content the host's ZenPeek draws for `id`. */
+  peek?: {
+    src?: string
+    kind?: 'image' | 'video' | 'audio' | 'custom'
+    id?: string
+    label?: string
+    detail?: string
+  }
+  /** A filmstrip along the clip, under its label: the picture at each timeline time (seconds),
+   *  asked for each frame in view. Frames are `framesAspect` (width / height, default 16 / 9). */
+  frames?: (t: number) => string | undefined
+  framesAspect?: number
+  /** A waveform along the clip, under its label: peak levels 0–1, evenly across it. */
+  wave?: number[]
+  /** Short tags after the label (what's on the clip: "fx 2", "2×"…). */
+  badges?: string[]
+  /** Moments inside the clip, at timeline times (where its source changes scene, say): drawn as
+   *  lines across it, `strong` ones brighter, with `label` on hover. */
+  marks?: { t: number; label?: string; strong?: boolean }[]
   icon?: string
   muted?: boolean
   /** A placeholder (an empty slot to fill): drawn dashed, never dragged. */
@@ -496,6 +557,11 @@ const props = withDefaults(
     magnet?: number | false
     /** Extra times to snap to (markers, beats…). */
     snapPoints?: number[]
+    /** Where a track header's `actions` go: on a line under the name (default), or beside it. */
+    headActions?: 'below' | 'inline'
+    /** A drag on empty track space selects the clips in a box (emits `marquee`), rather than
+     *  scrubbing the playhead (the ruler still scrubs). */
+    marquee?: boolean
   }>(),
   {
     selected: null,
@@ -505,6 +571,7 @@ const props = withDefaults(
     headWidth: 112,
     magnet: 6,
     snapPoints: () => [],
+    headActions: 'below',
   },
 )
 const playhead = defineModel<number>('playhead', { default: 0 })
@@ -529,6 +596,9 @@ const emit = defineEmits<{
   action: [trackId: string, actionId: string]
   /** A clip's fade handle was dragged: its fade in or out, in seconds. */
   fade: [itemId: string, edge: 'in' | 'out', seconds: number]
+  /** A box drag (`marquee`) selects these: the clips it touches, plus with Shift/Ctrl/⌘ held what
+   *  was selected when it began. Emitted as the box changes. */
+  marquee: [itemIds: string[]]
 }>()
 
 // --- reordering tracks by their headers ---------------------------------------------------------
@@ -959,6 +1029,39 @@ function itemStyle(item: TimelineItem) {
   return { left: `${left}px`, width: `${width}px`, '--ztl-color': item.color }
 }
 
+/** Height of a clip's filmstrip or waveform: its track's, less the clip's inset, border and label. */
+const BAND = 16
+const bandHeight = (t: TimelineTrack) => Math.max(8, (t.height ?? 30) - 6 - 2 - BAND)
+/** The filmstrip frames of a clip that are in view: one every frame-width from its start, each
+ *  showing the picture at its own middle. */
+function framesOf(item: TimelineItem, t: TimelineTrack) {
+  const frames = item.frames
+  if (!frames || item.end == null) return []
+  const h = bandHeight(t)
+  const w = Math.max(8, h * (item.framesAspect ?? 16 / 9))
+  const delta = held.value?.with.has(item.id) ? held.value.delta : 0
+  const left = x(item.start + delta)
+  const width = x((item.end ?? item.start) + delta) - left
+  const from = Math.max(0, Math.floor((scrollX.value - left) / w))
+  const to = Math.min(Math.ceil(width / w), Math.ceil((scrollX.value + viewWidth.value - left) / w))
+  const out: { at: number; left: number; width: number; src: string }[] = []
+  for (let i = from; i < to && out.length < 80; i++) {
+    const src = frames(item.start + (i * w + w / 2) / pps.value)
+    if (src) out.push({ at: i, left: i * w, width: w, src })
+  }
+  return out
+}
+/** A waveform's outline: the peaks mirrored about the middle, on a `length` × 100 box. */
+function wavePath(peaks: number[]): string {
+  const top = peaks.map(
+    (v, i) => `${i},${50 - Math.min(1, v) * 48} ${i + 1},${50 - Math.min(1, v) * 48}`,
+  )
+  const bottom = peaks
+    .map((v, i) => `${i + 1},${50 + Math.min(1, v) * 48} ${i},${50 + Math.min(1, v) * 48}`)
+    .reverse()
+  return `M0,50 L${top.join(' ')} L${peaks.length},50 L${bottom.join(' ')} Z`
+}
+
 // Ticks: a step that keeps majors about 80px apart, with minor ticks between them.
 const ticks = computed(() => {
   const steps = [0.1, 0.25, 0.5, 1, 2, 5, 10, 15, 30, 60, 120, 300]
@@ -1012,8 +1115,77 @@ function startScrub(e: PointerEvent): void {
 
 function onTrackDown(e: PointerEvent, trackId: string): void {
   if (e.button !== 0) return
+  if (props.marquee) return startMarquee(e, trackId)
   emit('select', null, trackId, e)
   startScrub(e)
+}
+
+// --- box selection (`marquee`) ----------------------------------------------------------------------
+/** The box being dragged, in the tracks' own px (as `x()` gives). */
+const box = ref<{ left: number; top: number; width: number; height: number } | null>(null)
+/** A drag from empty track space draws a box and selects the clips it touches, live (`marquee`);
+ *  with Shift, Ctrl or ⌘ held they add to what was selected. A click without a drag deselects and
+ *  moves the playhead there, as without `marquee`. */
+function startMarquee(e: PointerEvent, trackId: string): void {
+  const body = bodyEl.value
+  if (!body) return
+  e.preventDefault()
+  const el = e.currentTarget as HTMLElement
+  el.setPointerCapture(e.pointerId)
+  const additive = e.shiftKey || e.ctrlKey || e.metaKey
+  const before = additive
+    ? Array.isArray(props.selected)
+      ? props.selected
+      : props.selected
+        ? [props.selected]
+        : []
+    : []
+  const x0 = e.clientX
+  const y0 = e.clientY
+  let moved = false
+  const move = (m: PointerEvent) => {
+    if (!moved && Math.hypot(m.clientX - x0, m.clientY - y0) < 4) return
+    moved = true
+    const r = body.getBoundingClientRect()
+    const scale = screenScale()
+    const [left, right] = [Math.min(x0, m.clientX), Math.max(x0, m.clientX)]
+    const [top, bottom] = [Math.min(y0, m.clientY), Math.max(y0, m.clientY)]
+    box.value = {
+      left: (left - r.left) / scale,
+      top: (top - r.top) / scale,
+      width: (right - left) / scale,
+      height: (bottom - top) / scale,
+    }
+    const [t0, t1] = [timeAt(left), timeAt(right)]
+    const rows = [...body.querySelectorAll<HTMLElement>(':scope > .ztl-track')]
+    const hit = new Set(before)
+    props.tracks.forEach((t, i) => {
+      const row = rows[i]?.getBoundingClientRect()
+      if (!row || row.bottom < top || row.top > bottom) return
+      for (const item of t.items)
+        if (
+          item.kind !== 'marker' &&
+          !item.ghost &&
+          item.start < t1 &&
+          (item.end ?? item.start) > t0
+        )
+          hit.add(item.id)
+    })
+    emit('marquee', [...hit])
+  }
+  const up = (u: PointerEvent) => {
+    el.removeEventListener('pointermove', move)
+    el.removeEventListener('pointerup', up)
+    el.removeEventListener('pointercancel', up)
+    box.value = null
+    if (!moved && u.type === 'pointerup') {
+      emit('select', null, trackId, e)
+      playhead.value = timeAt(x0)
+    }
+  }
+  el.addEventListener('pointermove', move)
+  el.addEventListener('pointerup', up)
+  el.addEventListener('pointercancel', up)
 }
 
 function startMove(e: PointerEvent, track: TimelineTrack, item: TimelineItem): void {
@@ -1244,6 +1416,26 @@ defineExpose({ timeAt, follow })
   flex: 1 0 100%;
   gap: 2px;
   padding-left: 24px;
+}
+/* `headActions: 'inline'`: the buttons sit after the name, on its line, faint until the row is
+   hovered or one is on. */
+.ztl-head.has-actions.inline {
+  flex-wrap: nowrap;
+}
+.ztl-head.inline .ztl-head-actions {
+  flex: none;
+  padding-left: 0;
+}
+.ztl-head.inline .ztl-head-action {
+  justify-content: center;
+  width: 20px;
+  height: 20px;
+  padding: 0;
+  opacity: 0.6;
+}
+.ztl-head.inline:hover .ztl-head-action,
+.ztl-head.inline .ztl-head-action.on {
+  opacity: 1;
 }
 .ztl-head-action {
   display: inline-flex;
@@ -1567,6 +1759,84 @@ defineExpose({ timeAt, follow })
   aspect-ratio: 1;
   object-fit: cover;
 }
+.ztl-badge {
+  flex: none;
+  padding: 0 4px;
+  border-radius: 3px;
+  background: rgb(0 0 0 / 32%);
+  color: color-mix(in srgb, var(--zen-text, #e5e5ea) 88%, var(--ztl-color, var(--ztl-accent)));
+  font-family: var(--zen-mono, ui-monospace, monospace);
+  font-size: 9px;
+  line-height: 13px;
+  white-space: nowrap;
+}
+/* A clip with a filmstrip or waveform: its label, icon and badges in a band along the top, the
+   pictures or the sound filling the rest. */
+.ztl-item.clip.banded {
+  align-items: flex-start;
+  padding-top: 1px;
+}
+.ztl-item.clip.banded > .ztl-label,
+.ztl-item.clip.banded > .ztl-icon,
+.ztl-item.clip.banded > .ztl-badge {
+  position: relative;
+  z-index: 1;
+  margin-top: 1px;
+}
+/* A moment inside a clip: a line across it, with a notch at the top to catch the eye. */
+.ztl-mark {
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  z-index: 1;
+  width: 1px;
+  margin-left: -0.5px;
+  background: rgb(255 255 255 / 45%);
+}
+.ztl-mark::before {
+  content: '';
+  position: absolute;
+  top: 0;
+  left: -3px;
+  border: 3.5px solid transparent;
+  border-top-color: rgb(255 255 255 / 70%);
+}
+.ztl-mark.strong {
+  background: rgb(255 255 255 / 80%);
+}
+.ztl-mark.strong::before {
+  border-top-color: #fff;
+}
+.ztl-frames,
+.ztl-wave {
+  position: absolute;
+  top: 16px;
+  right: 0;
+  bottom: 0;
+  left: 0;
+  pointer-events: none;
+}
+.ztl-frames {
+  overflow: hidden;
+  border-top: 1px solid rgb(0 0 0 / 35%);
+}
+.ztl-item.clip .ztl-frames img {
+  position: absolute;
+  top: 0;
+  height: 100%;
+  margin: 0;
+  aspect-ratio: auto;
+  object-fit: cover;
+  opacity: 0.9;
+}
+.ztl-wave {
+  width: 100%;
+  height: calc(100% - 16px);
+  padding: 2px 0;
+  box-sizing: border-box;
+  fill: color-mix(in srgb, var(--ztl-color, var(--ztl-accent)) 35%, #fff);
+  opacity: 0.85;
+}
 .ztl-label {
   overflow: hidden;
   /* The theme's text, softened toward the clip's own colour: readable on light and dark clips
@@ -1659,6 +1929,7 @@ defineExpose({ timeAt, follow })
   opacity: 1;
 }
 .ztl-item.marker {
+  z-index: 2;
   top: 50%;
   width: 22px;
   height: 22px;
@@ -1712,6 +1983,16 @@ defineExpose({ timeAt, follow })
   bottom: 0;
   width: 0;
   border-left: 1px dashed color-mix(in srgb, var(--zen-text, #e5e5ea) 22%, transparent);
+  pointer-events: none;
+}
+/* A box drag selecting clips. */
+.ztl-marquee {
+  position: absolute;
+  z-index: 7;
+  border: 1px solid var(--ztl-accent);
+  /* The theme's rounding, as the clips it selects use it. */
+  border-radius: calc(var(--zen-radius, 7px) * 0.65);
+  background: color-mix(in srgb, var(--ztl-accent) 14%, transparent);
   pointer-events: none;
 }
 /* Where a drag has caught: an edge, the playhead. */

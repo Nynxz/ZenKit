@@ -53,6 +53,85 @@ keys. Remembers the strip state and slideshow settings in `localStorage`
 In a ZenKit plugin you usually want the shared viewer instead (`openViewer` in
 `@nynxz/zenkit-client`, see [Channels and media](Channels-and-Media.md)).
 
+## ZenPeek
+
+Hold Shift over a thumbnail to see it large, in a small floating window beside it: a picture at
+full size, a video playing (muted, looped), audio with a player, or content your component draws.
+Releasing Shift, Escape, moving off the thumbnail or starting a drag puts it away.
+
+Drop one `<ZenPeek />` inside the area it should cover. It watches the elements in that area
+(its parent element) that carry these attributes:
+
+| Attribute          | Description                                                         |
+| ------------------ | ------------------------------------------------------------------- |
+| `data-peek`        | The media URL to show                                               |
+| `data-peek-kind`   | `image`, `video`, `audio` (else guessed from the URL), or `custom`  |
+| `data-peek-id`     | With `custom`: your id for what to draw (falls back to `data-peek`) |
+| `data-peek-label`  | The caption's title                                                 |
+| `data-peek-detail` | The caption's second line                                           |
+
+```vue
+<div class="grid">
+  <img v-for="a in assets" :key="a.url" :src="a.thumb" :data-peek="a.url" :data-peek-label="a.name" />
+  <ZenPeek />
+</div>
+```
+
+| Prop     | Type         | Default | Description                                                       |
+| -------- | ------------ | ------- | ----------------------------------------------------------------- |
+| `render` | `PeekRender` | —       | Draws `custom` content into the window (see below)                |
+| `focus`  | `boolean`    | `false` | Also peek at the focused element when Shift is pressed (keyboard) |
+
+### Custom content
+
+For something that isn't a media file (a live shader preview, a chart, a rendered card), mark the
+element `data-peek-kind="custom"` with a `data-peek-id`, and fill the window either with the
+`custom` slot or the `render` callback. The window chrome, placement beside the element, caption,
+z-layer and Escape handling are the same as for media.
+
+```vue
+<!-- A slot: Vue content, given the id and the element. -->
+<ZenPeek>
+  <template #custom="{ id }"><MyCard :item="byId(id)" /></template>
+</ZenPeek>
+
+<!-- A callback: imperative content (a canvas, WebGL). -->
+<ZenPeek :render="draw" focus />
+```
+
+```ts
+import type { PeekRender } from '@nynxz/zenkit-ui'
+
+const draw: PeekRender = (id, container, { el, reducedMotion, place }) => {
+  const canvas = document.createElement('canvas')
+  container.append(canvas)
+  let raf = 0
+  const tick = (now: number) => {
+    paint(canvas, id, now)
+    if (!reducedMotion) raf = requestAnimationFrame(tick)
+  }
+  raf = requestAnimationFrame(tick)
+  return () => cancelAnimationFrame(raf) // runs when the peek closes or moves to another element
+}
+```
+
+`render(id, container, ctx)` is called once per peek, after the window is in the page; the
+function it returns is called when the peek closes, moves to another element, or ZenPeek unmounts.
+Release everything there (animation frames, GL contexts, listeners). `ctx`:
+
+| Field           | Description                                                           |
+| --------------- | --------------------------------------------------------------------- |
+| `el`            | The element being peeked at                                           |
+| `reducedMotion` | The system asks for reduced motion: draw a still instead of animating |
+| `place()`       | Re-place the window; it also re-places itself when its size changes   |
+
+The content sets its own size, up to `min(560px, 60vw)` × `min(480px, 70vh)`. With the slot
+and `render` both given, both run (the slot's content first, inside the same container).
+
+While it's open the peek is the top floating layer: Escape closes it (not the window or modal
+under it) and it stays closed until Shift is pressed again. Its opening animation follows
+`--zen-dur-fast`, and is off under reduced motion.
+
 ## ZenMediaControls
 
 A control bar for a `<video>` or `<audio>` element you own: play, frame step, scrubber (buffered
@@ -152,6 +231,11 @@ Remembers view settings and open folders in `localStorage` (`zenkit.mediaPicker`
 A controlled multi-track timeline: clips and markers, curve tracks, level/shape tracks, ruler
 scrubbing, zoom, guides, a range, reorderable track headers with actions, and drop targets. It
 renders `tracks` and reports edits through events; you update the data.
+
+Clips on a track that touch (one ends where the next begins, to within half a pixel) read as two:
+their inner corners are square and the later one starts with a seam, a hairline in `--ztl-seam`
+(the theme's text colour at 62%) with a small notch top and bottom, as an editor marks a cut.
+Clips being dragged don't join until they're dropped.
 
 ```vue
 <script setup lang="ts">
