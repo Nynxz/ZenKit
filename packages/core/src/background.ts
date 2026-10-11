@@ -30,6 +30,7 @@ interface LGCanvas {
   clear_background_color?: unknown
   _pattern?: unknown
   _bg_img?: unknown
+  graph?: { id?: string } | null
   setDirty?: (a: boolean, b?: boolean) => void
 }
 function lgCanvas(): LGCanvas | null {
@@ -409,6 +410,7 @@ function renderGL(host: BackgroundContext, st: GLState) {
   const vh = host.h | 0
   if (vw <= 0 || vh <= 0) return
   const { gl, u } = st
+  if (gl.isContextLost()) return // drawn again once the context is restored (see buildStack)
   gl.useProgram(st.prog)
   gl.viewport(0, 0, vw, vh)
   const bg = (hexToRgb(host.color('--zen-bg', '#121212')) ?? [18, 18, 18]).map((v) => v / 255)
@@ -619,8 +621,15 @@ class Host {
     box.dataset.zenkitBg = ''
     Host.fill(box)
     box.style.overflow = 'hidden'
+    // The theme's own ground behind the layers: if a layer is ever blank (a lost GPU context, a
+    // frame not yet drawn), the graph shows the theme's background rather than the page's white.
+    box.style.background = 'var(--zen-bg, #121212)'
 
     this.layer = this.makeCanvas('background')
+    // The GPU can drop a WebGL context under memory pressure — while ComfyUI loads a model, say.
+    // Ask for it back, and rebuild the background when it returns.
+    this.layer.addEventListener('webglcontextlost', (e) => e.preventDefault())
+    this.layer.addEventListener('webglcontextrestored', () => this.restart())
     box.appendChild(this.layer)
 
     this.finishEl = document.createElement('div')
@@ -718,6 +727,11 @@ class Host {
     // change. Cycling through `setActive(null)` rather than poking `this.active` keeps the
     // background's own dispose → init running exactly as a background switch would, so a WebGL
     // context is never orphaned.
+    this.restart()
+  }
+
+  /** Rebuild the active background from scratch: dispose → init, as a background switch would. */
+  private restart() {
     const id = this.active?.id
     if (id && lgCanvas()?.canvas) {
       this.setActive(null)
@@ -804,7 +818,8 @@ class Host {
   private due(lg: LGCanvas, now: number): boolean {
     const off = lg.ds?.offset ?? [0, 0]
     const pointer = this.ptr.onCanvas ? `${this.ptr.x},${this.ptr.y}` : 'away'
-    const sig = `${off[0]},${off[1]},${lg.ds?.scale},${lg.canvas.width},${lg.canvas.height},${pointer}`
+    // The graph's id too: switching workflows must repaint even when the new view matches.
+    const sig = `${lg.graph?.id},${off[0]},${off[1]},${lg.ds?.scale},${lg.canvas.width},${lg.canvas.height},${pointer}`
     if (sig !== this.lastSig) {
       this.lastSig = sig
       this.busyUntil = now + 700
