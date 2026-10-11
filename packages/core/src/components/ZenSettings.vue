@@ -411,7 +411,8 @@ onBeforeUnmount(() => offLog?.())
   background: color-mix(in srgb, var(--zen-text, #fff) 7%, transparent);
 }
 .zse-tabs button.on {
-  background: color-mix(in srgb, var(--zen-accent, #6366f1) 18%, transparent);
+  background: color-mix(in srgb, var(--zen-accent, #6366f1) 22%, transparent);
+  box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--zen-accent, #6366f1) 55%, transparent);
   color: var(--zen-text, #e5e5e8);
 }
 .zse-tabs .mdi {
