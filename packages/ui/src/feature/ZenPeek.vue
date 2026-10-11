@@ -1,107 +1,206 @@
 <script setup lang="ts">
 // ZenPeek — hold Shift over a thumbnail to see it large: a picture at full size, a video playing,
-// audio with a player. Drop one inside the area it should cover; it watches the elements in that
-// area that carry `data-peek` (a media URL), with `data-peek-kind` (image | video | audio, else
-// guessed from the URL), `data-peek-label` and `data-peek-detail` for the caption. Releasing Shift
-// or moving off the thumbnail puts it away.
-import { computed, nextTick, onBeforeUnmount, onMounted, reactive, ref } from 'vue'
+// audio with a player, or content the host draws. Drop one inside the area it should cover; it
+// watches the elements in that area that carry `data-peek` (a media URL), with `data-peek-kind`
+// (image | video | audio, else guessed from the URL), `data-peek-label` and `data-peek-detail` for
+// the caption. `data-peek-kind="custom"` with a `data-peek-id` asks the host instead: the `custom`
+// slot, or the `render` prop, fills the window. Releasing Shift, Escape, or moving off the
+// thumbnail puts it away. With `focus`, Shift over a focused element peeks too.
+import { computed, onBeforeUnmount, onMounted, reactive, ref, watch } from 'vue'
 import '../lib/surface.css'
-import { Z, zAbove } from '../overlays/layers'
+import { openLayer, Z, type Layer } from '../overlays/layers'
+import {
+  peekTarget,
+  placePeek,
+  placePeekAbove,
+  PEEK_SELECTOR,
+  type PeekRender,
+  type PeekTarget,
+} from './peek'
 
-type Kind = 'image' | 'video' | 'audio'
-interface Shown {
-  url: string
-  kind: Kind
-  label: string
-  detail: string
+const props = defineProps<{
+  /** Draws `data-peek-kind="custom"` content (or use the `custom` slot). */
+  render?: PeekRender
+  /** Also peek at the focused element while Shift is held (keyboard users). */
+  focus?: boolean
+  /** Where the window opens: beside the element (default), or above it, for wide elements. */
+  placement?: 'beside' | 'above'
+}>()
+defineSlots<{
+  /** Custom content for `data-peek-kind="custom"`: `id` is its `data-peek-id`. */
+  custom?: (p: { id: string; el: HTMLElement }) => unknown
+}>()
+
+interface Shown extends PeekTarget {
+  el: HTMLElement
   rect: DOMRect
 }
 
 const anchor = ref<HTMLElement | null>(null)
 const box = ref<HTMLElement | null>(null)
+const customBox = ref<HTMLElement | null>(null)
 const shown = ref<Shown | null>(null)
 const pos = reactive({ left: 0, top: 0 })
 const z = ref<number>(Z.peek)
+let layer: Layer | null = null
 let hovered: HTMLElement | null = null
+let focused: HTMLElement | null = null
+/** The keyboard moved focus since the pointer last moved: the focused element is the one to show. */
+let byKeyboard = false
 let shift = false
-
-const guess = (url: string): Kind =>
-  /\.(mp4|webm|mov|mkv|m4v)(\?|$)/i.test(url)
-    ? 'video'
-    : /\.(wav|mp3|flac|ogg|m4a|aac)(\?|$)/i.test(url)
-      ? 'audio'
-      : 'image'
+/** Escape put it away: it stays away until Shift is pressed again. */
+let dismissed = false
 
 function area(): HTMLElement | null {
   return anchor.value?.parentElement ?? null
 }
-
-function update() {
-  const el = shift ? hovered : null
-  const url = el?.dataset.peek
-  if (!el || !url) {
-    shown.value = null
-    return
-  }
-  if (shown.value?.url === url && shown.value.rect.top === el.getBoundingClientRect().top) return
-  shown.value = {
-    url,
-    kind: (el.dataset.peekKind as Kind) || guess(url),
-    label: el.dataset.peekLabel ?? '',
-    detail: el.dataset.peekDetail ?? '',
-    rect: el.getBoundingClientRect(),
-  }
-  z.value = zAbove(Z.peek)
-  void nextTick(place)
+function within(target: EventTarget | null): HTMLElement | null {
+  const root = area()
+  const el = target instanceof Element ? target.closest<HTMLElement>(PEEK_SELECTOR) : null
+  return el && root?.contains(el) ? el : null
 }
 
-/** Beside the thumbnail, on whichever side has room; kept on screen. */
+function hide() {
+  shown.value = null
+  layer?.release()
+  layer = null
+}
+
+function update() {
+  const el = shift && !dismissed ? (props.focus && byKeyboard ? focused : hovered) : null
+  const target = el ? peekTarget(el.dataset) : null
+  if (!el || !target) return hide()
+  const rect = el.getBoundingClientRect()
+  if (shown.value?.key === target.key && shown.value.rect.top === rect.top) return
+  shown.value = { ...target, el, rect }
+  if (!layer) {
+    layer = openLayer(Z.peek)
+    z.value = layer.z
+  }
+}
+
+/** Beside the thumbnail, on whichever side has room (or above it); kept on screen. */
 function place() {
   const s = shown.value
   const el = box.value
   if (!s || !el) return
-  const w = el.offsetWidth
-  const h = el.offsetHeight
-  const gap = 12
-  const r = s.rect
-  const right = window.innerWidth - r.right
-  let left = right >= w + gap || right >= r.left ? r.right + gap : r.left - w - gap
-  left = Math.min(Math.max(8, left), window.innerWidth - w - 8)
-  const top = Math.min(Math.max(8, r.top + r.height / 2 - h / 2), window.innerHeight - h - 8)
-  pos.left = left
-  pos.top = top
+  const viewport = { width: window.innerWidth, height: window.innerHeight }
+  const at =
+    props.placement === 'above'
+      ? placePeekAbove(s.rect, el.offsetWidth, el.offsetHeight, viewport)
+      : placePeek(s.rect, el.offsetWidth, el.offsetHeight, viewport)
+  pos.left = at.left
+  pos.top = at.top
 }
 
+// Custom content: drawn by `render` once its container is in the page, cleaned up when the peek
+// closes or moves to something else.
+let cleanup: (() => void) | null = null
+function stopCustom() {
+  const done = cleanup
+  cleanup = null
+  try {
+    done?.()
+  } catch (err) {
+    console.warn('ZenPeek: a custom peek failed to clean up', err)
+  }
+}
+const reduced = () =>
+  typeof window.matchMedia === 'function' &&
+  window.matchMedia('(prefers-reduced-motion: reduce)').matches
+watch(
+  () => shown.value?.key,
+  () => {
+    stopCustom()
+    const s = shown.value
+    if (s?.kind === 'custom' && props.render && customBox.value) {
+      try {
+        const done = props.render(s.id, customBox.value, {
+          el: s.el,
+          reducedMotion: reduced(),
+          place,
+        })
+        cleanup = typeof done === 'function' ? done : null
+      } catch (err) {
+        console.warn('ZenPeek: a custom peek failed to render', err)
+      }
+    }
+    place()
+  },
+  { flush: 'post' },
+)
+// Placed again when it moves to another thumbnail, and whenever its size changes (a picture loading, custom content resizing).
+watch(shown, place, { flush: 'post' })
+let sizes: ResizeObserver | null = null
+watch(box, (el, old) => {
+  if (old) sizes?.unobserve(old)
+  if (el) sizes?.observe(el)
+})
+
 function onMove(e: PointerEvent) {
-  const root = area()
-  const target = e.target instanceof Element ? e.target.closest<HTMLElement>('[data-peek]') : null
-  hovered = target && root?.contains(target) ? target : null
+  hovered = within(e.target)
+  byKeyboard = false
   shift = e.shiftKey
+  if (!shift) dismissed = false
   update()
 }
 function onKey(e: KeyboardEvent) {
+  if (e.key === 'Escape' && e.type === 'keydown' && shown.value && layer?.escape(e)) {
+    e.preventDefault()
+    e.stopPropagation()
+    dismissed = true
+    return hide()
+  }
   if (e.key !== 'Shift') return
   shift = e.type === 'keydown'
+  if (!shift || !e.repeat) dismissed = false
   update()
+}
+function onFocusIn(e: FocusEvent) {
+  focused = within(e.target)
+  byKeyboard = true
+  if (props.focus) update()
+}
+function onFocusOut(e: FocusEvent) {
+  if (within(e.relatedTarget)) return
+  focused = null
+  if (props.focus) update()
 }
 function onBlur() {
   shift = false
+  dismissed = false
+  update()
+}
+/** A drag takes the pointer: the peek gets out of its way. */
+function onDragStart() {
+  hovered = null
+  focused = null
   update()
 }
 
 // Capture phase: hosts that stop pointer events from bubbling (ComfyUI's Vue nodes do) would
 // otherwise hide every hover inside them.
 onMounted(() => {
+  if (typeof ResizeObserver === 'function') sizes = new ResizeObserver(() => place())
   window.addEventListener('pointermove', onMove, { passive: true, capture: true })
   window.addEventListener('keydown', onKey, { capture: true })
   window.addEventListener('keyup', onKey, { capture: true })
+  window.addEventListener('focusin', onFocusIn, { capture: true })
+  window.addEventListener('focusout', onFocusOut, { capture: true })
+  window.addEventListener('dragstart', onDragStart, { capture: true })
   window.addEventListener('blur', onBlur)
 })
 onBeforeUnmount(() => {
   window.removeEventListener('pointermove', onMove, { capture: true })
   window.removeEventListener('keydown', onKey, { capture: true })
   window.removeEventListener('keyup', onKey, { capture: true })
+  window.removeEventListener('focusin', onFocusIn, { capture: true })
+  window.removeEventListener('focusout', onFocusOut, { capture: true })
+  window.removeEventListener('dragstart', onDragStart, { capture: true })
   window.removeEventListener('blur', onBlur)
+  sizes?.disconnect()
+  stopCustom()
+  hide()
 })
 
 const caption = computed(() => shown.value && (shown.value.label || shown.value.detail))
@@ -127,9 +226,12 @@ const caption = computed(() => shown.value && (shown.value.label || shown.value.
         playsinline
         @loadedmetadata="place"
       />
-      <div v-else class="zen-peek-audio">
+      <div v-else-if="shown.kind === 'audio'" class="zen-peek-audio">
         <i class="mdi mdi-waveform" />
         <audio :src="shown.url" controls autoplay />
+      </div>
+      <div v-else :key="shown.key" ref="customBox" class="zen-peek-custom">
+        <slot name="custom" :id="shown.id" :el="shown.el" />
       </div>
       <div v-if="caption" class="zen-peek-caption">
         <b v-if="shown.label">{{ shown.label }}</b>
@@ -158,6 +260,13 @@ const caption = computed(() => shown.value && (shown.value.label || shown.value.
   object-fit: contain;
   background: var(--zen-media-bg, #0b0b0e);
 }
+.zen-peek-custom {
+  display: block;
+  max-width: min(560px, 60vw);
+  max-height: min(480px, 70vh);
+  overflow: hidden;
+  background: var(--zen-media-bg, #0b0b0e);
+}
 .zen-peek-audio {
   display: flex;
   align-items: center;
@@ -182,6 +291,11 @@ const caption = computed(() => shown.value && (shown.value.label || shown.value.
   from {
     opacity: 0;
     transform: scale(0.97);
+  }
+}
+@media (prefers-reduced-motion: reduce) {
+  .zen-peek {
+    animation: none;
   }
 }
 </style>

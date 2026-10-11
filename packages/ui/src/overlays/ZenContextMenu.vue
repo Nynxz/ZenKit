@@ -32,8 +32,9 @@
 
 <script setup lang="ts">
 // ZenContextMenu — a right-click menu at the pointer. Pass `items` and call `show(event)` from a
-// contextmenu handler; it opens where the pointer is, keeps itself on screen, and closes on a pick,
-// Escape, or a click anywhere else.
+// contextmenu handler; it opens where the pointer is, keeps itself on screen, and closes on a pick
+// (before the pick runs), Escape, or a click anywhere else. `show(event, { clear: rect })` keeps it
+// off a strip — a taskbar: it opens above the strip (below it when there's no room above).
 import '../lib/scrollbar.css'
 import '../lib/surface.css'
 import { nextTick, onBeforeUnmount, reactive, ref } from 'vue'
@@ -67,7 +68,8 @@ function onKey(e: KeyboardEvent) {
   if (layer?.escape(e)) close()
 }
 
-async function show(e: MouseEvent) {
+const EDGE = 6
+async function show(e: MouseEvent, opts?: { clear?: DOMRect | null }) {
   e.preventDefault()
   e.stopPropagation()
   pos.x = e.clientX
@@ -78,8 +80,16 @@ async function show(e: MouseEvent) {
   await nextTick()
   const r = menuEl.value?.getBoundingClientRect()
   if (r) {
-    pos.x = Math.min(pos.x, window.innerWidth - r.width - 6)
-    pos.y = Math.min(pos.y, window.innerHeight - r.height - 6)
+    const vw = window.innerWidth
+    const vh = window.innerHeight
+    const clear = opts?.clear
+    if (clear) {
+      const above = clear.top - EDGE - r.height
+      const below = clear.bottom + EDGE
+      pos.y = above >= EDGE || below + r.height > vh - EDGE ? above : below
+    }
+    pos.x = Math.max(EDGE, Math.min(pos.x, vw - r.width - EDGE))
+    pos.y = Math.max(EDGE, Math.min(pos.y, vh - r.height - EDGE))
   }
   setTimeout(() => {
     window.addEventListener('pointerdown', onDoc, true)

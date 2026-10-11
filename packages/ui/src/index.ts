@@ -83,8 +83,10 @@ export { default as ZenMenuSeparator } from './overlays/ZenMenuSeparator.vue'
 export { default as ZenModal } from './overlays/ZenModal.vue'
 export { default as ZenWindow } from './overlays/ZenWindow.vue'
 export { default as ZenContextMenu } from './overlays/ZenContextMenu.vue'
-// ZenPeek: hold Shift over a thumbnail (`data-peek`) to see it large.
+// ZenPeek: hold Shift over a thumbnail (`data-peek`) to see it large, or over anything with
+// `data-peek-kind="custom"` to see what the host draws.
 export { default as ZenPeek } from './feature/ZenPeek.vue'
+export type { PeekKind, PeekRender, PeekRenderContext } from './feature/peek'
 export type { ContextMenuAction, ContextMenuItem } from './overlays/ZenContextMenu.vue'
 
 // feature

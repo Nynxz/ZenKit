@@ -132,16 +132,18 @@ const items: ContextMenuItem[] = [
 
 `ContextMenuAction`:
 
-| Field      | Type         | Description                      |
-| ---------- | ------------ | -------------------------------- |
-| `label`    | `string`     |                                  |
-| `icon`     | `string?`    | MDI glyph (`'mdi-pencil'`)       |
-| `hint`     | `string?`    | Right-aligned                    |
-| `danger`   | `boolean?`   |                                  |
-| `disabled` | `boolean?`   |                                  |
-| `run`      | `() => void` | Called on click; the menu closes |
+| Field      | Type         | Description                                |
+| ---------- | ------------ | ------------------------------------------ |
+| `label`    | `string`     |                                            |
+| `icon`     | `string?`    | MDI glyph (`'mdi-pencil'`)                 |
+| `hint`     | `string?`    | Right-aligned                              |
+| `danger`   | `boolean?`   |                                            |
+| `disabled` | `boolean?`   |                                            |
+| `run`      | `() => void` | Called on click, after the menu has closed |
 
-Exposed: `show(e: MouseEvent)`, `close()`. No events or slots.
+Exposed: `show(e: MouseEvent, opts?: { clear?: DOMRect })`, `close()`. No events or slots. The menu
+opens at the pointer and stays at least 6px inside the window. `clear` is a strip it must not cover
+(a taskbar's rect): it opens above the strip, or below it when there is no room above.
 
 ## ZenModal
 
