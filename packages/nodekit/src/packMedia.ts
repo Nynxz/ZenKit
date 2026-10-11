@@ -3,6 +3,7 @@
 // they work when ComfyUI is served under a base path. `createNodekit` binds them to the pack's
 // `route('media')`.
 import { api } from '@comfy/api'
+import { shallowRef } from 'vue'
 
 import { mediaKind, parseMediaRef, uploadMediaFile } from './mediaRefs'
 
@@ -18,8 +19,10 @@ export interface MediaInfo {
 }
 
 export interface PackMedia {
-  /** A small cached JPEG of a picture or a video's first frame; `''` for audio and non-refs. */
-  thumbUrl(ref: string, size?: number): string
+  /** A small cached JPEG of a picture, or of a video's frame at `t` seconds (its first frame by
+   *  default); `''` for audio and non-refs. Reactive: until the server is known to take `t` (an
+   *  older vendored route answers every time with the first frame), it's the first frame's URL. */
+  thumbUrl(ref: string, size?: number, t?: number): string
   /** The ref of `file` in the input folder: a copy whose bytes are already there (under any name),
    *  or else a fresh upload into `input/<subfolder>`. Fits `readMediaDrop`'s `upload` argument. */
   uploadOrReuse(file: File, subfolder?: string): Promise<string>
@@ -53,13 +56,36 @@ export function createPackMedia(route: string): PackMedia {
     }
   }
 
+  // Whether the thumb route takes `t`: it answers with X-Thumb-Time when it does. An older copy
+  // of the route ignores `t`, and its first-frame answer would then be cached (immutably) under
+  // the URL with `t` — so `t` goes into URLs only once a first request has shown it's understood.
+  // Asked once, with the first such URL; a failed request (a missing file, say) asks again later.
+  const timed = shallowRef<boolean | null>(null)
+  let asking = false
+  function probe(url: string) {
+    if (asking) return
+    asking = true
+    fetch(url, { cache: 'no-store' })
+      .then((res) => {
+        if (res.ok) timed.value = res.headers.has('X-Thumb-Time')
+      })
+      .catch(() => undefined)
+      .finally(() => (asking = false))
+  }
+
   return {
-    thumbUrl(ref, size = 256) {
+    thumbUrl(ref, size = 256, t) {
       const parsed = parseMediaRef(ref)
       if (!parsed || mediaKind(ref) === 'audio') return ''
       const name = parsed.subfolder ? `${parsed.subfolder}/${parsed.filename}` : parsed.filename
       const query = new URLSearchParams({ type: parsed.type, name, size: String(size) })
-      return apiUrl(`${route}/thumb?${query}`)
+      const first = apiUrl(`${route}/thumb?${query}`)
+      if (!t || !(t > 0) || mediaKind(ref) !== 'video') return first
+      query.set('t', t.toFixed(6))
+      const at = apiUrl(`${route}/thumb?${query}`)
+      if (timed.value) return at
+      if (timed.value === null) probe(at)
+      return first
     },
     async uploadOrReuse(file, subfolder = 'zenkit') {
       return (await existingInput(file)) ?? uploadMediaFile(file, subfolder)

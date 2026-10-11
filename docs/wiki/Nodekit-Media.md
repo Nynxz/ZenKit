@@ -107,13 +107,27 @@ the lookup fails, it simply uploads.
 
 Bound to the pack's `route('media')` by `createNodekit`, alongside `uploadOrReuse`:
 
-| Member          | Signature                                               | Description                                                                                                                                           |
-| --------------- | ------------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `thumbUrl`      | `(ref: string, size = 256) => string`                   | `<route>/thumb?type&name&size`, base-path safe: a cached JPEG of a picture or a video's first frame. `''` for audio or anything not a ref.            |
-| `uploadOrReuse` | `(file: File, subfolder = 'zenkit') => Promise<string>` | The ref of an `input/` file with the same bytes, else `uploadMediaFile(file, subfolder)`                                                              |
-| `mediaInfo`     | `(ref: string) => Promise<MediaInfo \| null>`           | `<route>/info`: `{ kind, duration, width, height, fps, hasAudio }`, each `null` where the server can't tell. `null` for a missing or unreadable file. |
+| Member          | Signature                                               | Description                                                                                                                                                                                                                              |
+| --------------- | ------------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `thumbUrl`      | `(ref: string, size = 256, t?: number) => string`       | `<route>/thumb?type&name&size[&t]`, base-path safe: a cached JPEG of a picture, or of a video's frame at `t` seconds (its first frame without `t`). `''` for audio or anything not a ref. See [frames at a time](#thumbnails-at-a-time). |
+| `uploadOrReuse` | `(file: File, subfolder = 'zenkit') => Promise<string>` | The ref of an `input/` file with the same bytes, else `uploadMediaFile(file, subfolder)`                                                                                                                                                 |
+| `mediaInfo`     | `(ref: string) => Promise<MediaInfo \| null>`           | `<route>/info`: `{ kind, duration, width, height, fps, hasAudio }`, each `null` where the server can't tell. `null` for a missing or unreadable file.                                                                                    |
 
 `createPackMedia(route)` builds the same three for any other route.
+
+### Thumbnails at a time
+
+`thumbUrl(ref, size, t)` asks for the video's frame showing `t` seconds in: a piece of a clip can
+show its own in-point rather than the file's first frame. Pictures (GIFs included) ignore `t`.
+
+A pack whose vendored route predates `t` ignores it and answers with the first frame, which the
+browser would then keep under the URL with `t` (the route's responses are cached as immutable). So
+`t` only goes into URLs once the server is known to take it: the first call with a `t` returns the
+first frame's URL and asks the server once in the background (an uncached request; the route
+answers with an `X-Thumb-Time` header when it took `t`). The answer is held in a Vue ref that
+`thumbUrl` reads, so a computed or template that called it updates by itself when the timed URLs
+become available. Against an older route everything stays on the first frame, as before. Run
+`zenkit-nodekit sync` and restart ComfyUI to get the new route.
 
 ## mediaLibrary
 
@@ -175,12 +189,12 @@ the pack as `nodes/_zenkit/media_api.py`, and `comfy_entrypoint` registers them 
 [Nodekit pack pattern](Nodekit-Pack-Pattern.md#python-helpers-zenkit-nodekit-sync)); the paths come
 from pack.json, so they always equal `route('media')` on the frontend.
 
-| Route                                      | Response                                                                                                                                                                                                                                        |
-| ------------------------------------------ | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `GET /<ns>/media?type=input\|output\|temp` | `{"type", "items": [{name, filename, subfolder, type, kind, size, mtime}], "truncated"}`. `name` is the path relative to the folder. Max 20000 items; hidden files and folders are skipped. 400 for an unknown folder.                          |
-| `GET /<ns>/media/thumb?type=&name=&size=`  | Cached JPEG poster for an image or a video's first frame (PIL / PyAV). `size` clamped to 32–768, default 256. 404 for missing files or audio, 415 if the file can't be decoded. Cached in `<user dir>/<ns>/thumbs`, `Cache-Control: immutable`. |
-| `GET /<ns>/media/info?ref=input/a.mp4`     | `{"kind", "duration", "width", "height", "fps", "has_audio"}`. 404 for a missing file, a non-media file or a ref outside input/output/temp; 415 if it can't be read.                                                                            |
-| `GET /<ns>/media/find?size=&sha256=`       | `{"ref": "input/sub/name.png" \| null}`. Only files of the same size are hashed; hashes are cached per `(mtime_ns, size)`.                                                                                                                      |
+| Route                                          | Response                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                            |
+| ---------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `GET /<ns>/media?type=input\|output\|temp`     | `{"type", "items": [{name, filename, subfolder, type, kind, size, mtime}], "truncated"}`. `name` is the path relative to the folder. Max 20000 items; hidden files and folders are skipped. 400 for an unknown folder.                                                                                                                                                                                                                                                                                                              |
+| `GET /<ns>/media/thumb?type=&name=&size=[&t=]` | Cached JPEG poster for an image or a video's frame (PIL / PyAV). `size` clamped to 32–768, default 256. `t` (seconds, video only) picks the frame showing then, `⌊t × fps + 0.001⌋`, clamped to the video (default: the first frame); with `t` the answer carries `X-Thumb-Time` (that frame's time, `0` for a picture), and a `t` that isn't a number is a 400. 404 for missing files or audio, 415 if the file can't be decoded. Cached in `<user dir>/<ns>/thumbs` per file version, size and frame; `Cache-Control: immutable`. |
+| `GET /<ns>/media/info?ref=input/a.mp4`         | `{"kind", "duration", "width", "height", "fps", "has_audio"}`. 404 for a missing file, a non-media file or a ref outside input/output/temp; 415 if it can't be read.                                                                                                                                                                                                                                                                                                                                                                |
+| `GET /<ns>/media/find?size=&sha256=`           | `{"ref": "input/sub/name.png" \| null}`. Only files of the same size are hashed; hashes are cached per `(mtime_ns, size)`.                                                                                                                                                                                                                                                                                                                                                                                                          |
 
 Names and refs are resolved with a `realpath` + `commonpath` guard, so they can't escape their
 folder, and thumbnail work is limited to four at a time.
