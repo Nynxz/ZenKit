@@ -39,8 +39,8 @@
     @drag-end="finishResize"
     @nudge="nudge([d], $event)"
     @limit="limit([d], $event)"
-    @reset="setRatio(d.path, 0.5)"
-    @toggle="setRatio(d.path, 0.5)"
+    @reset="even([d])"
+    @toggle="even([d])"
   />
   <ZenResizeHandle
     v-for="j in junctions"
@@ -56,9 +56,24 @@
     @drag-end="finishResize"
     @nudge="(pixels, axis) => nudge([axis === 'x' ? j.v : j.h], pixels)"
     @limit="limit([j.v, j.h], $event)"
-    @reset="(setRatio(j.v.path, 0.5), setRatio(j.h.path, 0.5))"
-    @toggle="(setRatio(j.v.path, 0.5), setRatio(j.h.path, 0.5))"
+    @reset="even([j.v, j.h])"
+    @toggle="even([j.v, j.h])"
   />
+  <!-- A tile held for a panel waiting to reopen there (a node's panel stepping back in as the
+       workspace shows): its title and icon over an empty body, where the panel will be. -->
+  <div
+    v-for="t in waitingTiles"
+    :key="t.id"
+    class="zws-wait"
+    :style="px(t.rect)"
+    :data-zen-waiting="t.id"
+    aria-hidden="true"
+  >
+    <div class="zws-wait-bar">
+      <ZenIcon class="zws-wait-icon" :icon="t.icon" />
+      <span class="zws-wait-title">{{ t.title }}</span>
+    </div>
+  </div>
   <div v-if="ws.preview" class="zws-preview" :style="px(ws.preview)" />
 </template>
 
@@ -67,10 +82,18 @@
 // tiles (drag to resize, double-click to even out), and previews where a dragged panel would tile.
 // The tiled panels themselves are ordinary ZenPanels placed by their tile rect.
 import { computed, inject, ref } from 'vue'
-import { ZenResizeHandle } from '@nynxz/zenkit-ui'
+import { ZenIcon, ZenResizeHandle } from '@nynxz/zenkit-ui'
 import { STORE_KEY, type PanelStore } from '../panelStore'
 import type { Rect } from '../types'
-import { clampTileRatio, setRatio, ws, wsLayout, type Divider } from '../workspaces'
+import {
+  clampTileRatio,
+  commitLayout,
+  setRatio,
+  waitingTiles,
+  ws,
+  wsLayout,
+  type Divider,
+} from '../workspaces'
 
 const store = inject(STORE_KEY) as PanelStore
 const layout = wsLayout
@@ -153,12 +176,20 @@ function finishResize(cancelled: boolean) {
   resize = null
   dragging.value = []
   store._ops.setInteract(false)
+  // The workflow's file takes the result once, not every frame of the drag.
+  if (!cancelled) commitLayout()
 }
 function nudge(ds: Divider[], pixels: number) {
   ds.forEach((d) => setRatio(d.path, clampTileRatio(d.ratio + pixels / d.length, d.length)))
+  commitLayout()
 }
 function limit(ds: Divider[], edge: 'min' | 'max') {
   ds.forEach((d) => setRatio(d.path, clampTileRatio(edge === 'min' ? 0 : 1, d.length)))
+  commitLayout()
+}
+function even(ds: Divider[]) {
+  ds.forEach((d) => setRatio(d.path, 0.5))
+  commitLayout()
 }
 </script>
 
@@ -201,6 +232,51 @@ kbd {
   background: var(--zen-surface, #202026);
   font-family: inherit;
   font-size: 10.5px;
+}
+/* Looks like the tiled panel it stands in for (ZenPanel's tiled frame and title bar), with nothing
+   in it: when the panel opens over it, nothing moves. */
+.zws-wait {
+  position: fixed;
+  z-index: 3;
+  display: flex;
+  flex-direction: column;
+  box-sizing: border-box;
+  overflow: hidden;
+  border: 1px solid
+    color-mix(in srgb, var(--zen-surface-border, var(--zen-border, #3a3a44)) 86%, transparent);
+  border-radius: var(--zen-radius-surface, var(--zen-radius, 10px));
+  background: var(--zen-chrome-bg, var(--zen-bg, #1a1a1f));
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.05);
+  color: var(--zen-text, #e5e5ea);
+  font-family: var(--p-font-family, -apple-system, system-ui, sans-serif);
+  pointer-events: none;
+}
+.zws-wait-bar {
+  display: flex;
+  flex: 0 0 auto;
+  align-items: center;
+  gap: 8px;
+  height: 32px;
+  padding: 0 6px 0 11px;
+  border-bottom: 1px solid
+    color-mix(in srgb, var(--zen-surface-border, var(--zen-border, #3a3a44)) 85%, transparent);
+  background: linear-gradient(
+    180deg,
+    color-mix(in srgb, var(--zen-chrome-bg, var(--zen-surface, #202026)) 92%, transparent),
+    color-mix(in srgb, var(--zen-chrome-bg, var(--zen-surface, #202026)) 62%, transparent)
+  );
+}
+.zws-wait-icon {
+  color: var(--zen-accent, #3b82f6);
+  font-size: 14px;
+}
+.zws-wait-title {
+  overflow: hidden;
+  font-size: 12px;
+  font-weight: 600;
+  letter-spacing: 0.003em;
+  white-space: nowrap;
+  text-overflow: ellipsis;
 }
 .zws-gutter {
   position: fixed;

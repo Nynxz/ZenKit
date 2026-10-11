@@ -19,12 +19,18 @@ import { activeWidgets } from '../taskbarWidgets'
 import { isPinned, togglePin, pinnedIds } from '../pins'
 import TaskbarWidgetMount from './TaskbarWidgetMount.vue'
 import { useTaskReorder } from '../taskReorder'
+import { cleanName } from '../workflowLayout'
 import { startDockTabDrag } from '../dockDrag'
 import {
   activate,
   createWorkspace,
+  currentWorkflowName,
+  hasWorkflow,
+  pinWorkspace,
   removeWorkspace,
   renameWorkspace,
+  revealTile,
+  tilesOf,
   workspaceOf,
   ws,
   type Workspace,
@@ -59,61 +65,105 @@ function toggleApp() {
 }
 
 // --- workspaces ------------------------------------------------------------------------------
-const tileCount = (w: Workspace) => tileIds(w.tree).filter((id) => ops.get(id)).length
-function tileIds(node: Workspace['tree']): string[] {
-  if (!node) return []
-  return node.type === 'leaf' ? [node.id] : [...tileIds(node.a), ...tileIds(node.b)]
+/** A workspace's panels: the open ones tiled there, and the ones waiting for it (closed with
+ *  `keep` — a node's panel that steps aside while its workspace is off screen). */
+const wsTiles = computed(() => new Map(ws.list.map((w) => [w.id, tilesOf(w)])))
+const panelsOf = (w: Workspace) => wsTiles.value.get(w.id) ?? []
+const tileCount = (w: Workspace) => panelsOf(w).length
+/** A click on a workspace's tab: in, or back to the graph. The second click of a double-click is
+ *  dropped, so a double-click is one switch rather than in and straight back out. */
+function wsClick(e: MouseEvent, id: string) {
+  if (e.detail > 1) return
+  activate(ws.active === id ? null : id)
 }
+// Rename (from the tab's menu) happens in the tab: its label becomes an input of the same width,
+// height and font, so nothing moves. Enter saves; Escape or leaving the field cancels; an empty
+// name isn't taken.
 const renaming = ref<string | null>(null)
 const renameEl = ref<HTMLInputElement[] | null>(null)
+const renameWidth = ref(0)
+const renameBad = ref(false)
 function startRename(id: string) {
+  const label = root.value?.querySelector<HTMLElement>(`[data-ws-name="${CSS.escape(id)}"]`)
+  // The label's exact width (a short name gives a short field; the text scrolls in it).
+  renameWidth.value = Math.max(8, label?.getBoundingClientRect().width ?? 0)
+  renameBad.value = false
   renaming.value = id
+  // Filled once, not bound: a re-render (the empty-name mark) mustn't put the old name back.
   void nextTick(() => {
-    renameEl.value?.[0]?.focus()
-    renameEl.value?.[0]?.select()
+    const input = renameEl.value?.[0]
+    if (!input) return
+    input.value = ws.list.find((w) => w.id === id)?.name ?? ''
+    input.focus()
+    input.select()
   })
 }
-function finishRename(id: string, name: string) {
-  if (renaming.value === id) renameWorkspace(id, name)
+function saveRename(id: string, name: string) {
+  if (renaming.value !== id) return
+  if (!cleanName(name)) {
+    renameBad.value = true
+    return
+  }
+  renaming.value = null
+  renameWorkspace(id, name)
+}
+function cancelRename() {
   renaming.value = null
 }
+/** The taskbar's own strip: its menus open beside it (above a bottom bar), never over it. */
+const barRect = () => root.value?.getBoundingClientRect() ?? null
 const wsMenu = ref<InstanceType<typeof ZenContextMenu> | null>(null)
 const wsMenuFor = ref<string | null>(null)
 function openWsMenu(e: MouseEvent, id: string) {
+  cancelRename()
   wsListOpen.value = false
   wsMenuFor.value = id
-  wsMenu.value?.show(e)
+  wsMenu.value?.show(e, { clear: barRect() })
 }
-/** Go to a panel's workspace and bring the panel up. */
-function jumpTo(w: Workspace, id: string) {
-  activate(w.id)
-  const p = ops.get(id)
-  if (p?.status === 'minimized') ops.restore(id)
-  else ops.front(id)
+/** Go to a panel's workspace and bring the panel up — a waiting one reopens there. */
+function jumpTo(id: string) {
+  revealTile(id)
 }
+const wsHint = (x: Workspace) => {
+  const i = ws.list.indexOf(x)
+  return i >= 0 && i < 9 ? `Alt+${i + 1}` : undefined
+}
+const wsItem = (x: Workspace): ContextMenuItem => ({
+  label: `${x.name}${tileCount(x) ? ` (${tileCount(x)})` : ''}`,
+  icon: `mdi ${ws.active === x.id ? 'mdi-check' : x.scope === 'global' ? 'mdi-pin-outline' : 'mdi-view-dashboard-outline'}`,
+  hint: wsHint(x),
+  run: () => activate(x.id),
+})
 const wsMenuItems = computed<ContextMenuItem[]>(() => {
   if (wsListOpen.value && !wsMenuFor.value)
     return [
-      { heading: 'Workspaces' },
+      { heading: wfName.value ?? 'Workspaces' },
       {
         label: 'The graph',
         icon: `mdi ${ws.active ? 'mdi-graph-outline' : 'mdi-check'}`,
         run: () => activate(null),
       },
-      ...ws.list.map((x, i) => ({
-        label: `${x.name}${tileCount(x) ? ` (${tileCount(x)})` : ''}`,
-        icon: `mdi ${ws.active === x.id ? 'mdi-check' : 'mdi-view-dashboard-outline'}`,
-        hint: i < 9 ? `Alt+${i + 1}` : undefined,
-        run: () => activate(x.id),
-      })),
+      ...ownWs.value.map(wsItem),
+      ...(globalWs.value.length
+        ? (['-', { heading: 'Global' }, ...globalWs.value.map(wsItem)] as ContextMenuItem[])
+        : []),
       '-',
-      { label: 'New workspace', icon: 'mdi mdi-plus', run: () => activate(createWorkspace().id) },
+      {
+        label: wfName.value ? `New workspace for ${wfName.value}` : 'New workspace',
+        icon: 'mdi mdi-plus',
+        run: () => activate(createWorkspace().id),
+      },
+      {
+        label: 'New global workspace',
+        icon: 'mdi mdi-pin-outline',
+        run: () => activate(createWorkspace(undefined, 'global').id),
+      },
     ]
   const w = ws.list.find((x) => x.id === wsMenuFor.value)
   if (!w) return []
   const own = panelsOf(w)
   return [
-    { heading: w.name },
+    { heading: w.scope === 'global' ? `${w.name} · global` : w.name },
     {
       label: ws.active === w.id ? 'Back to the graph' : 'Open',
       icon: 'mdi mdi-arrow-right',
@@ -123,17 +173,28 @@ const wsMenuItems = computed<ContextMenuItem[]>(() => {
       ? ([
           '-',
           { heading: 'Panels here' },
-          ...own.map((p) => ({ label: p.title, icon: p.icon, run: () => jumpTo(w, p.id) })),
-          '-',
+          ...own.map((p) => ({ label: p.title, icon: p.icon, run: () => jumpTo(p.id) })),
         ] as ContextMenuItem[])
       : []),
+    '-',
+    w.scope === 'global'
+      ? {
+          label: wfName.value ? `Make it ${wfName.value}'s` : "Make it this workflow's",
+          icon: 'mdi mdi-pin-off-outline',
+          disabled: !hasWorkflow(),
+          run: () => pinWorkspace(w.id, false),
+        }
+      : {
+          label: 'Pin as global',
+          icon: 'mdi mdi-pin-outline',
+          run: () => pinWorkspace(w.id, true),
+        },
     { label: 'Rename…', icon: 'mdi mdi-pencil-outline', run: () => startRename(w.id) },
     '-',
     {
       label: 'Remove workspace',
       icon: 'mdi mdi-trash-can-outline',
       danger: true,
-      disabled: ws.list.length <= 1,
       run: () => removeWorkspace(w.id),
     },
   ]
@@ -159,22 +220,33 @@ const tasks = computed(() =>
     }),
   ),
 )
-/** A workspace's own panels, for its tab's tooltip and menu. */
-const panelsOf = (w: Workspace) => windowed.value.filter((p) => workspaceOf(p.id)?.id === w.id)
+/** The current workflow's workspaces come first, then the global ones. */
+const wfName = computed(() => currentWorkflowName())
+const ownWs = computed(() => ws.list.filter((w) => w.scope === 'workflow'))
+const globalWs = computed(() => ws.list.filter((w) => w.scope === 'global'))
 /** Many workspaces: the tabs collapse to the active one plus a list. */
 const WS_TABS = 4
 const wsCompact = computed(() => ws.list.length > WS_TABS)
-const wsShown = computed(() =>
-  wsCompact.value ? ws.list.filter((w) => w.id === ws.active) : ws.list,
-)
+const shownOf = (list: Workspace[]) =>
+  wsCompact.value ? list.filter((w) => w.id === ws.active) : list
+const wsGroups = computed(() => [
+  { scope: 'workflow', list: shownOf(ownWs.value) },
+  { scope: 'global', list: shownOf(globalWs.value) },
+])
 const wsTitle = (w: Workspace) => {
   const names = panelsOf(w).map((p) => p.title)
-  return `${w.name}${names.length ? ' — ' + names.join(', ') : ' — empty'} · double-click to rename · right-click for more`
+  const where =
+    w.scope === 'global'
+      ? ' · global: shown with every workflow'
+      : wfName.value
+        ? ` · saved in ${wfName.value}`
+        : ''
+  return `${w.name}${names.length ? ' — ' + names.join(', ') : ' — empty'}${where} · right-click to rename and more`
 }
 function openWsList(e: MouseEvent) {
   wsMenuFor.value = null
   wsListOpen.value = true
-  wsMenu.value?.show(e)
+  wsMenu.value?.show(e, { clear: barRect() })
 }
 const wsListOpen = ref(false)
 // Bottom-docked panels: the taskbar is their tab strip. The shown one is the zone's active tab
@@ -211,13 +283,17 @@ function taskClick(p: { id: string; status: string }) {
 
 // --- per-tab context menu: act on a panel without focusing it first ------------
 const ctxOpen = ref(false)
-const ctxAt = ref<{ x: number; y: number }>({ x: 0, y: 0 })
+const ctxAt = ref<DOMRect | { x: number; y: number }>({ x: 0, y: 0 })
 const ctxPanel = ref<{ id: string; title: string; status: string } | null>(null)
 const ctxDocked = computed(() => !!(ctxPanel.value && ops.get(ctxPanel.value.id)?.dockSide))
 
 function openTaskMenu(e: MouseEvent, p: { id: string; title: string; status: string }) {
   ctxPanel.value = p
-  ctxAt.value = { x: e.clientX, y: e.clientY }
+  // A zero-width strip at the pointer's x spanning the bar: the menu opens beside the bar.
+  const bar = barRect()
+  ctxAt.value = bar
+    ? new DOMRect(e.clientX, bar.top, 0, bar.height)
+    : { x: e.clientX, y: e.clientY }
   ctxOpen.value = true
   closeOverflow()
 }
@@ -526,6 +602,7 @@ function openTaskFromOverflow(p: Parameters<typeof taskClick>[0]) {
   <div
     ref="root"
     class="tb"
+    data-zen-taskbar
     :class="['pos-' + store.state.taskbarPos, { floating }]"
     :style="tbStyle"
   >
@@ -572,28 +649,58 @@ function openTaskFromOverflow(p: Parameters<typeof taskClick>[0]) {
         <i class="mdi mdi-graph-outline" />
         <span class="tb-ws-name">Graph</span>
       </button>
-      <template v-for="w in wsShown" :key="w.id">
-        <input
-          v-if="renaming === w.id"
-          ref="renameEl"
-          class="tb-ws-rename"
-          :value="w.name"
-          @keydown.enter="($event.target as HTMLInputElement).blur()"
-          @keydown.esc="renaming = null"
-          @blur="finishRename(w.id, ($event.target as HTMLInputElement).value)"
-        />
+      <template v-for="group in wsGroups" :key="group.scope">
+        <span v-if="group.scope === 'global' && group.list.length" class="tb-ws-sep" />
+        <template v-for="w in group.list" :key="w.id">
+          <!-- Renaming: the same tab with its label as an input of the label's width. -->
+          <span
+            v-if="renaming === w.id"
+            class="tb-ws-b editing"
+            :class="{
+              active: ws.active === w.id,
+              global: w.scope === 'global',
+              invalid: renameBad,
+            }"
+          >
+            <i class="mdi mdi-view-dashboard-outline" />
+            <input
+              ref="renameEl"
+              class="tb-ws-rename"
+              :style="{ width: `${renameWidth}px` }"
+              :aria-label="`Rename ${w.name}`"
+              :aria-invalid="renameBad || undefined"
+              :title="renameBad ? 'A name can\'t be empty' : 'Enter to save · Escape to cancel'"
+              maxlength="48"
+              spellcheck="false"
+              @input="renameBad = false"
+              @keydown.enter.prevent="saveRename(w.id, ($event.target as HTMLInputElement).value)"
+              @keydown.esc.prevent.stop="cancelRename"
+              @blur="cancelRename"
+            />
+            <i v-if="w.scope === 'global'" class="mdi mdi-pin tb-ws-pin" />
+            <span v-if="tileCount(w)" class="tb-ws-count">{{ tileCount(w) }}</span>
+          </span>
+          <button
+            v-else
+            class="tb-ws-b"
+            :class="{ active: ws.active === w.id, global: w.scope === 'global' }"
+            :title="wsTitle(w)"
+            @click="wsClick($event, w.id)"
+            @contextmenu.prevent.stop="openWsMenu($event, w.id)"
+          >
+            <i class="mdi mdi-view-dashboard-outline" />
+            <span class="tb-ws-name" :data-ws-name="w.id">{{ w.name }}</span>
+            <i v-if="w.scope === 'global'" class="mdi mdi-pin tb-ws-pin" />
+            <span v-if="tileCount(w)" class="tb-ws-count">{{ tileCount(w) }}</span>
+          </button>
+        </template>
         <button
-          v-else
-          class="tb-ws-b"
-          :class="{ active: ws.active === w.id }"
-          :title="wsTitle(w)"
-          @click="activate(ws.active === w.id ? null : w.id)"
-          @dblclick="startRename(w.id)"
-          @contextmenu.prevent.stop="openWsMenu($event, w.id)"
+          v-if="group.scope === 'workflow' && !wsCompact"
+          class="tb-ws-b add"
+          :title="wfName ? `New workspace for ${wfName}` : 'New workspace'"
+          @click="activate(createWorkspace().id)"
         >
-          <i class="mdi mdi-view-dashboard-outline" />
-          <span class="tb-ws-name">{{ w.name }}</span>
-          <span v-if="tileCount(w)" class="tb-ws-count">{{ tileCount(w) }}</span>
+          <i class="mdi mdi-plus" />
         </button>
       </template>
       <button
@@ -603,14 +710,6 @@ function openTaskFromOverflow(p: Parameters<typeof taskClick>[0]) {
         @click="openWsList"
       >
         <i class="mdi mdi-chevron-up" />
-      </button>
-      <button
-        v-else
-        class="tb-ws-b add"
-        title="New workspace"
-        @click="activate(createWorkspace().id)"
-      >
-        <i class="mdi mdi-plus" />
       </button>
     </div>
     <ZenContextMenu ref="wsMenu" :items="wsMenuItems" />
@@ -1070,9 +1169,10 @@ img.tb-logo {
 .tb-task.active,
 .tb-ws-b.active {
   background: color-mix(in srgb, var(--zen-text, #e5e5ea) 16%, var(--zen-bg, #15151a));
+  /* An accent edge marks it as selected on every theme — a tint alone vanishes on neutral ones. */
   box-shadow:
     0 1px 2px rgb(0 0 0 / 45%),
-    inset 0 1px 0 color-mix(in srgb, #fff 8%, transparent);
+    inset 0 0 0 1px color-mix(in srgb, var(--zen-accent, #6366f1) 55%, transparent);
 }
 /* active full-screen app chip — sits just after Start, never collapses into overflow */
 .tb-app {
@@ -1449,6 +1549,23 @@ img.tb-logo {
   min-width: 22px;
   padding: 0 4px;
 }
+.tb-ws-sep {
+  align-self: center;
+  width: 1px;
+  height: 14px;
+  margin: 0 4px;
+  background: var(--zen-border, #3a3a44);
+}
+.tb-ws-pin {
+  margin-left: -2px;
+  font-size: 10px !important;
+  color: var(--zen-muted, #9aa0aa);
+  opacity: 0.8;
+  transform: rotate(35deg);
+}
+.tb-ws-b.active .tb-ws-pin {
+  color: var(--zen-accent, #6366f1);
+}
 .tb-ws-name {
   max-width: 96px;
   overflow: hidden;
@@ -1471,16 +1588,27 @@ img.tb-logo {
     transition: none;
   }
 }
+.tb-ws-b.editing {
+  flex: none;
+  cursor: text;
+  box-shadow: inset 0 0 0 1px var(--zen-accent, #6366f1);
+}
+.tb-ws-b.editing.invalid {
+  box-shadow: inset 0 0 0 1px var(--zen-danger, #dc2626);
+}
+/* In place of the label: same font and line, no box of its own, so the tab keeps its size. */
 .tb-ws-rename {
-  width: 110px;
+  flex: none;
+  box-sizing: content-box;
+  min-width: 0;
   height: auto;
-  padding: 0 6px;
-  border: 1px solid var(--zen-accent, #6366f1);
-  border-radius: calc(var(--zen-radius, 7px) - 2px);
+  margin: 0;
+  padding: 0;
+  border: 0;
   outline: none;
-  background: var(--zen-field-bg, var(--zen-input, #1b1b20));
+  background: none;
   color: var(--zen-text, #e5e5ea);
   font: inherit;
-  font-size: 11px;
+  line-height: 1;
 }
 </style>

@@ -172,6 +172,7 @@ test('workspace drag cancellation restores its original workspace and clears a q
   globalThis.cancelAnimationFrame = (id) => frames.delete(id)
   const ratios = []
   const interactions = []
+  let commits = 0
   globalThis.workspaceResizeTest = {
     ws: reactive({ active: 'original', list: [{ id: 'original', name: 'Test' }] }),
     layout: ref({
@@ -182,6 +183,7 @@ test('workspace drag cancellation restores its original workspace and clears a q
       ],
     }),
     setRatio: (path, ratio, workspaceId) => ratios.push([path, ratio, workspaceId]),
+    commitLayout: () => commits++,
   }
   const storeUrl = mockModule('export const STORE_KEY = Symbol("store")')
   const { STORE_KEY } = await import(storeUrl)
@@ -189,11 +191,14 @@ test('workspace drag cancellation restores its original workspace and clears a q
   const { default: Workspace } = await sourceModule(
     'packages/core/src/components/ZenWorkspace.vue',
     {
-      '@nynxz/zenkit-ui': mockModule(`export { default as ZenResizeHandle } from '${handleUrl}'`),
+      '@nynxz/zenkit-ui': mockModule(`export { default as ZenResizeHandle } from '${handleUrl}'
+      export const ZenIcon = { render: () => null }`),
       '../panelStore': storeUrl,
       '../workspaces': mockModule(`export const ws = globalThis.workspaceResizeTest.ws;
       export const wsLayout = globalThis.workspaceResizeTest.layout;
       export const setRatio = globalThis.workspaceResizeTest.setRatio;
+      export const commitLayout = globalThis.workspaceResizeTest.commitLayout;
+      export const waitingTiles = [];
       export const clampTileRatio = ratio => Math.min(0.8, Math.max(0.2, ratio));`),
     },
   )
@@ -218,6 +223,8 @@ test('workspace drag cancellation restores its original workspace and clears a q
   app.unmount()
   assert.deepEqual(ratios, [['', 0.5, 'original']])
   assert.deepEqual(interactions, [true, false])
+  // A cancelled drag writes nothing into the workflow.
+  assert.equal(commits, 0)
   assert.equal(frames.size, 0)
   assert.equal(listeners.size, 0)
 })

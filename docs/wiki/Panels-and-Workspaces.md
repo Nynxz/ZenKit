@@ -232,13 +232,37 @@ notes?.focus() // its tab shows, the dock expands
 A workspace is a named surface that covers the graph and tiles panels side by side. At most one is
 on screen; none means the graph itself.
 
-| Action                | How                                                                                                                                                                                                                                            |
-| --------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| Switch                | Taskbar switcher (the graph, then a tab per workspace with its name and panel count; more than 4 collapse to the active tab plus a list), <kbd>Alt</kbd>+<kbd>`</kbd> toggles graph ↔ last workspace, <kbd>Alt</kbd>+<kbd>1</kbd>–<kbd>9</kbd> |
-| Tile a panel          | Its header's tile button (while a workspace is on screen), the panel menu's "Tile in …", or drag it onto an open workspace (edges tile; hold Shift to split the tile under the pointer)                                                        |
-| Resize tiles          | Drag a gap grip; double-click or Enter to even out; drag a junction to move both splits. Focus a grip and use arrows (Shift = 5×), or Home/End. Escape cancels a drag.                                                                         |
-| Untile                | Panel menu → Float, or drag it out                                                                                                                                                                                                             |
-| New / rename / remove | `+` on the switcher; double-click a pill to rename; right-click it for more                                                                                                                                                                    |
+Each workspace belongs to a workflow or is global:
+
+- **Workflow workspaces** are saved in the workflow file itself (`extra.zenkit`), so a workflow
+  behaves like a small app with its own layouts. Switching ComfyUI workflow tabs swaps them: the
+  outgoing workflow's workspaces and the panels tiled only in them go away (closed with
+  `{ keep: true }`, so they come back in place), the incoming workflow's come in, and ZenKit lands
+  on the workspace that workflow had on screen. With none on screen it shows the graph. Switching is
+  instant, and so is switching workspaces.
+- **Global workspaces** are kept in this browser (`zenkit.workspaces.v1`) and show with every
+  workflow, together with their panels. Workspaces made before this existed are global.
+
+New workspaces belong to the current workflow. Any workspace can be pinned as global, and a global
+one can be made the current workflow's again.
+
+| Action                | How                                                                                                                                                                                                                                                                                                                                                       |
+| --------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Switch workspace      | Taskbar switcher: the graph, the current workflow's workspaces, then (after a divider) the global ones with a pin mark. Each shows its panel count; more than 4 collapse to the active one plus a list. <kbd>Alt</kbd>+<kbd>`</kbd> toggles graph ↔ last workspace, <kbd>Alt</kbd>+<kbd>1</kbd>–<kbd>9</kbd> follow that order                            |
+| Switch workflow       | Click the workflow name in the **Workflows** taskbar widget for the workflow menu: open workflows (current first, with an unsaved dot), each expandable to its workspaces to jump straight to one, then saved workflows under **Saved**. A search field appears once the list is long. Or use ComfyUI's own tabs. Works from inside a workspace or an app |
+| Pin a workflow        | The pin on a row of the workflow menu (shown on hover). Pinned workflows sit as chips after the workflow name in the same widget (up to 5; the menu has the rest); click one to switch, or to open it if it isn't open. Unpin from the menu or the chip's right-click menu                                                                                |
+| Tile a panel          | Its header's tile button (while a workspace is on screen), the panel menu's "Tile in …", or drag it onto an open workspace (edges tile; hold Shift to split the tile under the pointer)                                                                                                                                                                   |
+| Resize tiles          | Drag a gap grip; double-click or Enter to even out; drag a junction to move both splits. Focus a grip and use arrows (Shift = 5×), or Home/End. Escape cancels a drag.                                                                                                                                                                                    |
+| Untile                | Panel menu → Float, or drag it out                                                                                                                                                                                                                                                                                                                        |
+| New / rename / remove | `+` after the workflow's workspaces; right-click a pill to rename (in place: Enter saves, Escape or clicking away cancels, an empty name isn't taken), remove, **Pin as global** or **Make it &lt;workflow&gt;'s**. The list (`⌃` when collapsed) also makes a new global workspace                                                                       |
+
+Workflow pins are kept in this browser (localStorage) as workflow keys: a saved workflow's path,
+or a temporary tab's key, whose pin goes when the tab closes. A pin follows a rename. Global
+workspaces aren't in the workflow menu; their pills are on the bar.
+
+The workflow name and the pinned chips are the built-in **Workflows** taskbar widget
+(`zenkit:workflows`), so like any widget it can be turned off or moved in Zen Settings; switching
+workflows from ComfyUI's tabs keeps working without it.
 
 Behaviour worth knowing as a plugin author:
 
@@ -251,19 +275,88 @@ Behaviour worth knowing as a plugin author:
   again.
 - Removing a workspace floats its panels rather than closing them.
 - While a workspace covers it, the graph and canvas background stop rendering.
+- A node's own panel (an id with the graph and node in it, like H3 Studio's or ZenCut's) keeps its
+  tile in its workflow's layout; the node opens and closes the panel itself as its workflow comes
+  and goes.
+- A panel opened with nodekit's `openZenPanel` follows its workspace by default: while it is tiled
+  in a workspace that isn't on screen it is closed with `{ keep: true }` (its component unmounts,
+  so a node shows its editor inline again), and it reopens in the same tile when that workspace
+  shows. Floating ones stay open. See
+  [openZenPanel](Nodekit-Panels-and-Canvas.md#following-the-workspace).
+- A panel closed with `{ keep: true }` while tiled (one waiting for its workspace, a node's panel
+  whose workflow went to the background) is **kept**: its workspace tab still counts it, lists it in
+  the tooltip and under **Panels here** (picking it shows the workspace, where its owner reopens
+  it), and its tile keeps its place in the layout. While it waits, the workspace draws a quiet
+  placeholder there (its title and icon over an empty body), so nothing reflows when it opens. A
+  real close, untiling it, or removing its workspace ends that. Kept panels are remembered with the
+  workspaces, so the counts are right after a reload, before the nodes have reopened anything.
+- A panel opening into a tile on screen is placed at its tile from its first frame; its content
+  stays hidden until it has laid out (a frame, at most 150 ms), then shows at once, with no motion.
+- A node's tile goes when the node is deleted. The packs close a node's panel with `keep` from
+  `node.onRemoved`, which fires for a deletion and for a workflow switch alike; ZenKit tells them
+  apart afterwards. Once the graph settles (ComfyUI's `graphChanged`, or a keep close of a node's
+  panel), a closed tile whose id names a graph of the workflow on screen
+  (`<pack>:<graph id>:<node id>`) but a node that graph doesn't have was deleted: its tile, kept
+  entry and remembered place go, and the layout is written back. A switched-out workflow's graph is
+  cleared under a fresh id, so its panels are never matched; an undo brings the node back with
+  it.
+
+### Workflow layouts in the file
+
+`extra.zenkit = { v: 1, workspaces: [{ id, name, tree }], active: id | null }`, where `tree` is the
+tile tree (leaves `{ type: 'leaf', id: panelId }`, splits
+`{ type: 'split', axis: 'row' | 'column', ratio, a, b }`).
+
+- It is written on discrete changes (create, rename, remove, pin, tile, untile, showing a
+  workspace or the graph) and when a divider drag ends, never per frame. Writing marks the
+  workflow modified, as the layout is part of the file; save the workflow to keep it. An unsaved
+  workflow keeps its layout for the session.
+- A workflow file is untrusted. Restoring a layout only ever opens **registered** panels (by id,
+  or an instance of a registered multi panel); other ids are kept in the tree but never opened or
+  rendered. Nothing is run, queued or fetched. Names are plain text (one line, at most 48
+  characters). At most 16 workspaces, tree depth 8 and 32 tiles per workflow; ratios are clamped to
+  0.05–0.95; ids that aren't plain tokens are reissued. Malformed data is ignored with one console
+  warning per workflow.
+- A panel lives in one tile: a panel a global workspace tiles leaves the workflow's tree.
+- Panels put away with a background workflow aren't restored on reload; they come back with it.
 
 ### `zen.workspaces`
 
-| Call                   | Meaning                                                                                     |
-| ---------------------- | ------------------------------------------------------------------------------------------- |
-| `list()`               | `{ id, name }[]` in switcher order.                                                         |
-| `current()`            | The workspace on screen, or `null` for the graph.                                           |
-| `create(name?)`        | Add one (named "Workspace <n>" by default); returns its id. It isn't shown.                 |
-| `activate(id \| null)` | Show it, or the graph with `null`. Unknown ids are ignored.                                 |
-| `rename(id, name)`     | Rename.                                                                                     |
-| `remove(id)`           | Remove; its panels float. The last workspace can't be removed.                              |
-| `tile(panelId)`        | Tile an open panel into the current workspace (or the last one shown) and show it.          |
-| `onChange(cb)`         | `cb(current)` when workspaces are added, removed, renamed or switched. Returns unsubscribe. |
+| Call                         | Meaning                                                                                                                                                                                                                       |
+| ---------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `list()`                     | `{ id, name, scope }[]` in switcher order: the current workflow's (`scope: 'workflow'`), then the global ones.                                                                                                                |
+| `current()`                  | The workspace on screen, or `null` for the graph.                                                                                                                                                                             |
+| `create(name?, { scope? }?)` | Add one (named "Workspace <n>" by default); returns its id. It isn't shown. The current workflow's unless `scope: 'global'`.                                                                                                  |
+| `activate(id \| null)`       | Show it, or the graph with `null`. Unknown ids are ignored.                                                                                                                                                                   |
+| `rename(id, name)`           | Rename.                                                                                                                                                                                                                       |
+| `remove(id)`                 | Remove; its panels float.                                                                                                                                                                                                     |
+| `pin(id, global)`            | `true`: pin as global, shown with every workflow. `false`: make it the current workflow's.                                                                                                                                    |
+| `tile(panelId)`              | Tile an open panel into the current workspace (or the last one shown) and show it.                                                                                                                                            |
+| `of(panelId)`                | The id of the workspace whose tiles hold this panel (open or not), or `null` when it isn't tiled. Only the current workflow's workspaces and the global ones count. `of(id) !== current()` means a tiled panel is off screen. |
+| `onChange(cb)`               | `cb(current)` when workspaces are added, removed, renamed, pinned or switched (the graph included), a panel is tiled into or out of one, or the workflow tab changes. Not on divider drags. Returns unsubscribe.              |
+
+### `zen.workflows`
+
+ComfyUI's open workflow tabs, as the taskbar's workflow menu sees them. A `WorkflowInfo` is
+`{ key, name, modified, temporary, active, running }`: `key` is the workflow's path in ComfyUI (a
+rename or save-as changes it), `running` means a run queued from that tab is still in ComfyUI's
+queue.
+
+| Call               | Meaning                                                                                                   |
+| ------------------ | --------------------------------------------------------------------------------------------------------- |
+| `current()`        | The active tab, or `null` before ComfyUI has one.                                                         |
+| `list()`           | Open tabs in ComfyUI's tab order.                                                                         |
+| `open(key)`        | Make a tab active, or open a saved workflow, by key. Resolves `false` for an unknown key.                 |
+| `pinned()`         | Pinned workflow keys, in pin order. A key may name a workflow that is gone; the taskbar skips those.      |
+| `pin(key, pinned)` | Pin or unpin a workflow by key (kept in this browser).                                                    |
+| `onChange(cb)`     | `cb(current)` when the active tab changes, a tab is opened, closed, renamed or saved, or the pins change. |
+
+```ts
+const zen = await whenZen()
+const id = zen?.workspaces.create('Review') // saved in the current workflow
+zen?.workspaces.pin(id!, true) // now global: shows with every workflow
+zen?.workflows.onChange((wf) => console.log('now in', wf?.name))
+```
 
 ## Pop-out windows
 
@@ -307,7 +400,7 @@ registerZenPlugin({
 | `render(el)` | Fill the slot; return cleanup.                                                                                                             |
 
 Low level: `window.ZenKit.taskbar.register(widget)` returns an unregister function; it takes the
-id as given, with no prefix. Built-ins: `zenkit:run` (80), `zenkit:jobs` (90),
+id as given, with no prefix. Built-ins: `zenkit:workflows` (10), `zenkit:run` (80), `zenkit:jobs` (90),
 `zenkit:hide-panels` (100), `zenkit:canvas-controls` (110).
 
 Through `registerZenPlugin`, panel, taskbar-widget and capability ids get your plugin prefix

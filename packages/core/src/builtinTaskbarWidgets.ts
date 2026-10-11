@@ -8,8 +8,24 @@ import { setStatsPinned } from './tiling'
 import { CANVAS_CONTROLS_WIDGET, registerTaskbarWidget } from './taskbarWidgets'
 import ZenJobsWidget from './components/ZenJobsWidget.vue'
 import ZenRunWidget from './components/ZenRunWidget.vue'
+import ZenWorkflowsWidget from './components/ZenWorkflowsWidget.vue'
 
 export function registerBuiltinTaskbarWidgets(store: PanelStore, appStore: AppStore): void {
+  // Built-in widget: the current workflow's name (opens the workflow menu) and the pinned
+  // workflows as chips. Ordered first, so it sits right after the workspace section.
+  registerTaskbarWidget({
+    id: 'zenkit:workflows',
+    label: 'Workflows',
+    icon: 'mdi mdi-sitemap-outline',
+    order: 10,
+    defaultOn: true,
+    render: (el) => {
+      const widget = createApp(ZenWorkflowsWidget)
+      widget.mount(el)
+      return () => widget.unmount()
+    },
+  })
+
   // Built-in widget: progress for running jobs (invisible while there are none).
   registerTaskbarWidget({
     id: 'zenkit:jobs',

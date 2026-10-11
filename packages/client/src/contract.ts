@@ -726,6 +726,26 @@ export interface Branding {
 export interface WorkspaceInfo {
   id: string
   name: string
+  /** `'workflow'`: saved in the current workflow's file and swapped out with it when another
+   *  workflow tab is active. `'global'`: kept in this browser and shown with every workflow. */
+  scope: WorkspaceScope
+}
+export type WorkspaceScope = 'workflow' | 'global'
+
+/** An open ComfyUI workflow tab. */
+export interface WorkflowInfo {
+  /** The workflow's path in ComfyUI (`workflows/…json`); a rename or save-as changes it. */
+  key: string
+  /** Its tab name, without `.json`. */
+  name: string
+  /** Unsaved changes. */
+  modified: boolean
+  /** Never saved. */
+  temporary: boolean
+  /** The active tab. */
+  active: boolean
+  /** A run queued from this tab is still in ComfyUI's queue. */
+  running: boolean
 }
 
 /** One of ZenKit's docks: its tabs in order and how it is laid out. */
@@ -756,7 +776,10 @@ export interface ZenKitApi {
     open(spec: PanelSpec): PanelHandle
     open(id: string): PanelHandle | null
     /** Close a panel. `keep` remembers its place for when the same id opens again (see
-     *  `PanelHandle.close`). */
+     *  `PanelHandle.close`). A tile closed with `keep` still counts in its workspace (the taskbar
+     *  lists it, and its rect is held) until the panel opens again or is closed for good. For an
+     *  id that isn't open, `keep` only says it waits for its tile (nodekit's followed panels do);
+     *  for a node's panel (`<pack>:<graph id>:<node id>`) whose node was deleted, the tile goes. */
     close(id: string, opts?: { keep?: boolean }): void
     get(id: string): PanelHandle | null
     list(): string[]
@@ -889,22 +912,53 @@ export interface ZenKitApi {
   }
 
   /** Workspaces: named surfaces that cover the graph and tile panels. At most one is on
-   *  screen; none means the graph itself. */
+   *  screen; none means the graph itself. The list is the current workflow's workspaces, then the
+   *  global ones; switching workflow tabs swaps the first group. */
   workspaces: {
     list(): WorkspaceInfo[]
     /** The workspace on screen, or null when the graph is showing. */
     current(): string | null
-    /** Add a workspace (named "Workspace <n>" by default) and return its id. It isn't shown. */
-    create(name?: string): string
+    /** Add a workspace (named "Workspace <n>" by default) and return its id. It isn't shown. It
+     *  belongs to the current workflow unless `scope` is `'global'` (or there is no workflow). */
+    create(name?: string, opts?: { scope?: WorkspaceScope }): string
     /** Show a workspace, or the graph with `null`. Unknown ids are ignored. */
     activate(id: string | null): void
     rename(id: string, name: string): void
-    /** Remove a workspace; its panels float again. The last workspace can't be removed. */
+    /** Remove a workspace; its panels float again. */
     remove(id: string): void
+    /** Pin a workspace as global (`true`: shown with every workflow), or make it the current
+     *  workflow's (`false`). */
+    pin(id: string, global: boolean): void
     /** Tile an open panel into the current workspace (or the last one shown) and show it. */
     tile(panelId: string): void
-    /** Called when workspaces are added, removed or renamed, or another one is shown. */
+    /** The workspace whose tiles hold this panel id (open or not), or null when it isn't tiled.
+     *  Only the current workflow's workspaces and the global ones count: a background
+     *  workflow's layout doesn't. Compare with `current()` to tell whether a tiled panel is on
+     *  screen. */
+    of(panelId: string): string | null
+    /** Called when workspaces are added, removed, renamed or pinned, another one is shown (the
+     *  graph included), a panel is tiled into or taken out of one, or the workflow tab changes. */
     onChange(cb: (current: string | null) => void): () => void
+  }
+
+  /** ComfyUI's open workflow tabs, as ZenKit's workflow menu sees them. */
+  workflows: {
+    /** The active tab, or null before ComfyUI has one. */
+    current(): WorkflowInfo | null
+    /** Open tabs, in ComfyUI's tab order. */
+    list(): WorkflowInfo[]
+    /** Make a tab active, or open a saved workflow, by key (its path). Resolves false when there
+     *  is no such workflow. */
+    open(key: string): Promise<boolean>
+    /** Pinned workflow keys, in pin order. A key may name a workflow that is gone (a deleted
+     *  file); the taskbar skips those. */
+    pinned(): string[]
+    /** Pin or unpin a workflow by key: pinned ones get a chip beside the workflow name in the
+     *  taskbar. Kept in this browser; a temporary tab's pin goes when the tab closes. */
+    pin(key: string, pinned: boolean): void
+    /** Called when the active tab changes, a tab is opened, closed, renamed or saved, or the pins
+     *  change. */
+    onChange(cb: (current: WorkflowInfo | null) => void): () => void
   }
 
   /** ZenKit's docks. The bottom dock has no rail of its own: the taskbar is its tab strip. */

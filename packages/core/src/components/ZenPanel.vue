@@ -145,7 +145,7 @@
       </button>
     </div>
 
-    <div v-show="bodyShown" ref="bodyRef" class="body zenkit-panel-body" />
+    <div v-show="bodyShown" ref="bodyRef" class="body zenkit-panel-body" :class="{ settling }" />
 
     <template v-if="!docked && !folded && !bare && !tiled">
       <div
@@ -376,8 +376,46 @@ function onPointerDown(e: PointerEvent) {
   if (bare.value && (e.target as Element | null)?.closest?.('.zen-grip')) startDrag(e)
 }
 
+// Opening into a tile on screen (a node's panel stepping back in as its workspace shows, a panel a
+// workflow's layout reopens): the frame is at its tile from the first frame, over the placeholder
+// the workspace held for it, and the content stays hidden until it has laid out — the next frame
+// and the body's first size report, at most SETTLE_MS — then shows at once. No fade: the swap is
+// from an identical empty frame, and ZenKit keeps motion out of workspace switches.
+const SETTLE_MS = 150
+const settling = ref(false)
+let unsettle: (() => void) | null = null
+function settleIn(body: HTMLElement) {
+  if (typeof tileRect.value !== 'object' || !tileRect.value) return
+  settling.value = true
+  let framed = false
+  let sized = typeof ResizeObserver === 'undefined'
+  const ro = sized
+    ? null
+    : new ResizeObserver(() => {
+        sized = true
+        maybe()
+      })
+  const raf = requestAnimationFrame(() => {
+    framed = true
+    maybe()
+  })
+  const cap = window.setTimeout(() => unsettle?.(), SETTLE_MS)
+  unsettle = () => {
+    unsettle = null
+    cancelAnimationFrame(raf)
+    clearTimeout(cap)
+    ro?.disconnect()
+    settling.value = false
+  }
+  function maybe() {
+    if (framed && sized) unsettle?.()
+  }
+  ro?.observe(body)
+}
+
 onMounted(() => {
   if (bodyRef.value) {
+    settleIn(bodyRef.value)
     const ret = props.panel.render(bodyRef.value, props.panel.ctx)
     // eslint-disable-next-line vue/no-mutating-props -- `panel` is a host-owned registration object, not Vue state — stashing its cleanup on it is the contract.
     if (typeof ret === 'function') props.panel.cleanup = ret
@@ -395,6 +433,7 @@ onMounted(() => {
   }
 })
 onBeforeUnmount(() => {
+  unsettle?.()
   contentRO?.disconnect()
   contentRO = null
   closeMenu()
@@ -866,6 +905,9 @@ function startResize(e: PointerEvent, h: (typeof HANDLES)[number]) {
   flex: 1 1 0;
   min-height: 0;
   overflow: hidden;
+}
+.body.settling {
+  visibility: hidden;
 }
 
 .rh {

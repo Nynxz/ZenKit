@@ -176,16 +176,31 @@ The ownership ledger the Zen Inspector reads. `registerZenPlugin` reports into i
 
 ### `workspaces` ([guide](Panels-and-Workspaces.md#zenworkspaces))
 
-| Member     | Signature                                               |
-| ---------- | ------------------------------------------------------- |
-| `list`     | `() => WorkspaceInfo[]` (`{ id, name }`)                |
-| `current`  | `() => string \| null`                                  |
-| `create`   | `(name?: string) => string`                             |
-| `activate` | `(id: string \| null) => void`                          |
-| `rename`   | `(id: string, name: string) => void`                    |
-| `remove`   | `(id: string) => void`                                  |
-| `tile`     | `(panelId: string) => void`                             |
-| `onChange` | `(cb: (current: string \| null) => void) => () => void` |
+| Member     | Signature                                                      |
+| ---------- | -------------------------------------------------------------- |
+| `list`     | `() => WorkspaceInfo[]` (`{ id, name, scope }`)                |
+| `current`  | `() => string \| null`                                         |
+| `create`   | `(name?: string, opts?: { scope?: WorkspaceScope }) => string` |
+| `activate` | `(id: string \| null) => void`                                 |
+| `rename`   | `(id: string, name: string) => void`                           |
+| `remove`   | `(id: string) => void`                                         |
+| `pin`      | `(id: string, global: boolean) => void`                        |
+| `tile`     | `(panelId: string) => void`                                    |
+| `of`       | `(panelId: string) => string \| null`                          |
+| `onChange` | `(cb: (current: string \| null) => void) => () => void`        |
+
+`WorkspaceScope` is `'workflow' | 'global'`.
+
+### `workflows` ([guide](Panels-and-Workspaces.md#zenworkflows))
+
+| Member     | Signature                                                                      |
+| ---------- | ------------------------------------------------------------------------------ |
+| `current`  | `() => WorkflowInfo \| null`                                                   |
+| `list`     | `() => WorkflowInfo[]` (`{ key, name, modified, temporary, active, running }`) |
+| `open`     | `(key: string) => Promise<boolean>`                                            |
+| `pinned`   | `() => string[]`                                                               |
+| `pin`      | `(key: string, pinned: boolean) => void`                                       |
+| `onChange` | `(cb: (current: WorkflowInfo \| null) => void) => () => void`                  |
 
 ### `docks` ([guide](Panels-and-Workspaces.md#zendocks))
 
@@ -301,7 +316,7 @@ design and never prefixed: plugins share them on purpose.
 
 The `window.ZenKit` contract, types only: `ZenKitApi`, `PanelSpec`, `PanelHandle`, `PanelContext`,
 `PanelApi`, `PanelCommand`, `PanelRegistration`, `PanelStatus`, `PanelEvent`, `DockSide`,
-`DockZoneSide`, `DockState`, `WorkspaceInfo`, `ChromeSettings`, `Branding`, `Rect`,
+`DockZoneSide`, `DockState`, `WorkspaceInfo`, `WorkspaceScope`, `WorkflowInfo`, `ChromeSettings`, `Branding`, `Rect`,
 `AppRegistration`, `AppRoute`, `AppHandle`, `AppRouter`, `AppLocation`, `RouteContext`, `Job`,
 `JobStatus`, `JobStartOptions`, `JobUpdate`, `JobHandle`, `ChannelImage`, `ChannelInput`,
 `TaskbarWidget`, `ThemePack`, `ThemeSplash`, `ThemeMode`, `ZenStore`, `ZenStorage`,

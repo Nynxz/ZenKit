@@ -27,6 +27,7 @@ import { createGraph } from './graph'
 import { createCapabilities } from './capabilities'
 import { registerCoreCapabilities } from './coreCapabilities'
 import { registerWorkflowCapabilities } from './workflowCapabilities'
+import { workflowsApi } from './comfyWorkflows'
 import { createMedia } from './media'
 import { createViewer } from './viewer'
 import { createChrome } from './chrome'
@@ -214,6 +215,7 @@ function buildApi(store: PanelStore, appStore: AppStore, bus: ZenBus): ZenKitApi
       set: (b) => store.setBranding(b),
     },
     workspaces: workspacesApi(),
+    workflows: workflowsApi(),
     docks: {
       get: (side) => store.dockState(side),
       set: (side, patch) => store.setDockState(side, patch),

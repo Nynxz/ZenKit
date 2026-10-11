@@ -6,7 +6,7 @@ import { setSidebarAutohide as applySidebarAutohide } from './sidebarAutohide'
 import type { DockDrop } from './dockDrop'
 import { ensureStyle, removeStyle } from './dom'
 import { zdebug, zlog, zwarn } from './log'
-import { activate, untile, workspaceOf } from './workspaces'
+import { activate, isParked, keepPanel, unkeep, unpark, untile, workspaceOf } from './workspaces'
 import type {
   DockSide,
   DockState,
@@ -601,6 +601,8 @@ export function createPanelStore(bus: ZenBus) {
     }
     if (pinNow) pinSidebar(id)
     if (persist) saveGeom()
+    unpark(id)
+    unkeep(id)
     emit('open', id)
     return makeHandle(id)
   }
@@ -635,7 +637,14 @@ export function createPanelStore(bus: ZenBus) {
   function close(id: string, opts: { keep?: boolean } = {}) {
     // removal unmounts the panel (runs render cleanup); minimize keeps it mounted
     const i = state.list.findIndex((p) => p.id === id)
-    const wasDocked = i >= 0 ? state.list[i].dockSide : null
+    const was = i >= 0 ? state.list[i] : null
+    const wasDocked = was?.dockSide ?? null
+    // Kept: its workspace tile still counts it (and lists it by this title) until it opens again.
+    // A keep for a panel that isn't open (one already waiting) only says so to the workspaces.
+    if (opts.keep) {
+      keepPanel(id, was ? { title: was.title, icon: was.icon } : null)
+      if (!was) return
+    }
     if (i >= 0) state.list.splice(i, 1)
     // Closing forgets the panel: it won't restore next session, and opening it again starts fresh —
     // unless asked to keep it, so reopening the same id finds its place again.
@@ -643,6 +652,7 @@ export function createPanelStore(bus: ZenBus) {
       untile(id)
       forgetGeom(id)
       forgetState(id)
+      unpark(id)
     }
     exposed.delete(id)
     if (wasDocked) reconcileDocks()
@@ -1240,7 +1250,8 @@ export function createPanelStore(bus: ZenBus) {
     // re-open panels open last session via the consumer's open(), then replay status
     if (reg.persist !== false) {
       const restoreOne = (id: string, saved: { status?: PanelStatus }) => {
-        if (get(id)) return
+        // A panel a background workflow's layout holds waits for that workflow.
+        if (get(id) || isParked(id)) return
         zlog(`restoring "${id}" (${saved.status || 'open'})`)
         try {
           // For a singleton the consumer's open() takes no id; an instance gets its id.
@@ -1381,6 +1392,11 @@ export function createPanelStore(bus: ZenBus) {
       resetRect,
       pinSidebar,
       unpinSidebar,
+      /** Forget a panel's remembered place and state (a deleted node's tile being pruned). */
+      forget: (id: string) => {
+        forgetGeom(id)
+        forgetState(id)
+      },
     },
   }
 }
