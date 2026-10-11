@@ -19,4 +19,5 @@ export type {
   ViewerHandle,
   ViewerItem,
   ViewerOpenOptions,
+  ZenKitApi,
 } from '../../client/src/contract'

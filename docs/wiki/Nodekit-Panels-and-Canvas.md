@@ -47,23 +47,28 @@ hasZenPanels(): boolean
 
 `ZenPanelSpec`:
 
-| Field                                      | Type                       | Description                                                                                                    |
-| ------------------------------------------ | -------------------------- | -------------------------------------------------------------------------------------------------------------- |
-| `id`                                       | `string`                   | Stable id. Opening the same id again focuses the existing panel.                                               |
-| `title`                                    | `string`                   |                                                                                                                |
-| `icon`                                     | `string?`                  | Full MDI class, e.g. `'mdi mdi-cog'`                                                                           |
-| `width`, `height`, `minWidth`, `minHeight` | `number?`                  | px                                                                                                             |
-| `persist`                                  | `boolean?`                 | Remember geometry across reloads (ZenKit default `true`)                                                       |
-| `props`                                    | `Record<string, unknown>?` | Passed to the component **by value at open time**. For live state pass a reactive object or callbacks.         |
-| `onClose`                                  | `() => void`               | Called once when the panel closes, by its own close button or by `handle.close()`. Unreleased, not yet on npm. |
+| Field                                      | Type                       | Description                                                                                                                                                                                               |
+| ------------------------------------------ | -------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `id`                                       | `string`                   | Stable id. Opening the same id again focuses the existing panel.                                                                                                                                          |
+| `title`                                    | `string`                   |                                                                                                                                                                                                           |
+| `icon`                                     | `string?`                  | Full MDI class, e.g. `'mdi mdi-cog'`                                                                                                                                                                      |
+| `width`, `height`, `minWidth`, `minHeight` | `number?`                  | px                                                                                                                                                                                                        |
+| `persist`                                  | `boolean?`                 | Remember geometry across reloads (ZenKit default `true`)                                                                                                                                                  |
+| `props`                                    | `Record<string, unknown>?` | Passed to the component **by value at open time**. For live state pass a reactive object or callbacks.                                                                                                    |
+| `onClose`                                  | `() => void`               | Called once when the panel closes for real, by its own close button or by `handle.close()`. Not when it steps aside for its workspace. Opening the same id again replaces it. Unreleased, not yet on npm. |
+| `followWorkspace`                          | `boolean?`                 | Default `true`. Close the panel while it is tiled in a workspace that isn't on screen and reopen it there when it is (see below). Unreleased, not yet on npm.                                             |
+| `reveal`                                   | `boolean?`                 | Default `false`. The open is the user asking to see the panel (a pop-out button): if it is tiled in a workspace that isn't on screen, show that workspace. Unreleased, not yet on npm.                    |
 
 `ZenPanelHandle`:
 
-| Method                             | Description                                                                                                                                |
-| ---------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------ |
-| `close(opts?: { keep?: boolean })` | Close. `keep: true` remembers its place (geometry, workspace tile) for the next open of the same id. `opts` is unreleased, not yet on npm. |
-| `setTitle(title)`                  |                                                                                                                                            |
-| `focus()`                          | Bring to front and restore if minimized. Unreleased, not yet on npm.                                                                       |
+| Method                             | Description                                                                                                                                                                                                                                      |
+| ---------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| `close(opts?: { keep?: boolean })` | Close for real: calls `onClose` once and stops following. `keep: true` remembers its place (geometry, workspace tile) for the next open of the same id. Works while the panel waits for its workspace too. `opts` is unreleased, not yet on npm. |
+| `setTitle(title)`                  | Also kept for when a waiting panel reopens.                                                                                                                                                                                                      |
+| `focus()`                          | Bring to front and restore if minimized; a panel waiting for its workspace shows that workspace and reopens. Unreleased, not yet on npm.                                                                                                         |
+
+The handle stays valid while the panel steps aside and comes back: it always acts on the panel
+that is open now.
 
 nodekit creates the Vue app inside the panel and unmounts it when the panel closes. It returns
 `null` when ZenKit is absent or `panels.open` throws.
@@ -71,6 +76,41 @@ nodekit creates the Vue app inside the panel and unmounts it when the panel clos
 > Note: `hasZenPanels()` is synchronous and does not wait for ZenKit to finish installing
 > (`window.ZenKitPending` / `zen:ready`). A widget that mounts during workflow load can see
 > `false` even though ZenKit is about to arrive; the popout pattern below retries for that reason.
+
+### Following the workspace
+
+A panel tiled in a workspace belongs on screen only with that workspace. With `followWorkspace`
+(the default), nodekit watches `zen.workspaces.onChange` and:
+
+| The panel is                                                    | When                                 | nodekit                                                                    |
+| --------------------------------------------------------------- | ------------------------------------ | -------------------------------------------------------------------------- |
+| open, tiled in a workspace                                      | the graph or another workspace shows | closes it with `{ keep: true }`, without `onClose`; the component unmounts |
+| waiting                                                         | its workspace shows again            | reopens it with the same spec and component, into its remembered tile      |
+| floating (not tiled)                                            | anything                             | leaves it open, as before                                                  |
+| open, and the user drags it out to float                        |                                      | it isn't tiled any more, so it stays open                                  |
+| floating, and the user tiles it into a workspace                | that workspace isn't on screen       | closes it until it is                                                      |
+| waiting, and its tile goes (workflow switch, removed workspace) |                                      | keeps waiting until it is opened or focused again                          |
+
+The first open checks too. If the id is already tiled in a workspace that isn't on screen (a node
+restoring its popped-out panel as its workflow loads), the panel starts out waiting instead of
+flashing open over the graph. `reveal: true` says the user asked for it: ZenKit shows that
+workspace and opens it there. Opening an id that is already waiting also counts as asking (pass
+`reveal: false` to opt out), as does `handle.focus()`.
+
+Unmounting is the point: a pack whose panel instance marks itself open on mount and closed on
+unmount (below) shows its editor in the node again whenever the panel's workspace is away, and
+pops back out when it returns. Node removal and workflow switches work as before: the node's
+`onRemoved` closes the panel with `keep`, and the panel is the node's to reopen.
+
+ZenKit counts a waiting panel as its workspace's: the tab's count, tooltip and **Panels here** menu
+list it, and its tile holds its place (with a placeholder) until it reopens. nodekit tells ZenKit
+it waits with `zen.panels.close(id, { keep: true })` — also when it starts out waiting and when
+the node closes it while it waits — so the count is right after a reload too. A keep close is also
+ZenKit's cue to check for a deleted node: when the node is gone from its graph, the tile goes (see
+[Panels and workspaces](Panels-and-Workspaces.md#workspaces)). No pack change is needed.
+
+Without ZenKit's `workspaces.of` (an older runtime) or with `followWorkspace: false`, the panel
+behaves as it always has.
 
 ### The popout pattern
 
@@ -81,6 +121,8 @@ NynxzNodes (H3 Studio) and ZenCut use the same pattern to pop a large editor out
 - The panel id includes the graph id and node id, so ZenKit restores its size and workspace tile.
 - When the node leaves (workflow switched or node deleted), the panel closes with `keep: true` and
   the node's "popped" flag is left set.
+- The pop-out button passes `reveal: true`; the reopen on load doesn't, so a panel tiled in a
+  workspace that isn't on screen waits for it (see above).
 
 ```ts
 // ZenCut frontend/widgets/ZenCut.vue (abridged)
@@ -103,7 +145,7 @@ function remember(popped: boolean) {
 }
 
 const self = getCurrentInstance()!.type // the panel mounts this component again
-function popOut() {
+function popOut(reveal = false) {
   const node = props.node
   const handle = openZenPanel(
     {
@@ -116,6 +158,7 @@ function popOut() {
       minHeight: 520,
       persist: true,
       props: { widget: props.widget, node: props.node, panel: true },
+      reveal, // true from the pop-out / "Show it" buttons: `@click="popOut(true)"`
       onClose: () => {
         if (node) handles.delete(node)
         if (node && quiet.delete(node)) return // node left: keep "popped" for next load
@@ -143,7 +186,8 @@ onMounted(() => {
   let tries = 0 // ZenKit may install after this node mounts
   const attempt = () => {
     if (isPanelOpen(nodeId) || (props.node && handles.has(props.node))) return
-    if (hasZenPanels()) popOut()
+    if (hasZenPanels())
+      popOut() // a restore, not a request: waits for an off-screen workspace
     else if (++tries < 40) setTimeout(attempt, 250) // up to 10 s
   }
   attempt()
