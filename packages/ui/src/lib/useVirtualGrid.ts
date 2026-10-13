@@ -59,16 +59,17 @@ export function useVirtualGrid(
     // change by moving the scroll position, which re-renders the slice, and so on.
     overflowAnchor: 'none' as const,
   }))
-  /** Spacers standing in for the rows above and below the rendered slice. */
-  const padTop = computed(() => ({
+  /** Spacers standing in for the rows above and below the rendered slice. A spacer with no rows
+   *  to stand in for is taken out of the grid: as a grid item it is still a row, and the grid's
+   *  gap beside it (which a negative margin can't take back) moved every card by one gap whenever
+   *  the first or last row came into the slice. */
+  const spacer = (hidden: number) => ({
     gridColumn: '1 / -1',
-    height: `${Math.max(0, firstRow.value * step.value - gap)}px`,
-    margin: firstRow.value ? '0' : `0 0 ${-gap}px`,
-  }))
-  const padBottom = computed(() => ({
-    gridColumn: '1 / -1',
-    height: `${Math.max(0, (rows.value - lastRow.value) * step.value - gap)}px`,
-  }))
+    display: hidden ? 'block' : 'none',
+    height: `${Math.max(0, hidden * step.value - gap)}px`,
+  })
+  const padTop = computed(() => spacer(firstRow.value))
+  const padBottom = computed(() => spacer(rows.value - lastRow.value))
 
   /** Re-measure a row from the tallest rendered card (call after the slice renders). It only
    *  grows until the column width changes: measuring whichever card came first flipped between
@@ -76,9 +77,16 @@ export function useVirtualGrid(
   function measure(cardSelector: string) {
     let tallest = 0
     scroller.value?.querySelectorAll<HTMLElement>(cardSelector).forEach((card) => {
-      tallest = Math.max(tallest, card.offsetHeight)
+      tallest = Math.max(tallest, layoutHeight(card))
     })
     if (tallest > measured.value + 0.5) measured.value = tallest
+  }
+  /** A card's height to the fraction of a pixel (offsetHeight rounds, and a rounded row height
+   *  drifts by that much at every row); whole pixels when it's drawn scaled, e.g. on a zoomed
+   *  canvas, where its on-screen height isn't its layout height. */
+  function layoutHeight(card: HTMLElement) {
+    const exact = card.getBoundingClientRect().height
+    return Math.abs(exact - card.offsetHeight) < 1 ? exact : card.offsetHeight
   }
   /** Scroll so item `index` is in view. */
   function reveal(index: number) {

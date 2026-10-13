@@ -1,0 +1,42 @@
+{
+  "id": "strawberry-milk",
+  "name": "Strawberry Milk",
+  "tokens": {
+    "light": {
+      "--radius": "0.5rem",
+      "--font-sans": "'Nunito Sans', 'Nunito', system-ui, sans-serif",
+      "--background": "#fdf2f7",
+      "--foreground": "#3b2333",
+      "--card": "#ffffff",
+      "--card-foreground": "#3b2333",
+      "--popover": "#ffffff",
+      "--popover-foreground": "#3b2333",
+      "--primary": "#f49ac1",
+      "--primary-foreground": "#4a1d33",
+      "--secondary": "#fff8fb",
+      "--secondary-foreground": "#3b2333",
+      "--muted": "#fbe8f0",
+      "--muted-foreground": "#8b6478",
+      "--accent": "#fbe3ee",
+      "--accent-foreground": "#3b2333",
+      "--destructive": "#c62f3b",
+      "--destructive-foreground": "#ffffff",
+      "--border": "#f3d3e2",
+      "--input": "#f3d3e2",
+      "--ring": "#e05597",
+      "--chart-1": "#e05597",
+      "--chart-2": "#7c8ce0",
+      "--chart-3": "#e8a33d",
+      "--chart-4": "#4fa88b",
+      "--chart-5": "#a46ad6",
+      "--sidebar": "#fff6fa",
+      "--sidebar-foreground": "#3b2333",
+      "--sidebar-primary": "#f49ac1",
+      "--sidebar-primary-foreground": "#4a1d33",
+      "--sidebar-accent": "#fbe3ee",
+      "--sidebar-accent-foreground": "#3b2333",
+      "--sidebar-border": "#f3d3e2",
+      "--sidebar-ring": "#e05597"
+    }
+  }
+}

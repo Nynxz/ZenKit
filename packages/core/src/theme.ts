@@ -76,6 +76,7 @@ const COMFY_MAPPINGS: Array<[string, string[]]> = [
   ['--component-node-foreground-secondary', ['--muted-foreground']],
   ['--component-node-surface', ['--card', '--background']],
   ['--component-node-widget-background', ['--secondary', '--input']],
+  ['--component-node-widget-background-disabled', ['--muted', '--secondary']],
   ['--component-node-widget-background-hovered', ['--accent', '--secondary']],
   ['--component-node-widget-background-selected', ['--accent', '--primary']],
   ['--component-node-widget-background-highlighted', ['--ring', '--primary']],

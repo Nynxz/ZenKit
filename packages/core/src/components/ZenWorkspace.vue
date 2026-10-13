@@ -1,4 +1,7 @@
 <template>
+  <!-- Under a floating taskbar: the surface carries on to the window's edge, so the gap round the
+       taskbar shows the workspace, not the paused graph canvas (black) behind it. -->
+  <div v-if="underTaskbar" class="zws zws-under" :style="underTaskbar" aria-hidden="true" />
   <div class="zws" :style="px(layout.bounds)" @contextmenu.prevent>
     <div v-if="!layout.tiles.size" class="zws-empty">
       <i class="mdi mdi-view-dashboard-outline" />
@@ -84,6 +87,7 @@
 import { computed, inject, ref } from 'vue'
 import { ZenIcon, ZenResizeHandle } from '@nynxz/zenkit-ui'
 import { STORE_KEY, type PanelStore } from '../panelStore'
+import { taskbarFloats } from '../tiling'
 import type { Rect } from '../types'
 import {
   clampTileRatio,
@@ -97,6 +101,11 @@ import {
 
 const store = inject(STORE_KEY) as PanelStore
 const layout = wsLayout
+const underTaskbar = computed(() => {
+  if (!taskbarFloats(store)) return null
+  const b = layout.value.bounds
+  return { left: `${b.x}px`, top: `${b.y + b.h}px`, width: `${b.w}px`, bottom: '0' }
+})
 const current = computed(() => ws.list.find((w) => w.id === ws.active))
 const dragging = ref<string[]>([])
 

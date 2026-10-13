@@ -188,7 +188,11 @@
               </span>
             </span>
             <span class="lb-name">{{ lib.short(it.name) }}</span>
-            <span v-if="showFolder(it.name)" class="lb-dir">{{ lib.folder(it.name) }}</span>
+            <!-- While any card shows its folder, every card has the line, so all rows are one
+                 height: the virtual grid's spacers assume that, and a shorter row jumped the list. -->
+            <span v-if="anyFolder" class="lb-dir">{{
+              showFolder(it.name) ? lib.folder(it.name) : '\u00a0'
+            }}</span>
           </button>
 
           <div :style="grid.padBottom.value" />
@@ -376,6 +380,8 @@ function showFolder(name: string): boolean {
   const dir = lib.folder(name)
   return !!dir && dir !== scope.value
 }
+
+const anyFolder = computed(() => visible.value.some((it) => showFolder(it.name)))
 
 // --- the grid only renders the rows on screen: a big library opens and scrolls as fast as a small one
 const grid = useVirtualGrid(gridEl, () => visible.value.length, {

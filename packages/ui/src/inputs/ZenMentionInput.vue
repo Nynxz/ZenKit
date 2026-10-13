@@ -6,12 +6,7 @@
     :inert="disabled || undefined"
     :style="height !== null ? { height: `${height}px`, flex: 'none' } : undefined"
   >
-    <div
-      ref="mirror"
-      class="zmi-mirror"
-      aria-hidden="true"
-      :style="gutter ? { paddingRight: `calc(10px + ${gutter}px)` } : undefined"
-    >
+    <div ref="mirror" class="zmi-mirror" aria-hidden="true">
       <template v-for="(part, i) in parts" :key="i">
         <mark v-if="part.mention" :class="part.known ? 'known' : 'unknown'">{{ part.text }}</mark>
         <template v-else>{{ part.text }}</template>
@@ -291,21 +286,11 @@ function syncScroll() {
   if (mirror.value && area.value) mirror.value.scrollTop = area.value.scrollTop
 }
 
-/** The width of the textarea's scrollbar. While it shows, the text wraps that much narrower, so
- *  the mirror is padded to match or its highlights drift off the words. The textarea's content box
- *  shrinks when the scrollbar appears, which is what the observer sees. */
-const gutter = ref(0)
-const measureGutter = () => {
-  const el = area.value
-  if (!el) return
-  const style = getComputedStyle(el)
-  const borders = parseFloat(style.borderLeftWidth) + parseFloat(style.borderRightWidth)
-  gutter.value = Math.max(0, el.offsetWidth - el.clientWidth - borders)
-  syncScroll()
-}
-const gutterObserver = new ResizeObserver(measureGutter)
-onMounted(() => area.value && gutterObserver.observe(area.value))
-onBeforeUnmount(() => gutterObserver.disconnect())
+/** Keep the mirror's scroll on the textarea's as the box changes size. Both always keep room for
+ *  a scrollbar (`scrollbar-gutter`), so they wrap alike whether one shows or not. */
+const sizeObserver = new ResizeObserver(syncScroll)
+onMounted(() => area.value && sizeObserver.observe(area.value))
+onBeforeUnmount(() => sizeObserver.disconnect())
 
 // The list joins the layer stack while it shows, so Escape closes it and not an enclosing modal
 // or window; both popups render above whatever layer the input itself sits in.
@@ -403,6 +388,10 @@ defineExpose({ focus: () => area.value?.focus() })
   white-space: pre-wrap;
   overflow-wrap: break-word;
   word-break: normal;
+  /* Both keep room for a scrollbar, shown or not, so they always wrap the same. Padding the mirror
+     by the scrollbar only while it showed re-wrapped it, which changed the height, which hid the
+     scrollbar again: a flicker at some widths. */
+  scrollbar-gutter: stable;
 }
 .zmi-mirror {
   overflow: hidden;

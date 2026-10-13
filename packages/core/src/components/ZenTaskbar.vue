@@ -1005,7 +1005,6 @@ function openTaskFromOverflow(p: Parameters<typeof taskClick>[0]) {
 .tb.floating {
   border: 1px solid var(--zen-surface-border, var(--zen-border, #3a3a44));
   border-radius: var(--zen-radius-surface, var(--zen-radius, 10px));
-  box-shadow: var(--interface-floating-panel-shadow, 0 6px 18px rgba(0, 0, 0, 0.28));
 }
 .tb-start {
   display: inline-flex;
@@ -1491,11 +1490,18 @@ img.tb-logo {
   padding: 0 !important;
   background: transparent !important;
   border: none !important;
+  border-radius: 0 !important;
   box-shadow: none !important;
   z-index: auto !important;
   /* zoom (not transform: scale) so the layout box shrinks too — transform left the box
      full-size, which showed as massive empty padding + shoved the controls' position. */
   zoom: 0.78;
+}
+/* The new UI's shadow-beneath draws the panel's shadow on a ::before layer of its own (rounded,
+   behind it), which the rules above don't reach: in the taskbar it showed as a rounded shadow. */
+.zen-canvasctl::before,
+.zen-canvasctl::after {
+  display: none !important;
 }
 /* Workspace switcher: the graph, then a tab per workspace with its name and panel count, styled
    like the tasks (no box; the active one raised), set off by a divider. */
