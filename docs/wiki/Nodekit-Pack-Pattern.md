@@ -120,7 +120,7 @@ Both real packs use the same shape:
 ```
 pack.json                   identity: namespace, displayName, category
 package.json                nodekit (dev) + zenkit-ui (dep)
-pnpm-workspace.yaml         link: overrides for local ZenKit development
+.pnpmfile.cjs               optional: link a local ZenKit checkout (ZENKIT_DEV)
 vite.config.mts             zenPluginConfig({ srcDir: './frontend', outDir: 'web' })
 tsconfig.json
 __init__.py                 V3: re-exports comfy_entrypoint; WEB_DIRECTORY = "./web"
@@ -175,16 +175,16 @@ createNodekit(pack: PackManifest): Nodekit
 
 `Nodekit` is the `Identity` above plus these bound helpers:
 
-| Member                | Signature                                             | Purpose                                                                                                                                      |
-| --------------------- | ----------------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------- |
-| `registerNodes`       | `(defs: NodeDef[], extensionName?: string) => void`   | Register every def as one ComfyUI extension (name defaults to `NAMESPACE`)                                                                   |
-| `discoverWidgets`     | `(modules: Record<string, unknown>) => NodeDef[]`     | Turn a `widgets/*.vue` glob into defs by filename                                                                                            |
-| `discoverNodes`       | `(modules: Record<string, unknown>) => NodeDef[]`     | Flatten a glob of modules that default-export a `NodeDef` or `NodeDef[]`                                                                     |
-| `widgetTypes`         | `(modules) => string[]`                               | The io types a widget glob registers, sorted                                                                                                 |
-| `mountWidget`         | `(node, opts: MountOptions) => { widget: DOMWidget }` | Mount a component in a node body yourself ([details](Nodekit-Panels-and-Canvas.md#mountwidget))                                              |
-| `addNodeHeaderButton` | `(node, widgetEl, opts) => NodeHeaderButtonHandle`    | A button in the node title bar ([details](Nodekit-Panels-and-Canvas.md#addnodeheaderbutton))                                                 |
-| `routeUrl`            | `(path: string) => string`                            | The full URL of a pack route (`route(path)` through ComfyUI's `api.apiURL`, so base-path safe): what to `fetch`                              |
-| `mediaLibrary`        | `MediaLibrary`                                        | Lists ComfyUI's media folders through the pack's `/<ns>/media` route ([details](Nodekit-Media.md#medialibrary)). Unreleased, not yet on npm. |
+| Member                | Signature                                             | Purpose                                                                                                          |
+| --------------------- | ----------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------- |
+| `registerNodes`       | `(defs: NodeDef[], extensionName?: string) => void`   | Register every def as one ComfyUI extension (name defaults to `NAMESPACE`)                                       |
+| `discoverWidgets`     | `(modules: Record<string, unknown>) => NodeDef[]`     | Turn a `widgets/*.vue` glob into defs by filename                                                                |
+| `discoverNodes`       | `(modules: Record<string, unknown>) => NodeDef[]`     | Flatten a glob of modules that default-export a `NodeDef` or `NodeDef[]`                                         |
+| `widgetTypes`         | `(modules) => string[]`                               | The io types a widget glob registers, sorted                                                                     |
+| `mountWidget`         | `(node, opts: MountOptions) => { widget: DOMWidget }` | Mount a component in a node body yourself ([details](Nodekit-Panels-and-Canvas.md#mountwidget))                  |
+| `addNodeHeaderButton` | `(node, widgetEl, opts) => NodeHeaderButtonHandle`    | A button in the node title bar ([details](Nodekit-Panels-and-Canvas.md#addnodeheaderbutton))                     |
+| `routeUrl`            | `(path: string) => string`                            | The full URL of a pack route (`route(path)` through ComfyUI's `api.apiURL`, so base-path safe): what to `fetch`  |
+| `mediaLibrary`        | `MediaLibrary`                                        | Lists ComfyUI's media folders through the pack's `/<ns>/media` route ([details](Nodekit-Media.md#medialibrary)). |
 
 Everything else (`defineNode`, `useDragSurface`, `viewUrl`, `openZenPanel`, `hasZenPanels`,
 `openViewer`, `registerSlotLink`, the media-ref helpers, the types) needs no identity, and
@@ -599,40 +599,61 @@ Add `frontend/vite-env.d.ts` with `/// <reference types="vite/client" />` for `i
     "sync": "zenkit-nodekit sync",
     "check": "zenkit-nodekit sync --check && zenkit-nodekit check-widgets && vue-tsc --noEmit && vite build"
   },
-  "dependencies": { "@nynxz/zenkit-ui": "^0.2.0" },
+  "dependencies": { "@nynxz/zenkit-ui": "^0.3.0" },
   "devDependencies": {
-    "@nynxz/zenkit-nodekit": "^0.2.0",
-    "vite": "8.2.2",
-    "@vitejs/plugin-vue": "6.0.8",
+    "@nynxz/zenkit-nodekit": "^0.3.0",
+    "vite": "^6.3.5",
+    "@vitejs/plugin-vue": "^5.2.3",
     "vue-tsc": "^3.3.11"
   },
   "peerDependencies": { "vue": "3.5.42" }
 }
 ```
 
-### Developing against a local ZenKit (pnpm overrides)
+### Installing ZenKit
 
-Both packs sit next to a ZenKit checkout and link to it:
+Install both packages from npm:
 
-```yaml
-# pnpm-workspace.yaml
-# pnpm refuses packages published in the last 24h; these are ours.
-minimumReleaseAgeExclude:
-  - '@nynxz/zenkit-ui'
-  - '@nynxz/zenkit-nodekit'
-overrides:
-  '@nynxz/zenkit-nodekit': link:../ZenKit/packages/nodekit
-  '@nynxz/zenkit-ui': link:../ZenKit/packages/ui
+```sh
+pnpm add @nynxz/zenkit-ui@^0.3.0
+pnpm add -D @nynxz/zenkit-nodekit@^0.3.0
+```
+
+### Developing against a local ZenKit
+
+To work on ZenKit and a pack at once, add this `.pnpmfile.cjs` to the pack. When `ZENKIT_DEV`
+points at a ZenKit checkout it rewrites the two dependencies to `link:` and skips the lockfile;
+without it, installs come from npm as usual.
+
+<!-- prettier-ignore -->
+```js
+const dir = process.env.ZENKIT_DEV;
+const local = dir && {
+  "@nynxz/zenkit-ui": `link:${dir}/packages/ui`,
+  "@nynxz/zenkit-nodekit": `link:${dir}/packages/nodekit`,
+};
+function readPackage(pkg) {
+  if (!local) return pkg;
+  for (const field of ["dependencies", "devDependencies"])
+    for (const name of Object.keys(pkg[field] ?? {})) if (local[name]) pkg[field][name] = local[name];
+  return pkg;
+}
+module.exports = {
+  hooks: {
+    readPackage,
+    updateConfig: (config) => (local ? { ...config, useLockfile: false, optimisticRepeatInstall: false } : config),
+  },
+};
+```
+
+```sh
+ZENKIT_DEV=../ZenKit pnpm install                                          # link the checkout
+pnpm install --frozen-lockfile --config.optimistic-repeat-install=false    # back to npm
 ```
 
 - A link resolves through the package's `exports`, which point at `dist/`. Run `pnpm build` in
-  ZenKit before building the pack, or the pack sees stale code.
-- The override requires the sibling layout (`../ZenKit`).
-- Remove the overrides to build against npm.
-
-> Note: the media API (`readMediaDrop`, `mediaLibrary`, …) is unreleased, not yet on npm.
-> `@nynxz/zenkit-nodekit@0.2.0` on npm lacks it, so both packs only build through the `link:`
-> override today.
+  ZenKit first, and again after changing it, or the pack sees stale code.
+- The lockfile is not written while linked, so it keeps describing the npm versions.
 
 ### Shipping
 

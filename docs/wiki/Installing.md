@@ -17,29 +17,32 @@ Restart ComfyUI and reload the browser tab.
 
 The plugins live in a pnpm monorepo, so clone it outside `custom_nodes`, build it, then link the
 plugin folders in. Built bundles (`js/`, and `runtime/` for ComfyUI-ZenKit) are gitignored, so a
-plain clone has no frontend until you build.
+plain clone has no frontend until you build. You need Node 20 or newer and pnpm
+(`corepack enable`, or `npm i -g pnpm`).
 
 ```bash
 git clone https://github.com/Nynxz/ZenKit.git
 cd ZenKit
 pnpm install
-pnpm build                      # needs Node >= 20
+pnpm build
 
-# Link the host (and any companions) into ComfyUI
+# Link the host into ComfyUI
 ln -s "$PWD/plugins/ComfyUI-ZenKit" /path/to/ComfyUI/custom_nodes/ComfyUI-ZenKit
+# Companions are linked the same way
+ln -s "$PWD/plugins/ComfyUI-ZenInspector" /path/to/ComfyUI/custom_nodes/ComfyUI-ZenInspector
 ```
 
 On Windows use `mklink /D` instead of `ln -s`.
 
 ## What you get
 
-| Where                         | What                                                                                                                                                      |
-| ----------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| Bottom (or top) of the screen | The **taskbar**: Start button, workspace switcher, open and minimized panels, the active app chip, and widgets (Jobs, Run, Hide panels, Canvas controls). |
-| Start button                  | The **Start menu**: every registered panel and app grouped by plugin, pinning, theme picker and light/dark toggle.                                        |
-| ComfyUI top bar               | A tune icon that opens **Zen Settings**. Also `ZenKit: Open Zen Settings` in the command palette.                                                         |
-| ComfyUI logo menu             | **ZenKit Themes**, a theme switcher next to ComfyUI's own.                                                                                                |
-| ComfyUI Settings → ZenKit     | Canvas background, image, finish and effect settings (see [Backgrounds](Backgrounds.md)).                                                                 |
+| Where                         | What                                                                                                                                                                                |
+| ----------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Bottom (or top) of the screen | The **taskbar**: Start button, workspace switcher, open and minimized panels, the active app chip, and widgets (Workflows, Jobs, Run, Hide panels, Canvas controls, Notifications). |
+| Start button                  | The **Start menu**: every registered panel and app grouped by plugin, pinning, theme picker and light/dark toggle.                                                                  |
+| ComfyUI top bar               | A tune icon that opens **Zen Settings**. Also `ZenKit: Open Zen Settings` in the command palette.                                                                                   |
+| ComfyUI logo menu             | **ZenKit Themes**, a theme switcher next to ComfyUI's own.                                                                                                                          |
+| ComfyUI Settings → ZenKit     | Canvas background, image, finish and effect settings (see [Backgrounds](Backgrounds.md)).                                                                                           |
 
 Zen Settings has three tabs:
 
@@ -54,7 +57,8 @@ Keyboard: <kbd>Alt</kbd>+<kbd>`</kbd> flips between the graph and the last works
 
 ## Companion plugins
 
-Install these the same way. All of them need ComfyUI-ZenKit: they load
+Install these the same way: from the registry, or from source by linking their folder under
+`plugins/` into `custom_nodes`. All of them need ComfyUI-ZenKit: they load
 Vue and the ZenKit libraries from its `/zenkit/runtime/` route rather than bundling their own.
 
 | Plugin               | What it adds                                                 | Registry               |
@@ -69,7 +73,7 @@ The server log prints `[ZenKit] frontend extension loaded`. The browser console 
 `ZenKit <plugin> → connected (…)` line per plugin, and:
 
 ```js
-window.ZenKit.version // "0.2.0"
+window.ZenKit.version // "0.3.0"
 window.ZenKit.plugins.registered().map((p) => p.id)
 ```
 

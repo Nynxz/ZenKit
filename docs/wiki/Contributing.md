@@ -43,7 +43,7 @@ The same import resolves differently depending on who is building.
 | In-repo plugin, Vite build                       | Package `src/` via `workspace-aliases.ts` (generated from `tsconfig.plugin.json` `paths`) | No                                      |
 | In-repo plugin, typecheck                        | Package `src/` via the plugin's `tsconfig.json` `paths`                                   | No                                      |
 | A package importing another (e.g. `core` → `ui`) | `node_modules` symlink → that package's `exports` → `dist/`                               | Yes (`pnpm build`)                      |
-| External node pack with a `link:` override       | `exports` → `dist/`                                                                       | Yes                                     |
+| External node pack linked with `ZENKIT_DEV`      | `exports` → `dist/`                                                                       | Yes                                     |
 | External node pack from npm                      | the published `dist/`                                                                     | n/a                                     |
 
 `theme` and `core` export `src/index.ts` directly and have no build. `client`, `ui` and

@@ -24,8 +24,6 @@ No events or slots.
 An expandable folder tree built from flat paths. Selecting a folder opens it, and the path to the
 selection always stays open. Open folders can be remembered in `localStorage`.
 
-> Unreleased, not yet on npm (`@nynxz/zenkit-ui@0.2.0` does not export it).
-
 ```vue
 <script setup lang="ts">
 import { ref } from 'vue'

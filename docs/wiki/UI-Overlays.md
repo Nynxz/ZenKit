@@ -100,8 +100,6 @@ A hairline divider between menu items. No props, events or slots.
 
 ## ZenContextMenu
 
-> Unreleased, not yet on npm (`@nynxz/zenkit-ui@0.2.0` does not export it).
-
 A right-click menu at the pointer, driven imperatively through a template ref.
 
 ```vue

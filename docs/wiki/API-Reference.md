@@ -10,7 +10,7 @@ the links for details.
 
 | Member    | Signature                    | Notes                                            |
 | --------- | ---------------------------- | ------------------------------------------------ |
-| `version` | `string`                     | `'0.2.0'`                                        |
+| `version` | `string`                     | `'0.3.0'`                                        |
 | `ready`   | `Promise<ZenKitApi>`         | Resolves once installed.                         |
 | `require` | `(range: string) => boolean` | Supports `^x.y.z`, `>=x.y.z` and exact versions. |
 

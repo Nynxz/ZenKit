@@ -30,8 +30,6 @@ Text, number or password input, or a textarea.
 
 ## ZenMentionInput
 
-> Unreleased, not yet on npm (`@nynxz/zenkit-ui@0.2.0` does not export it).
-
 A textarea that highlights `@mentions` of known items, with a caret popup (thumbnails) and a hover
 preview.
 
@@ -90,8 +88,6 @@ A numeric field: type a value, drag to scrub, arrow keys, and −/+ steppers.
 Enter commits, Escape reverts.
 
 ## ZenResolution
-
-> Unreleased, not yet on npm (`@nynxz/zenkit-ui@0.2.0` does not export it).
 
 A width × height picker: aspect-ratio chips, megapixel presets and exact W/H fields. Fixed 268px
 wide.
@@ -333,8 +329,6 @@ Event: `update:modelValue` (`number`).
 
 ## ZenVolume
 
-> Unreleased, not yet on npm (`@nynxz/zenkit-ui@0.2.0` does not export it).
-
 A speaker button (mute toggle) plus a drag/click slider; the wheel steps the volume.
 
 ```vue
@@ -353,8 +347,6 @@ A speaker button (mute toggle) plus a drag/click slider; the wheel steps the vol
 | `showValue`     | `boolean` | `true`                        | Numeric readout                               |
 
 ## ZenCurveEditor
-
-> Unreleased, not yet on npm (`@nynxz/zenkit-ui@0.2.0` does not export it).
 
 Edit a value over a 0–1 x-axis: drag points, double-click to add, right-click to remove. Linear
 between points, held flat past the ends.

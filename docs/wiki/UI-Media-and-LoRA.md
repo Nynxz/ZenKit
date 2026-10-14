@@ -3,10 +3,6 @@
 Viewers, players, pickers and timelines, plus the LoRA picker family. Part of
 [`@nynxz/zenkit-ui`](UI-Components.md).
 
-> Unreleased, not yet on npm: everything on this page except ZenLightbox. `@nynxz/zenkit-ui@0.2.0`
-> exports only ZenLightbox from this group. In-repo plugins and linked node packs already use the
-> rest.
-
 ## ZenLightbox
 
 An image/video/audio viewer: wheel-zoom about the pointer, drag to pan, rotate, slideshow, a

@@ -5,9 +5,6 @@
 ZenKit is a UX layer for ComfyUI. It adds dockable panels, a taskbar, full-screen apps and
 themes, and gives plugins one shared toolkit (`window.ZenKit`) so they look and work alike.
 
-> These docs describe the upcoming release. Anything marked **unreleased** is not on `main` or
-> npm yet.
-
 ## Start here
 
 | I want to…                                  | Read                                                |

@@ -1,7 +1,7 @@
 # UI components
 
-`@nynxz/zenkit-ui` is ZenKit's Vue 3 component library: 41 components (plus three new layout
-components in progress) styled entirely from `--zen-*` CSS tokens. It does not touch
+`@nynxz/zenkit-ui` is ZenKit's Vue 3 component library: 48 components styled entirely from
+`--zen-*` CSS tokens. It does not touch
 `window.ZenKit`, so it works in ZenKit plugins and in plain node packs alike.
 
 ## Install
@@ -41,7 +41,7 @@ How you get the package depends on what you build:
 | Consumer               | Resolves `@nynxz/zenkit-ui` to                                                                |
 | ---------------------- | --------------------------------------------------------------------------------------------- |
 | In-repo ZenKit plugins | Package source (Vite alias), served at runtime from `/zenkit/runtime/ui.js` (`sharedRuntime`) |
-| External node packs    | npm (or a `link:` to `packages/ui`), bundled into the pack's `main.js`                        |
+| External node packs    | npm, bundled into the pack's `main.js`                                                        |
 
 With `sharedRuntime`, the runtime's `ui.js` already includes the styles; the CSS imports above are
 for bundled consumers.
@@ -109,59 +109,58 @@ scroll containers.
 
 ## Component index
 
-"On npm" says whether `@nynxz/zenkit-ui@0.2.0` exports it. The rest are in the source (and the
-ZenKit runtime) but unreleased, not yet on npm; node packs get them through a `link:` override.
+"Since" is the first `@nynxz/zenkit-ui` release that exports the component.
 
-| Component        | Purpose                                      | On npm | Page                                                                 |
-| ---------------- | -------------------------------------------- | ------ | -------------------------------------------------------------------- |
-| ZenWidget        | Shell for a whole node body                  | 0.2.0  | [Layout and primitives](UI-Layout-and-Primitives.md#zenwidget)       |
-| ZenRow           | Row whose children wrap                      | 0.2.0  | [Layout and primitives](UI-Layout-and-Primitives.md#zenrow)          |
-| ZenField         | Labelled control                             | 0.2.0  | [Layout and primitives](UI-Layout-and-Primitives.md#zenfield)        |
-| ZenSection       | Collapsible titled block (new)               | no     | [Layout and primitives](UI-Layout-and-Primitives.md#zensection)      |
-| ZenSections      | Groups ZenSections, optional accordion (new) | no     | [Layout and primitives](UI-Layout-and-Primitives.md#zensections)     |
-| ZenSplit         | Resizable panes (new)                        | no     | [Layout and primitives](UI-Layout-and-Primitives.md#zensplit)        |
-| ZenResizeHandle  | Shared resize grip and input lifecycle (new) | no     | [Layout and primitives](UI-Layout-and-Primitives.md#zenresizehandle) |
-| ZenView          | Standard panel layout                        | 0.2.0  | [Layout and primitives](UI-Layout-and-Primitives.md#zenview)         |
-| ZenToolbar       | Panel header bar                             | 0.2.0  | [Layout and primitives](UI-Layout-and-Primitives.md#zentoolbar)      |
-| ZenScroll        | Themed scroll container                      | 0.2.0  | [Layout and primitives](UI-Layout-and-Primitives.md#zenscroll)       |
-| ZenButton        | Text button                                  | 0.2.0  | [Layout and primitives](UI-Layout-and-Primitives.md#zenbutton)       |
-| ZenIconButton    | Icon-only button                             | 0.2.0  | [Layout and primitives](UI-Layout-and-Primitives.md#zeniconbutton)   |
-| ZenIcon          | MDI or image-URL icon                        | 0.2.0  | [Layout and primitives](UI-Layout-and-Primitives.md#zenicon)         |
-| ZenEmpty         | Empty state with the lotus mark (new)        | no     | [Layout and primitives](UI-Layout-and-Primitives.md#zenempty)        |
-| ZenLotus         | ZenKit's lotus mark, one colour (new)        | no     | [Layout and primitives](UI-Layout-and-Primitives.md#zenlotus)        |
-| ZenInput         | Text, number, password, textarea             | 0.2.0  | [Inputs](UI-Inputs.md#zeninput)                                      |
-| ZenMentionInput  | Textarea with `@mentions`                    | no     | [Inputs](UI-Inputs.md#zenmentioninput)                               |
-| ZenNumber        | Numeric field with scrub and steppers        | 0.2.0  | [Inputs](UI-Inputs.md#zennumber)                                     |
-| ZenResolution    | Aspect-ratio and megapixel size picker       | no     | [Inputs](UI-Inputs.md#zenresolution)                                 |
-| ZenDimensions    | Inline width × height                        | 0.2.0  | [Inputs](UI-Inputs.md#zendimensions)                                 |
-| ZenSelect        | Dropdown                                     | 0.2.0  | [Inputs](UI-Inputs.md#zenselect)                                     |
-| ZenCombo         | Searchable, virtualised picker               | 0.2.0  | [Inputs](UI-Inputs.md#zencombo)                                      |
-| ZenSwitch        | Toggle switch                                | 0.2.0  | [Inputs](UI-Inputs.md#zenswitch)                                     |
-| ZenCheckbox      | Checkbox                                     | 0.2.0  | [Inputs](UI-Inputs.md#zencheckbox)                                   |
-| ZenDot           | Small on/off dot                             | 0.2.0  | [Inputs](UI-Inputs.md#zendot)                                        |
-| ZenToggleGroup   | Segmented single-select                      | 0.2.0  | [Inputs](UI-Inputs.md#zentogglegroup)                                |
-| ZenSlider        | Range slider                                 | 0.2.0  | [Inputs](UI-Inputs.md#zenslider)                                     |
-| ZenVolume        | Volume and mute                              | no     | [Inputs](UI-Inputs.md#zenvolume)                                     |
-| ZenCurveEditor   | 0–1 curve editor                             | no     | [Inputs](UI-Inputs.md#zencurveeditor)                                |
-| ZenColorPicker   | Colour picker                                | 0.2.0  | [Inputs](UI-Inputs.md#zencolorpicker)                                |
-| ZenPopover       | Anchored floating panel                      | 0.2.0  | [Overlays](UI-Overlays.md#zenpopover)                                |
-| ZenMenuItem      | Menu row, optional submenu                   | 0.2.0  | [Overlays](UI-Overlays.md#zenmenuitem)                               |
-| ZenMenuSeparator | Menu divider                                 | 0.2.0  | [Overlays](UI-Overlays.md#zenmenuseparator)                          |
-| ZenContextMenu   | Right-click menu                             | no     | [Overlays](UI-Overlays.md#zencontextmenu)                            |
-| ZenModal         | Centred dialog                               | 0.2.0  | [Overlays](UI-Overlays.md#zenmodal)                                  |
-| ZenWindow        | Draggable, resizable window                  | 0.2.0  | [Overlays](UI-Overlays.md#zenwindow)                                 |
-| ZenLightbox      | Image/video/audio viewer                     | 0.2.0  | [Media and LoRA](UI-Media-and-LoRA.md#zenlightbox)                   |
-| ZenPeek          | Shift-hover preview window                   | no     | [Media and LoRA](UI-Media-and-LoRA.md#zenpeek)                       |
-| ZenMediaControls | Player controls for a media element          | no     | [Media and LoRA](UI-Media-and-LoRA.md#zenmediacontrols)              |
-| ZenMediaPicker   | Media browser modal                          | no     | [Media and LoRA](UI-Media-and-LoRA.md#zenmediapicker)                |
-| ZenTimeline      | Multi-track timeline                         | no     | [Media and LoRA](UI-Media-and-LoRA.md#zentimeline)                   |
-| ZenStepChart     | Sampler run chart                            | no     | [Media and LoRA](UI-Media-and-LoRA.md#zenstepchart)                  |
-| LoraPicker       | LoRA combo                                   | no     | [Media and LoRA](UI-Media-and-LoRA.md#lorapicker)                    |
-| LoraBrowser      | Full LoRA library modal                      | no     | [Media and LoRA](UI-Media-and-LoRA.md#lorabrowser)                   |
-| LoraThumb        | LoRA preview tile                            | no     | [Media and LoRA](UI-Media-and-LoRA.md#lorathumb)                     |
-| LoraDetail       | Everything about one LoRA                    | no     | [Media and LoRA](UI-Media-and-LoRA.md#loradetail)                    |
-| JsonTree         | Collapsible JSON viewer                      | 0.2.0  | [Data](UI-Data.md#jsontree)                                          |
-| ZenFolderTree    | Folder tree                                  | no     | [Data](UI-Data.md#zenfoldertree)                                     |
+| Component        | Purpose                                | Since | Page                                                                 |
+| ---------------- | -------------------------------------- | ----- | -------------------------------------------------------------------- |
+| ZenWidget        | Shell for a whole node body            | 0.2.0 | [Layout and primitives](UI-Layout-and-Primitives.md#zenwidget)       |
+| ZenRow           | Row whose children wrap                | 0.2.0 | [Layout and primitives](UI-Layout-and-Primitives.md#zenrow)          |
+| ZenField         | Labelled control                       | 0.2.0 | [Layout and primitives](UI-Layout-and-Primitives.md#zenfield)        |
+| ZenSection       | Collapsible titled block               | 0.3.0 | [Layout and primitives](UI-Layout-and-Primitives.md#zensection)      |
+| ZenSections      | Groups ZenSections, optional accordion | 0.3.0 | [Layout and primitives](UI-Layout-and-Primitives.md#zensections)     |
+| ZenSplit         | Resizable panes                        | 0.3.0 | [Layout and primitives](UI-Layout-and-Primitives.md#zensplit)        |
+| ZenResizeHandle  | Shared resize grip and input lifecycle | 0.3.0 | [Layout and primitives](UI-Layout-and-Primitives.md#zenresizehandle) |
+| ZenView          | Standard panel layout                  | 0.2.0 | [Layout and primitives](UI-Layout-and-Primitives.md#zenview)         |
+| ZenToolbar       | Panel header bar                       | 0.2.0 | [Layout and primitives](UI-Layout-and-Primitives.md#zentoolbar)      |
+| ZenScroll        | Themed scroll container                | 0.2.0 | [Layout and primitives](UI-Layout-and-Primitives.md#zenscroll)       |
+| ZenButton        | Text button                            | 0.2.0 | [Layout and primitives](UI-Layout-and-Primitives.md#zenbutton)       |
+| ZenIconButton    | Icon-only button                       | 0.2.0 | [Layout and primitives](UI-Layout-and-Primitives.md#zeniconbutton)   |
+| ZenIcon          | MDI or image-URL icon                  | 0.2.0 | [Layout and primitives](UI-Layout-and-Primitives.md#zenicon)         |
+| ZenEmpty         | Empty state with the lotus mark        | 0.3.0 | [Layout and primitives](UI-Layout-and-Primitives.md#zenempty)        |
+| ZenLotus         | ZenKit's lotus mark, one colour        | 0.3.0 | [Layout and primitives](UI-Layout-and-Primitives.md#zenlotus)        |
+| ZenInput         | Text, number, password, textarea       | 0.2.0 | [Inputs](UI-Inputs.md#zeninput)                                      |
+| ZenMentionInput  | Textarea with `@mentions`              | 0.3.0 | [Inputs](UI-Inputs.md#zenmentioninput)                               |
+| ZenNumber        | Numeric field with scrub and steppers  | 0.2.0 | [Inputs](UI-Inputs.md#zennumber)                                     |
+| ZenResolution    | Aspect-ratio and megapixel size picker | 0.3.0 | [Inputs](UI-Inputs.md#zenresolution)                                 |
+| ZenDimensions    | Inline width × height                  | 0.2.0 | [Inputs](UI-Inputs.md#zendimensions)                                 |
+| ZenSelect        | Dropdown                               | 0.2.0 | [Inputs](UI-Inputs.md#zenselect)                                     |
+| ZenCombo         | Searchable, virtualised picker         | 0.2.0 | [Inputs](UI-Inputs.md#zencombo)                                      |
+| ZenSwitch        | Toggle switch                          | 0.2.0 | [Inputs](UI-Inputs.md#zenswitch)                                     |
+| ZenCheckbox      | Checkbox                               | 0.2.0 | [Inputs](UI-Inputs.md#zencheckbox)                                   |
+| ZenDot           | Small on/off dot                       | 0.2.0 | [Inputs](UI-Inputs.md#zendot)                                        |
+| ZenToggleGroup   | Segmented single-select                | 0.2.0 | [Inputs](UI-Inputs.md#zentogglegroup)                                |
+| ZenSlider        | Range slider                           | 0.2.0 | [Inputs](UI-Inputs.md#zenslider)                                     |
+| ZenVolume        | Volume and mute                        | 0.3.0 | [Inputs](UI-Inputs.md#zenvolume)                                     |
+| ZenCurveEditor   | 0–1 curve editor                       | 0.3.0 | [Inputs](UI-Inputs.md#zencurveeditor)                                |
+| ZenColorPicker   | Colour picker                          | 0.2.0 | [Inputs](UI-Inputs.md#zencolorpicker)                                |
+| ZenPopover       | Anchored floating panel                | 0.2.0 | [Overlays](UI-Overlays.md#zenpopover)                                |
+| ZenMenuItem      | Menu row, optional submenu             | 0.2.0 | [Overlays](UI-Overlays.md#zenmenuitem)                               |
+| ZenMenuSeparator | Menu divider                           | 0.2.0 | [Overlays](UI-Overlays.md#zenmenuseparator)                          |
+| ZenContextMenu   | Right-click menu                       | 0.3.0 | [Overlays](UI-Overlays.md#zencontextmenu)                            |
+| ZenModal         | Centred dialog                         | 0.2.0 | [Overlays](UI-Overlays.md#zenmodal)                                  |
+| ZenWindow        | Draggable, resizable window            | 0.2.0 | [Overlays](UI-Overlays.md#zenwindow)                                 |
+| ZenLightbox      | Image/video/audio viewer               | 0.2.0 | [Media and LoRA](UI-Media-and-LoRA.md#zenlightbox)                   |
+| ZenPeek          | Shift-hover preview window             | 0.3.0 | [Media and LoRA](UI-Media-and-LoRA.md#zenpeek)                       |
+| ZenMediaControls | Player controls for a media element    | 0.3.0 | [Media and LoRA](UI-Media-and-LoRA.md#zenmediacontrols)              |
+| ZenMediaPicker   | Media browser modal                    | 0.3.0 | [Media and LoRA](UI-Media-and-LoRA.md#zenmediapicker)                |
+| ZenTimeline      | Multi-track timeline                   | 0.3.0 | [Media and LoRA](UI-Media-and-LoRA.md#zentimeline)                   |
+| ZenStepChart     | Sampler run chart                      | 0.3.0 | [Media and LoRA](UI-Media-and-LoRA.md#zenstepchart)                  |
+| LoraPicker       | LoRA combo                             | 0.3.0 | [Media and LoRA](UI-Media-and-LoRA.md#lorapicker)                    |
+| LoraBrowser      | Full LoRA library modal                | 0.3.0 | [Media and LoRA](UI-Media-and-LoRA.md#lorabrowser)                   |
+| LoraThumb        | LoRA preview tile                      | 0.3.0 | [Media and LoRA](UI-Media-and-LoRA.md#lorathumb)                     |
+| LoraDetail       | Everything about one LoRA              | 0.3.0 | [Media and LoRA](UI-Media-and-LoRA.md#loradetail)                    |
+| JsonTree         | Collapsible JSON viewer                | 0.2.0 | [Data](UI-Data.md#jsontree)                                          |
+| ZenFolderTree    | Folder tree                            | 0.3.0 | [Data](UI-Data.md#zenfoldertree)                                     |
 
 Non-component exports:
 

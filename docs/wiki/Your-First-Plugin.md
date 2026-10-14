@@ -3,6 +3,10 @@
 A ZenKit plugin is an ordinary ComfyUI custom node folder whose frontend calls
 `registerZenPlugin`. This page builds one with a single Vue panel.
 
+> Note: create the folder outside this repository. A folder under the monorepo's `plugins/` is a
+> pnpm workspace member, so its `@nynxz/zenkit-*` dependencies resolve to the workspace packages
+> instead of npm. Only put a plugin there when you are contributing it to ZenKit.
+
 ## Layout
 
 ```
@@ -73,12 +77,12 @@ Server routes go in their own module, imported at the top of `__init__.py` insid
   "type": "module",
   "scripts": { "build": "vite build", "dev": "vite build --watch" },
   "dependencies": {
-    "@nynxz/zenkit-client": "^0.2.0",
-    "@nynxz/zenkit-ui": "^0.2.0",
+    "@nynxz/zenkit-client": "^0.3.0",
+    "@nynxz/zenkit-ui": "^0.3.0",
     "vue": "^3.5.0"
   },
   "devDependencies": {
-    "@nynxz/zenkit-nodekit": "^0.2.0",
+    "@nynxz/zenkit-nodekit": "^0.3.0",
     "@vitejs/plugin-vue": "^5.2.3",
     "vite": "^6.3.5"
   }
@@ -99,15 +103,7 @@ export default zenPluginConfig({
 `zenPluginConfig` builds `src/main.ts` to `js/main.js`, inlines CSS into it, aliases `@` to
 `src/`, and keeps `@comfy/app` / `@comfy/api` external.
 
-| Option          | Default         | Meaning                                                                                                       |
-| --------------- | --------------- | ------------------------------------------------------------------------------------------------------------- |
-| `name`          | package.json    | Pack name; also the `data-extension` attribute on the injected `<style>`. Defaults to package.json's `name`.  |
-| `configUrl`     | required        | Always `import.meta.url`.                                                                                     |
-| `entry`         | `./src/main.ts` | Entry file.                                                                                                   |
-| `outDir`        | `js`            | Must match `WEB_DIRECTORY`.                                                                                   |
-| `srcDir`        | `./src`         | What `@` resolves to.                                                                                         |
-| `alias`         | `{}`            | Extra aliases (this repo uses it to point at package source).                                                 |
-| `sharedRuntime` | `false`         | Import `vue`, `@nynxz/zenkit-ui` and `@nynxz/zenkit-client` from `/zenkit/runtime/` instead of bundling them. |
+All options are listed in [Nodekit pack pattern](Nodekit-Pack-Pattern.md#viteconfigmts).
 
 With `sharedRuntime: true` the page has one Vue and one copy of the UI library, and your bundle
 stays small, but the plugin **requires** ComfyUI-ZenKit. Leave it off if the plugin must work

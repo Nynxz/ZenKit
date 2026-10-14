@@ -24,11 +24,11 @@ they look and behave alike. ZenKit itself adds no nodes.
 | ------------------------- | ---------------------------------------------------------------------------- |
 | **Panels and workspaces** | Floating, docking and tiling windows that remember where you left them       |
 | **Taskbar and apps**      | A permanent taskbar, a launcher, and full-screen apps with their own routes  |
-| **Themes**                | 25 theme packs, written as plain JSON, that restyle ComfyUI and every plugin |
+| **Themes**                | 26 theme packs, written as plain JSON, that restyle ComfyUI and every plugin |
 | **Canvas backgrounds**    | Animated or image backgrounds behind the graph, with dim, frost and effects  |
 | **Media and channels**    | A shared viewer, a named media bus, and refs that pass images between tools  |
 | **Capabilities**          | Actions plugins offer each other, which agents can call as tools             |
-| **UI kit**                | Around 40 themed Vue components, published as `@nynxz/zenkit-ui`             |
+| **UI kit**                | 48 themed Vue components, published as `@nynxz/zenkit-ui`                    |
 
 ## Install
 

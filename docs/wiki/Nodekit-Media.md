@@ -3,11 +3,6 @@
 Helpers for node widgets that hold pictures, video or audio: accept drops, upload files, browse
 ComfyUI's folders, and build `/view` URLs. They work with or without ZenKit.
 
-> Unreleased, not yet on npm: everything on this page except `viewUrl` is in nodekit's working
-> tree (`packages/nodekit/src/mediaRefs.ts`, `mediaLibrary.ts`, `packMedia.ts`) but not in
-> `@nynxz/zenkit-nodekit@0.2.0`. Consumers build against it through a `link:` override (see
-> [Nodekit pack pattern](Nodekit-Pack-Pattern.md#developing-against-a-local-zenkit-pnpm-overrides)).
-
 ## Media refs
 
 A media ref is one string per file: `input/sub/name.png`, `output/name.mp4`, `temp/…`. It is the

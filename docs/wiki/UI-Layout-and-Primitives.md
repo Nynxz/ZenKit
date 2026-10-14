@@ -75,8 +75,6 @@ The hint sits on its own line under the label and control.
 
 ## ZenSection
 
-> New in the working tree; unreleased, not yet on npm.
-
 A titled, collapsible block: chevron, title, optional meta text and actions, and a body that
 folds away. `plain` is a header over a hairline divider (stack them for an inspector); `card` is a
 bordered box.
@@ -114,8 +112,6 @@ bordered box.
 
 ## ZenSections
 
-> New in the working tree; unreleased, not yet on npm.
-
 Groups ZenSection children so open/closed is decided in one place.
 
 ```vue
@@ -132,8 +128,6 @@ Groups ZenSection children so open/closed is decided in one place.
 | `gap`        | `number`                     | `0`     | px between sections (`0` suits `plain`, ~6 suits `card`)                                                                   |
 
 ## ZenSplit
-
-> New in the working tree; unreleased, not yet on npm.
 
 Resizable panes with draggable gutters (keyboard accessible, canvas-zoom aware).
 
@@ -303,8 +297,6 @@ to load.
 
 ## ZenEmpty
 
-> New in the working tree; unreleased, not yet on npm.
-
 The "nothing here yet" state for a panel or list: a faint mark, an optional title, one line of
 guidance and optional actions. The mark is ZenKit's lotus in the current text colour unless you
 pass an `icon`. It centres itself in a flex or grid parent.
@@ -327,8 +319,6 @@ pass an `icon`. It centres itself in a flex or grid parent.
 | `actions` | Buttons under the text |
 
 ## ZenLotus
-
-> New in the working tree; unreleased, not yet on npm.
 
 ZenKit's mark, the lotus, in one colour: it takes the text colour (`currentColor`) and lets opacity
 carry the petals' layers, so it sits on any theme. Size it with `width` (default `1.2em`, so it

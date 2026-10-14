@@ -1,6 +1,6 @@
 # Packages
 
-ZenKit is a pnpm monorepo of five packages and six ComfyUI plugins. This page says what each one
+ZenKit is a pnpm monorepo of five packages and four ComfyUI plugins. This page says what each one
 is for, who imports it, and which one you need.
 
 ## Which one do I need?
@@ -27,19 +27,14 @@ See [Working without ZenKit](Working-Without-ZenKit.md) for the degradation rule
 
 | Package                 | Folder             | On npm       | What it is                                                                                                                                                                              | Who imports it                                                                           |
 | ----------------------- | ------------------ | ------------ | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ---------------------------------------------------------------------------------------- |
-| `@nynxz/zenkit-client`  | `packages/client`  | yes          | The `window.ZenKit` contract (types) plus what adds value over it: fallbacks when ZenKit is absent, `registerZenPlugin`, Vue helpers, drag-and-drop helpers.                            | ZenKit plugins; `core` and `theme` for types (`import type`); nodekit bundles part of it |
-| `@nynxz/zenkit-ui`      | `packages/ui`      | yes          | 41 Vue components styled from `--zen-*` tokens. No `window.ZenKit` dependency.                                                                                                          | Plugins, node packs, `core`                                                              |
-| `@nynxz/zenkit-nodekit` | `packages/nodekit` | yes          | A node pack's frontend: pack identity, widget mounting, node registration, the Vite preset, ambient `@comfy/*` types.                                                                   | Node packs (dev dependency); every in-repo plugin's `vite.config.mts`                    |
+| `@nynxz/zenkit-client`  | `packages/client`  | 0.3.0        | The `window.ZenKit` contract (types) plus what adds value over it: fallbacks when ZenKit is absent, `registerZenPlugin`, Vue helpers, drag-and-drop helpers.                            | ZenKit plugins; `core` and `theme` for types (`import type`); nodekit bundles part of it |
+| `@nynxz/zenkit-ui`      | `packages/ui`      | 0.3.0        | 48 Vue components styled from `--zen-*` tokens. No `window.ZenKit` dependency.                                                                                                          | Plugins, node packs, `core`                                                              |
+| `@nynxz/zenkit-nodekit` | `packages/nodekit` | 0.3.0        | A node pack's frontend: pack identity, widget mounting, node registration, the Vite preset, ambient `@comfy/*` types, and the vendored Python helpers (`zenkit-nodekit sync`).          | Node packs (dev dependency); every in-repo plugin's `vite.config.mts`                    |
 | `@nynxz/zenkit-theme`   | `packages/theme`   | no (private) | Token engine and theme-pack registry.                                                                                                                                                   | `core` only                                                                              |
 | `@nynxz/zenkit-core`    | `packages/core`    | no (private) | The runtime that installs `window.ZenKit`: panels, docks, workspaces, taskbar, theme bridge, bus, jobs, channels, apps, storage, backgrounds, viewer, capabilities, media, mask editor. | `plugins/ComfyUI-ZenKit` only                                                            |
 
-All packages are version `0.2.0`. The source has moved on since that release:
-
-| Package                 | Unreleased, not yet on npm                                                                                                                                                                                                                                   |
-| ----------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
-| `@nynxz/zenkit-client`  | The contract folded in (`@nynxz/zenkit-types` is gone); the pass-through helpers (`openPanel`, `onBus`, `publishChannel`, …) removed in favour of `whenZen()`; `readMediaDrop` renamed `readMediaListDragData`; widget views removed                         |
-| `@nynxz/zenkit-ui`      | 14 of the 41 components (ZenMentionInput, ZenResolution, ZenVolume, ZenCurveEditor, ZenContextMenu, ZenMediaControls, ZenMediaPicker, ZenTimeline, ZenStepChart, ZenFolderTree, the LoRA components) — see [UI components](UI-Components.md#component-index) |
-| `@nynxz/zenkit-nodekit` | The media API (`readMediaDrop`, `mediaLibrary`, …), `openZenPanel`'s `onClose` / `close({ keep })` / `focus()`, and the client's `openViewer` / `registerSlotLink` signatures                                                                                |
+`@nynxz/zenkit-client`, `@nynxz/zenkit-ui` and `@nynxz/zenkit-nodekit` are at `0.3.0` on npm.
+`theme` and `core` are private and ship only inside ComfyUI-ZenKit.
 
 Peer dependencies:
 
