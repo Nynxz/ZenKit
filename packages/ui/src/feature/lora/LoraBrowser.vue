@@ -190,9 +190,9 @@
             <span class="lb-name">{{ lib.short(it.name) }}</span>
             <!-- While any card shows its folder, every card has the line, so all rows are one
                  height: the virtual grid's spacers assume that, and a shorter row jumped the list. -->
-            <span v-if="anyFolder" class="lb-dir">{{
-              showFolder(it.name) ? lib.folder(it.name) : '\u00a0'
-            }}</span>
+            <span v-if="anyFolder" class="lb-dir">
+              {{ showFolder(it.name) ? lib.folder(it.name) : '\u00a0' }}
+            </span>
           </button>
 
           <div :style="grid.padBottom.value" />

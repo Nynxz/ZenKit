@@ -194,6 +194,7 @@ test('workspace drag cancellation restores its original workspace and clears a q
       '@nynxz/zenkit-ui': mockModule(`export { default as ZenResizeHandle } from '${handleUrl}'
       export const ZenIcon = { render: () => null }`),
       '../panelStore': storeUrl,
+      '../tiling': mockModule('export const taskbarFloats = () => false'),
       '../workspaces': mockModule(`export const ws = globalThis.workspaceResizeTest.ws;
       export const wsLayout = globalThis.workspaceResizeTest.layout;
       export const setRatio = globalThis.workspaceResizeTest.setRatio;
