@@ -142,17 +142,17 @@ Helpers in `@nynxz/zenkit-client`; they don't need the runtime.
 
 ```vue
 <img
-  :src="thumbUrl({ filename, type: 'output' })"
+  :src="zenThumbUrl({ filename, type: 'output' })"
   draggable="true"
-  @dragstart="(e) => setImageDragData(e, { url: viewUrl, filename, type: 'output' })"
+  @dragstart="(e) => setMediaDragData(e, { url: viewUrl, filename, type: 'output' })"
 />
 
-<div @dragover="(e) => hasImageDragData(e) && e.preventDefault()" @drop="onDrop" />
+<div @dragover="(e) => hasMediaDragData(e) && e.preventDefault()" @drop="onDrop" />
 ```
 
 ```ts
 async function onDrop(e: DragEvent) {
-  const { title, items } = await readMediaListDrop(e) // call synchronously from the handler
+  const { title, items } = await readMediaListDragData(e) // call synchronously from the handler
   if (!items.length) return // not ours: let ComfyUI handle it
   e.preventDefault() // stop ComfyUI also importing it into the graph
   for (const it of items) show(it.url, it.kind)
@@ -161,17 +161,17 @@ async function onDrop(e: DragEvent) {
 
 | Export                                                      | Meaning                                                                                                                                                                                                                                    |
 | ----------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
-| `setImageDragData(e, img, dragImage?)`                      | Start a drag of one item. `img`: `{ url, filename?, subfolder?, type?, hasWorkflow?, ref? }`. With `filename` + `type` it also sets ComfyUI's asset MIME, so dropping on a loader node reuses the server file instead of uploading a copy. |
-| `readImageDragData(e)`                                      | `DroppedImage[]` from ZenKit's payload, ComfyUI's asset drag, a URL, or desktop files. `[]` when there is nothing usable.                                                                                                                  |
-| `readMediaListDrop(e)`                                      | Async. Same, but expands a dragged media list. Returns `{ title?, items }`.                                                                                                                                                                |
+| `setMediaDragData(e, img, dragImage?)`                      | Start a drag of one item. `img`: `{ url, filename?, subfolder?, type?, hasWorkflow?, ref? }`. With `filename` + `type` it also sets ComfyUI's asset MIME, so dropping on a loader node reuses the server file instead of uploading a copy. |
+| `readMediaDragData(e)`                                      | `DroppedMedia[]` from ZenKit's payload, ComfyUI's asset drag, a URL, or desktop files. `[]` when there is nothing usable.                                                                                                                  |
+| `readMediaListDragData(e)`                                  | Async. Same, but expands a dragged media list. Returns `{ title?, items }`.                                                                                                                                                                |
 | `setMediaListDragData(e, { url, title?, count? })`          | Drag a whole collection. `url` must return a `MediaList` (`{ title?, items: [{ url, filename?, kind?, label? }] }`) as JSON. Set a single image too, for targets that take one.                                                            |
-| `hasImageDragData(e)`                                       | For `dragover`, where data can't be read yet. Checks the types only.                                                                                                                                                                       |
-| `mediaKindOf(nameOrUrl)`                                    | `'image' \| 'video' \| 'audio'` from extension or `data:` type. GIF is an image.                                                                                                                                                           |
+| `hasMediaDragData(e)`                                       | For `dragover`, where data can't be read yet. Checks the types only.                                                                                                                                                                       |
+| `mediaKind(nameOrUrl)`                                      | `'image' \| 'video' \| 'audio'` from extension or `data:` type. GIF is an image.                                                                                                                                                           |
 | `parseMediaRef(ref)`                                        | Parses `input/`, `output/` or `temp/` refs into `{ type, subfolder, filename }`. Returns `null` for URLs, absolute paths and empty/dot path segments. Shared with nodekit.                                                                 |
-| `thumbUrl({ filename, subfolder?, type? }, size = 256)`     | ComfyUI-ZenKit's cached thumbnail (`/zenkit/thumb`, JPEG, video first frame).                                                                                                                                                              |
-| `ZEN_IMAGE_MIME`, `COMFY_ASSET_MIME`, `ZEN_MEDIA_LIST_MIME` | The MIME types.                                                                                                                                                                                                                            |
+| `zenThumbUrl({ filename, subfolder?, type? }, size = 256)`  | ComfyUI-ZenKit's cached thumbnail (`/zenkit/thumb`, JPEG, video first frame).                                                                                                                                                              |
+| `ZEN_MEDIA_MIME`, `COMFY_ASSET_MIME`, `ZEN_MEDIA_LIST_MIME` | The MIME types.                                                                                                                                                                                                                            |
 
-`DroppedImage` is `{ url, ref?, filename?, kind?, objectUrl? }`. When `objectUrl` is true the url
+`DroppedMedia` is `{ url, ref?, filename?, kind?, objectUrl? }`. When `objectUrl` is true the url
 was created from a desktop file: call `URL.revokeObjectURL(url)` when done.
 
 ## Viewer

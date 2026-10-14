@@ -1,10 +1,11 @@
 // Frontend machinery for a ComfyUI node pack. Components live in @nynxz/zenkit-ui.
-// A pack binds this once via createNodekit and imports from that module.
+// A pack binds this once in its framework.ts, which re-exports this module and adds what
+// createNodekit binds to the pack's identity, and imports from there.
 
 export { createNodekit, type Nodekit } from './nodekit'
-export { makeIdentity, type Identity, type PackManifest } from './identity'
+export type { Identity, PackManifest } from './identity'
 
-export { componentName, type WidgetFileExports, type WidgetOptions } from './discoverWidgets'
+export type { WidgetFileExports, WidgetOptions } from './discoverWidgets'
 export { defineNode, type NodeDef, type NodeWidgetDef, type SlotLinkDef } from './defineNode'
 export {
   useDragSurface,
@@ -15,7 +16,7 @@ export {
 export { viewUrl } from './viewUrl'
 // The drag data ZenKit's own media sources set (its Media Viewer, Asset Browser): drops into
 // ComfyUI, another ZenKit surface or another app take it as that file.
-export { setImageDragData } from '../../client/src/index'
+export { setMediaDragData, setMediaListDragData } from '../../client/src/index'
 export {
   hasMediaDrop,
   mediaKind,
@@ -51,11 +52,7 @@ export { useAppLocation, type AppContext, type AppLocation, type AppRouter } fro
 export { highlightNode, revealNode } from './highlightNode'
 export { registerZenCapability, type ZenCapability } from './zenCapability'
 
-// Prefer the identity-bound versions from createNodekit over these.
-export { registerNodes, discoverNodes } from './registerNodes'
-export { mountWidget, type DOMWidget, type MountOptions } from './mountWidget'
-export {
-  addNodeHeaderButton,
-  type NodeHeaderButtonHandle,
-  type NodeHeaderButtonOptions,
-} from './nodeHeaderButton'
+// The identity-bound helpers (registerNodes, mountWidget, addNodeHeaderButton, …) come from
+// createNodekit; only their types are here.
+export type { DOMWidget, MountOptions, NodeLike } from './mountWidget'
+export type { NodeHeaderButtonHandle, NodeHeaderButtonOptions } from './nodeHeaderButton'

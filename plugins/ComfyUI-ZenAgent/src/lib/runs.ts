@@ -1,6 +1,6 @@
 import { api } from '@comfy/api'
 import { app } from '@comfy/app'
-import { mediaKindOf } from '@nynxz/zenkit-client'
+import { mediaKind } from '@nynxz/zenkit-client'
 import { reactive } from 'vue'
 
 // Runs the agent queues, followed through ComfyUI's execution events (all keyed by
@@ -117,7 +117,7 @@ function addOutputs(run: Run, node: string, output: NodeOutput): void {
   for (const files of Object.values(output ?? {})) {
     for (const file of files ?? []) {
       if (!file?.filename) continue
-      const kind = mediaKindOf(file.filename)
+      const kind = mediaKind(file.filename)
       run.outputs.push({
         ref: [file.type ?? 'output', file.subfolder, file.filename].filter(Boolean).join('/'),
         node,

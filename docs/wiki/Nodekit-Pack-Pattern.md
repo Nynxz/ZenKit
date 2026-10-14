@@ -19,15 +19,19 @@ Five frontend files, two Python files and one command give you one node with a V
 
 ```ts
 // frontend/framework.ts — the pack's one import of nodekit
-import { createNodekit, defineNode, type WidgetOptions, type NodeDef } from '@nynxz/zenkit-nodekit'
+import { createNodekit } from '@nynxz/zenkit-nodekit'
 import manifest from '../pack.json'
 
+// Everything identity-free (defineNode, readMediaDrop, openZenPanel, the types, …)…
+export * from '@nynxz/zenkit-nodekit'
+// …and what createNodekit binds to this pack.
 export const {
   NAMESPACE,
   DISPLAY_NAME,
   nodeId,
   typeId,
   route,
+  routeUrl,
   settingId,
   registerNodes,
   discoverNodes,
@@ -36,9 +40,10 @@ export const {
   mountWidget,
   addNodeHeaderButton,
   mediaLibrary,
+  thumbUrl,
+  uploadOrReuse,
+  mediaInfo,
 } = createNodekit(manifest)
-export { defineNode }
-export type { WidgetOptions, NodeDef }
 ```
 
 ```ts
@@ -178,14 +183,13 @@ createNodekit(pack: PackManifest): Nodekit
 | `widgetTypes`         | `(modules) => string[]`                               | The io types a widget glob registers, sorted                                                                                                 |
 | `mountWidget`         | `(node, opts: MountOptions) => { widget: DOMWidget }` | Mount a component in a node body yourself ([details](Nodekit-Panels-and-Canvas.md#mountwidget))                                              |
 | `addNodeHeaderButton` | `(node, widgetEl, opts) => NodeHeaderButtonHandle`    | A button in the node title bar ([details](Nodekit-Panels-and-Canvas.md#addnodeheaderbutton))                                                 |
+| `routeUrl`            | `(path: string) => string`                            | The full URL of a pack route (`route(path)` through ComfyUI's `api.apiURL`, so base-path safe): what to `fetch`                              |
 | `mediaLibrary`        | `MediaLibrary`                                        | Lists ComfyUI's media folders through the pack's `/<ns>/media` route ([details](Nodekit-Media.md#medialibrary)). Unreleased, not yet on npm. |
 
-Identity-free exports (`defineNode`, `useDragSurface`, `viewUrl`, `openZenPanel`,
-`hasZenPanels`, `openViewer`, `registerSlotLink`, the media-ref helpers) are imported directly and
-usually re-exported from `framework.ts`.
-
-> Note: `discoverWidgets` and `widgetTypes` exist only on the `createNodekit` result; the unbound
-> functions are not exported from the package.
+Everything else (`defineNode`, `useDragSurface`, `viewUrl`, `openZenPanel`, `hasZenPanels`,
+`openViewer`, `registerSlotLink`, the media-ref helpers, the types) needs no identity, and
+`framework.ts` re-exports it with `export *`. The identity-bound helpers exist only on the
+`createNodekit` result, so the two never collide.
 
 ## Widgets by filename
 
@@ -413,7 +417,7 @@ halves move together.
 | `identity`     | `NAMESPACE`, `DISPLAY_NAME`, `CATEGORY`, `ROUTE_PREFIX`, `WIDGET_IO_PREFIX`, `LOG_PREFIX`, `node_id()`, `type_id()`, `route()`, `setting_id()` |
 | `io_types`     | `widget_type()`, `inline_widget()`, `advanced()`, `widget_io_type()`, `widget_input()`                                                         |
 | `autodiscover` | `load_nodes(package, paths)`                                                                                                                   |
-| `media_api`    | `register(routes)`, `path_of(ref)`, `resolve(ref)`, `media_info(path)`, `list_media()`, `find_input()`, `kind_of()`                            |
+| `media_api`    | `register(routes)`, `path_of(ref)`, `resolve(ref)`, `media_info(path)`, `list_media()`, `find_input()`, `media_kind()`                         |
 | `jobs`         | `Job(name, total=0, …)` with `update()` / `done()` / `fail()` (a context manager), `emit()`                                                    |
 | `server`       | `routes` (ComfyUI's route table, `None` outside ComfyUI), `route()`, `send(event, payload, client_id=None)`, `request_allowed(request)`        |
 
@@ -525,7 +529,6 @@ events go nowhere. Run the work in a task or thread so the route that starts it 
 import { zenPluginConfig } from '@nynxz/zenkit-nodekit/vite'
 
 export default zenPluginConfig({
-  name: 'comfyui-zencut',
   configUrl: import.meta.url,
   srcDir: './frontend',
   outDir: 'web', // matches WEB_DIRECTORY in __init__.py
@@ -534,7 +537,7 @@ export default zenPluginConfig({
 
 | Option          | Default             | Description                                                                                                                                                           |
 | --------------- | ------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `name`          | required            | Pack name; also the `data-extension` attribute on the injected `<style>`                                                                                              |
+| `name`          | package.json `name` | Pack name; also the `data-extension` attribute on the injected `<style>`                                                                                              |
 | `configUrl`     | required            | Always `import.meta.url`                                                                                                                                              |
 | `srcDir`        | `'./src'`           | Frontend source; `@` aliases to it                                                                                                                                    |
 | `entry`         | `${srcDir}/main.ts` | Entry file                                                                                                                                                            |
@@ -551,6 +554,8 @@ What the preset does:
 - Sets `resolve.dedupe: ['vue']`. Two Vue copies silently break reactivity; this happens as soon as a
   `@nynxz/zenkit-*` package is consumed through a link.
 - Defines `process.env.NODE_ENV = "production"`, outputs one unminified `main.js`.
+- Names code split off by a dynamic `import()` `chunks/*.mjs`: ComfyUI imports every `.js` under
+  `WEB_DIRECTORY` at startup, which would load it all up front.
 
 ### tsconfig.json
 

@@ -3,13 +3,21 @@
 // Bound at import time rather than via a configure() call: a pack's widget modules ask for
 // nodeId() while being evaluated, which happens before main.ts's body runs.
 //
-//     // src/framework.ts
+//     // frontend/framework.ts
+//     export * from '@nynxz/zenkit-nodekit'
 //     export const { nodeId, registerNodes, discoverWidgets } = createNodekit(manifest)
 
 import { makeIdentity, type Identity, type PackManifest } from './identity'
 import { registerNodes as _registerNodes, discoverNodes } from './registerNodes'
 import { discoverWidgets as _discoverWidgets, widgetTypes as _widgetTypes } from './discoverWidgets'
-import { mountWidget as _mountWidget, type DOMWidget, type MountOptions } from './mountWidget'
+import { api } from '@comfy/api'
+
+import {
+  mountWidget as _mountWidget,
+  type DOMWidget,
+  type MountOptions,
+  type NodeLike,
+} from './mountWidget'
 import {
   addNodeHeaderButton as _addNodeHeaderButton,
   type NodeHeaderButtonHandle,
@@ -29,13 +37,16 @@ export interface Nodekit extends Identity, PackMedia {
   /** The io types a widget glob registers — for a startup log or a contract check. */
   widgetTypes(modules: Record<string, unknown>): string[]
   /** Mount a Vue app inside a node body. Normally called for you by `registerNodes`. */
-  mountWidget(node: never, opts: MountOptions): { widget: DOMWidget }
+  mountWidget(node: NodeLike, opts: MountOptions): { widget: DOMWidget }
   /** Put a control in a node's title bar. */
   addNodeHeaderButton(
     node: unknown,
     widgetEl: HTMLElement | null,
     opts: NodeHeaderButtonOptions,
   ): NodeHeaderButtonHandle
+  /** The full URL of one of the pack's routes, `route(path)` on ComfyUI's API (base-path safe):
+   *  what to `fetch`. */
+  routeUrl(path: string): string
   /** ComfyUI's media folders, listed by the pack's `media` route (see mediaLibrary.ts). */
   mediaLibrary: MediaLibrary
   // thumbUrl, uploadOrReuse, mediaInfo: the pack's other media routes (see packMedia.ts).
@@ -45,6 +56,7 @@ export function createNodekit(pack: PackManifest): Nodekit {
   const identity = makeIdentity(pack)
   return {
     ...identity,
+    routeUrl: (path) => (api as { apiURL: (p: string) => string }).apiURL(identity.route(path)),
     registerNodes: (defs, extensionName) =>
       _registerNodes(defs, extensionName ?? identity.NAMESPACE, identity),
     discoverNodes: (modules) => discoverNodes(modules, identity),

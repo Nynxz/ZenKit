@@ -39,7 +39,8 @@ export interface DOMWidget {
   serialize?: boolean
 }
 
-interface NodeLike {
+/** The node a widget mounts on: a LiteGraph node, as ComfyUI hands it to an extension. */
+export interface NodeLike {
   id: number | string
   size?: [number, number]
   setSize?: (s: [number, number]) => void

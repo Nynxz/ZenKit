@@ -39,11 +39,11 @@ The runtime host, with its [built-in panels](#built-in-panels) and the channel n
 
 Routes:
 
-| Route                                                | Purpose                                                                                                                   |
-| ---------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------- |
-| `GET /zenkit/runtime/{path}`                         | Serves `runtime/*.js` (chunks are cached immutable)                                                                       |
-| `GET /zenkit/themes`                                 | Theme packs found on disk, with CSS file refs inlined                                                                     |
-| `GET /zenkit/thumb?type=&filename=&subfolder=&size=` | Cached JPEG thumbnail of an input/output/temp file (first frame for video). Used by `thumbUrl` in `@nynxz/zenkit-client`. |
+| Route                                                | Purpose                                                                                                                      |
+| ---------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------- |
+| `GET /zenkit/runtime/{path}`                         | Serves `runtime/*.js` (chunks are cached immutable)                                                                          |
+| `GET /zenkit/themes`                                 | Theme packs found on disk, with CSS file refs inlined                                                                        |
+| `GET /zenkit/thumb?type=&filename=&subfolder=&size=` | Cached JPEG thumbnail of an input/output/temp file (first frame for video). Used by `zenThumbUrl` in `@nynxz/zenkit-client`. |
 
 ### Built-in panels
 

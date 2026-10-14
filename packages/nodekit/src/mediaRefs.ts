@@ -5,15 +5,11 @@
 import { api } from '@comfy/api'
 
 import { viewUrl } from './viewUrl'
-// ZEN_IMAGE_MIME: what ZenKit's drag sources (Media Viewer, Asset Browser, Stash…) put on a drag.
-// COMFY_ASSET_MIME: ComfyUI's own asset browser.
-import { COMFY_ASSET_MIME, mediaKindOf, parseMediaRef, ZEN_IMAGE_MIME } from './zenkit'
+// ZEN_MEDIA_MIME and ZEN_MEDIA_LIST_MIME: what ZenKit's drag sources (Media Viewer, Asset Browser,
+// Stash…) put on a drag. COMFY_ASSET_MIME: ComfyUI's own asset browser.
+import { COMFY_ASSET_MIME, parseMediaRef, ZEN_MEDIA_LIST_MIME, ZEN_MEDIA_MIME } from './zenkit'
 
-export { parseMediaRef } from './zenkit'
-
-/** What a ref (or file name) holds, from its extension; GIF is an image. The client's
- *  `mediaKindOf`, under the name packs know it by. */
-export const mediaKind: (ref: string) => 'image' | 'video' | 'audio' = mediaKindOf
+export { mediaKind, parseMediaRef } from './zenkit'
 
 /** A URL that shows the ref's file. Only ComfyUI refs (`input/`, `output/`, `temp/`) resolve;
  *  anything else (an http:/data:/blob: URL, a `/path`, a malformed ref) never becomes its own
@@ -49,6 +45,21 @@ function json(raw: string): Record<string, unknown> | null {
   }
 }
 
+/** The ComfyUI files of a dragged media list (a `MediaList` at `url`); [] if it can't be fetched. */
+async function listRefs(url: string): Promise<string[]> {
+  try {
+    const res = await fetch(url, { credentials: 'include' })
+    if (!res.ok) return []
+    const { items } = (await res.json()) as { items?: { url?: unknown }[] }
+    return (items ?? []).flatMap((it) => {
+      const ref = typeof it.url === 'string' ? refFromViewUrl(it.url) : null
+      return ref ? [ref] : []
+    })
+  } catch {
+    return []
+  }
+}
+
 /** Upload a file into ComfyUI's input folder (under `subfolder`); returns its ref. */
 export async function uploadMediaFile(file: File, subfolder = 'zenkit'): Promise<string> {
   const body = new FormData()
@@ -70,16 +81,18 @@ export async function uploadMediaFile(file: File, subfolder = 'zenkit'): Promise
 export function hasMediaDrop(e: DragEvent): boolean {
   const types = e.dataTransfer?.types ?? []
   return (
-    types.includes(ZEN_IMAGE_MIME) ||
+    types.includes(ZEN_MEDIA_LIST_MIME) ||
+    types.includes(ZEN_MEDIA_MIME) ||
     types.includes(COMFY_ASSET_MIME) ||
     types.includes('text/uri-list') ||
     types.includes('Files')
   )
 }
 
-/** The media refs a drop carries, uploading desktop files into `input/<subfolder>`. Reads the
- *  drop synchronously before awaiting anything (a DataTransfer empties once its event returns),
- *  so call it from the drop handler itself. Call `preventDefault` when you accept the drop.
+/** The media refs a drop carries: every ComfyUI file of a dragged media list, else the one
+ *  dragged file, uploading desktop files into `input/<subfolder>`. Reads the drop synchronously
+ *  before awaiting anything (a DataTransfer empties once its event returns), so call it from the
+ *  drop handler itself. Call `preventDefault` when you accept the drop.
  *  `upload` replaces the plain upload, e.g. with one that reuses a file the server already has. */
 export async function readMediaDrop(
   e: DragEvent,
@@ -88,10 +101,15 @@ export async function readMediaDrop(
 ): Promise<string[]> {
   const dt = e.dataTransfer
   if (!dt) return []
-  const zen = json(dt.getData(ZEN_IMAGE_MIME))
+  const zen = json(dt.getData(ZEN_MEDIA_MIME))
   const asset = json(dt.getData(COMFY_ASSET_MIME))
   const uri = (dt.getData('text/uri-list') || '').split('\n')[0]?.trim() ?? ''
   const files = Array.from(dt.files).filter((f) => /^(image|video|audio)\//.test(f.type))
+  const list = json(dt.getData(ZEN_MEDIA_LIST_MIME))
+  if (list && typeof list.url === 'string') {
+    const refs = await listRefs(list.url)
+    if (refs.length) return refs
+  }
 
   if (zen) {
     const ref =

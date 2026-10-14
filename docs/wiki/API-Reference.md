@@ -301,20 +301,20 @@ design and never prefixed: plugins share them on purpose.
 
 | Export                                      | Signature                                                                      |
 | ------------------------------------------- | ------------------------------------------------------------------------------ |
-| `thumbUrl`                                  | `(ref: { filename; subfolder?; type? }, size = 256) => string`                 |
-| `mediaKindOf`                               | `(nameOrUrl: string) => 'image' \| 'video' \| 'audio'` (GIF is an image)       |
+| `zenThumbUrl`                               | `(ref: { filename; subfolder?; type? }, size = 256) => string`                 |
+| `mediaKind`                                 | `(nameOrUrl: string) => 'image' \| 'video' \| 'audio'` (GIF is an image)       |
 | `parseMediaRef`                             | `(ref: string) => { type; subfolder; filename } \| null` for ComfyUI file refs |
-| `setImageDragData`                          | `(e: DragEvent, img, dragImage?) => void`                                      |
-| `readImageDragData`                         | `(e: DragEvent) => DroppedImage[]`                                             |
-| `hasImageDragData`                          | `(e: DragEvent) => boolean`                                                    |
+| `setMediaDragData`                          | `(e: DragEvent, img, dragImage?) => void`                                      |
+| `readMediaDragData`                         | `(e: DragEvent) => DroppedMedia[]`                                             |
+| `hasMediaDragData`                          | `(e: DragEvent) => boolean`                                                    |
 | `setMediaListDragData`                      | `(e: DragEvent, list: MediaListRef) => void`                                   |
-| `readMediaListDrop`                         | `(e: DragEvent) => Promise<{ title?; items: DroppedImage[] }>`                 |
-| `ZEN_IMAGE_MIME`                            | `'application/x-zenkit-image'`                                                 |
+| `readMediaListDragData`                     | `(e: DragEvent) => Promise<{ title?; items: DroppedMedia[] }>`                 |
+| `ZEN_MEDIA_MIME`                            | `'application/x-zenkit-image'`                                                 |
 | `COMFY_ASSET_MIME`                          | `'application/x-comfy-asset-info'`                                             |
 | `LAST_CHANNEL`                              | `'$last'`: the channel to subscribe to for the newest image on any channel     |
 | `ZEN_MEDIA_LIST_MIME`                       | `'application/x-zenkit-media-list'`                                            |
 | `ComfyAssetType`                            | type: `'input' \| 'output' \| 'temp'`                                          |
-| `DroppedImage`, `MediaListRef`, `MediaList` | types                                                                          |
+| `DroppedMedia`, `MediaListRef`, `MediaList` | types                                                                          |
 
 ### Contract types
 

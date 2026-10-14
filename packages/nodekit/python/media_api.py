@@ -50,7 +50,7 @@ __all__ = [
     "FOLDERS",
     "KINDS",
     "find_input",
-    "kind_of",
+    "media_kind",
     "list_media",
     "media_info",
     "path_of",
@@ -67,7 +67,7 @@ KINDS = {
 MAX_ITEMS = 20000
 
 
-def kind_of(name: str) -> str | None:
+def media_kind(name: str) -> str | None:
     """'image' | 'video' | 'audio' by extension (GIF is an image), None for anything else."""
     lower = name.lower()
     return next((kind for kind, exts in KINDS.items() if lower.endswith(exts)), None)
@@ -121,7 +121,7 @@ def list_media(folder: str) -> list[dict]:
     for root, dirs, files in os.walk(base):
         dirs[:] = sorted(d for d in dirs if not d.startswith("."))
         for name in files:
-            kind = kind_of(name)
+            kind = media_kind(name)
             if not kind or name.startswith("."):
                 continue
             full = os.path.join(root, name)
@@ -181,7 +181,7 @@ def media_info(path: str) -> dict:
     """What a file is: its kind, length (seconds; None for a picture), size, frame rate and whether
     it has sound — from the file itself, which the browser can't reliably tell. Pictures are read
     with PIL; video and audio need PyAV, and without it everything but `kind` is None."""
-    kind = kind_of(path)
+    kind = media_kind(path)
     info = {
         "kind": kind,
         "duration": None,
@@ -288,7 +288,7 @@ def _make_thumb(path: str, size: int, out: str, at: tuple[int, float] | None = N
     else its first frame)."""
     from PIL import Image, ImageOps
 
-    if kind_of(path) == "video":
+    if media_kind(path) == "video":
         if av is None:
             raise RuntimeError("video thumbnails need PyAV (pip install av)")
         image = _video_frame(path, *(at or (0, 24.0)))
@@ -324,7 +324,7 @@ def register(routes) -> None:
         if (denied := request_allowed(request)) is not None:
             return denied
         path = resolve(request.query.get("ref", ""))
-        if not path or not kind_of(path):
+        if not path or not media_kind(path):
             return web.json_response({"error": "not found"}, status=404)
         try:
             info = await asyncio.to_thread(media_info, path)
@@ -351,7 +351,7 @@ def register(routes) -> None:
         query = request.query
         base = _base(query.get("type", "input"))
         path = _under(base, query.get("name", "")) if base else None
-        if not path or not os.path.isfile(path) or kind_of(path) not in ("image", "video"):
+        if not path or not os.path.isfile(path) or media_kind(path) not in ("image", "video"):
             return web.Response(status=404)
         try:
             size = max(32, min(768, int(query.get("size", "256"))))
@@ -367,7 +367,7 @@ def register(routes) -> None:
                 t = math.nan
             if not math.isfinite(t):
                 return web.Response(status=400, text="t must be a number of seconds")
-            if kind_of(path) == "video" and av is not None:
+            if media_kind(path) == "video" and av is not None:
                 try:
                     at = await asyncio.to_thread(_frame_at, path, t)
                 except Exception as err:  # noqa: BLE001 - a broken file just has no poster

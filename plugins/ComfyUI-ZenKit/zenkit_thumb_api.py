@@ -2,7 +2,7 @@
 
 GET /zenkit/thumb?type=output&filename=x.png&subfolder=&size=256 returns a JPEG no larger
 than `size` on its longest edge (a video's first frame for videos). This is what
-`thumbUrl` in @nynxz/zenkit-client builds URLs for.
+`zenThumbUrl` in @nynxz/zenkit-client builds URLs for.
 
 A thumbnail is made once and kept on disk under <user>/zenkit/thumbs, keyed by the file's
 path, mtime, byte size and the requested size, so an edited file gets a fresh one. Making

@@ -31,7 +31,7 @@ test('shared media parsing accepts ComfyUI files and rejects malformed refs', as
 })
 
 test('shared media kinds handle URLs, data URIs and GIFs consistently', async () => {
-  const { mediaKindOf } = await sourceModule(sharedPath)
+  const { mediaKind } = await sourceModule(sharedPath)
   for (const [name, kind] of [
     ['output/video.MP4', 'video'],
     ['https://example.com/video.webm?x=1', 'video'],
@@ -41,7 +41,7 @@ test('shared media kinds handle URLs, data URIs and GIFs consistently', async ()
     ['animated.gif', 'image'],
     ['', 'image'],
   ])
-    assert.equal(mediaKindOf(name), kind, name)
+    assert.equal(mediaKind(name), kind, name)
 })
 
 test('runtime and node widgets resolve the same refs without changing their public failure behavior', async () => {
@@ -57,8 +57,9 @@ test('runtime and node widgets resolve the same refs without changing their publ
       '@comfy/api': api,
       '@comfy/app': mockModule('export const app = {}'),
     }),
-    './zenkit': mockModule(`export { mediaKindOf, parseMediaRef } from '${shared}';
-      export const ZEN_IMAGE_MIME = 'application/x-zen-image';
+    './zenkit': mockModule(`export { mediaKind, parseMediaRef } from '${shared}';
+      export const ZEN_MEDIA_MIME = 'application/x-zen-image';
+      export const ZEN_MEDIA_LIST_MIME = 'application/x-zen-media-list';
       export const COMFY_ASSET_MIME = 'application/x-comfy-asset';`),
   })
   const media = core.createMedia()
@@ -79,4 +80,40 @@ test('runtime and node widgets resolve the same refs without changing their publ
     await assert.rejects(media.resolve(ref))
     assert.equal(nodekit.mediaRefUrl(ref), '/api/view?filename=')
   }
+})
+
+test('a node widget takes every ComfyUI file of a dropped media list, else the single file', async () => {
+  const shared = await sourceUrl(sharedPath)
+  const api = mockModule('export const api = { apiURL: path => "/api" + path }')
+  const nodekit = await sourceModule('packages/nodekit/src/mediaRefs.ts', {
+    '@comfy/api': api,
+    './viewUrl': await sourceUrl('packages/nodekit/src/viewUrl.ts', {
+      '@comfy/api': api,
+      '@comfy/app': mockModule('export const app = {}'),
+    }),
+    './zenkit': mockModule(`export { mediaKind, parseMediaRef } from '${shared}';
+      export const ZEN_MEDIA_MIME = 'zen-media';
+      export const ZEN_MEDIA_LIST_MIME = 'zen-list';
+      export const COMFY_ASSET_MIME = 'comfy-asset';`),
+  })
+  globalThis.location = { href: 'http://localhost/' }
+  const drop = (data) => ({
+    dataTransfer: { types: Object.keys(data), files: [], getData: (type) => data[type] ?? '' },
+  })
+  const single = { 'zen-media': JSON.stringify({ ref: 'output/one.png' }) }
+  const list = { ...single, 'zen-list': JSON.stringify({ url: 'http://localhost/album' }) }
+  globalThis.fetch = async () => ({
+    ok: true,
+    json: async () => ({
+      items: [
+        { url: 'http://localhost/api/view?filename=a.png&type=output&subfolder=s' },
+        { url: 'https://example.com/elsewhere.png' },
+        { url: 'http://localhost/api/view?filename=b.mp4&type=input' },
+      ],
+    }),
+  })
+  assert.ok(nodekit.hasMediaDrop(drop({ 'zen-list': '' })))
+  assert.deepEqual(await nodekit.readMediaDrop(drop(list)), ['output/s/a.png', 'input/b.mp4'])
+  globalThis.fetch = async () => ({ ok: false })
+  assert.deepEqual(await nodekit.readMediaDrop(drop(list)), ['output/one.png'])
 })

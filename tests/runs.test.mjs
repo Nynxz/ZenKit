@@ -12,7 +12,7 @@ async function runModule(fetchApi) {
   const module = await sourceModule('plugins/ComfyUI-ZenAgent/src/lib/runs.ts', {
     '@comfy/api': mockModule('export const api = globalThis.runTestApi'),
     '@comfy/app': mockModule('export const app = { graphToPrompt: async () => ({output:{}}) }'),
-    '@nynxz/zenkit-client': mockModule('export const mediaKindOf = () => "image"'),
+    '@nynxz/zenkit-client': mockModule('export const mediaKind = () => "image"'),
   })
   const emit = (type, id) => listeners.get(type)({ detail: { prompt_id: id } })
   return { ...module, emit }

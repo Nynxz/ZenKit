@@ -21,7 +21,7 @@ try:
 except Exception as e:  # pragma: no cover
     print(f"[ZenKit] runtime route failed to load: {e}")
 
-# Cached thumbnails for input/output/temp files at /zenkit/thumb (client: thumbUrl).
+# Cached thumbnails for input/output/temp files at /zenkit/thumb (client: zenThumbUrl).
 try:
     from . import zenkit_thumb_api  # noqa: F401
 except Exception as e:  # pragma: no cover

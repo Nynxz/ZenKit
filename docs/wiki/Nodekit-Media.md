@@ -53,7 +53,7 @@ async function onDrop(e: DragEvent) {
 | `uploadMediaFile` | `(file: File, subfolder = 'zenkit') => Promise<string>`                               | POSTs to ComfyUI's `/upload/image`, returns `input/<subfolder>/<name>`. Throws on a non-OK response.                         |
 | `parseMediaRef`   | `(ref: string) => { type, subfolder, filename } \| null`                              | Null unless the first segment is `input`, `output` or `temp` (and no segment is empty or `..`)                               |
 | `mediaRefUrl`     | `(ref: string) => string`                                                             | `/view` URL for a ref (via `viewUrl`). Anything else (a URL, `/path`, bad ref) gets a `/view` URL ComfyUI refuses, see below |
-| `mediaKind`       | `(ref: string) => 'image' \| 'video' \| 'audio'`                                      | By extension; anything unknown is `'image'`, and so is GIF. The client's `mediaKindOf`, under the name packs know it by.     |
+| `mediaKind`       | `(ref: string) => 'image' \| 'video' \| 'audio'`                                      | By extension; anything unknown is `'image'`, and so is GIF. The client's `mediaKind`, under the name packs know it by.       |
 | `viewUrl`         | `(record: Record<string, string>) => string`                                          | ComfyUI `/view?…` from a saved-image record (`{filename, subfolder, type}`), base-path safe, cache-busted. Published.        |
 
 Only ComfyUI refs resolve. A ref a widget stored can come from a shared workflow, so `mediaRefUrl`
@@ -66,12 +66,13 @@ fetched from the address the workflow named. Use `parseMediaRef(ref)` to tell re
 
 Checked in this order; the first match wins.
 
-| Source                                       | MIME type                        | Result                                                                            |
-| -------------------------------------------- | -------------------------------- | --------------------------------------------------------------------------------- |
-| ZenKit drag (Media Viewer, Asset Browser, …) | `application/x-zenkit-image`     | Its `ref`, or a ref parsed from its `/view` `url`                                 |
-| ComfyUI's asset browser                      | `application/x-comfy-asset-info` | `type/subfolder/filename` (type defaults to `input`)                              |
-| A `/view` link                               | `text/uri-list` (first line)     | Ref parsed from the URL                                                           |
-| Desktop files                                | `Files`                          | Each `image/*`, `video/*`, `audio/*` file uploaded with `upload(file, subfolder)` |
+| Source                                       | MIME type                         | Result                                                                            |
+| -------------------------------------------- | --------------------------------- | --------------------------------------------------------------------------------- |
+| A ZenKit media list (an album, a folder)     | `application/x-zenkit-media-list` | Every ComfyUI file in the fetched list; if it can't be fetched, the rows below    |
+| ZenKit drag (Media Viewer, Asset Browser, …) | `application/x-zenkit-image`      | Its `ref`, or a ref parsed from its `/view` `url`                                 |
+| ComfyUI's asset browser                      | `application/x-comfy-asset-info`  | `type/subfolder/filename` (type defaults to `input`)                              |
+| A `/view` link                               | `text/uri-list` (first line)      | Ref parsed from the URL                                                           |
+| Desktop files                                | `Files`                           | Each `image/*`, `video/*`, `audio/*` file uploaded with `upload(file, subfolder)` |
 
 Rules:
 

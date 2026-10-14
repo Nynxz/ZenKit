@@ -1,3 +1,4 @@
+import { readFileSync } from 'node:fs'
 import { fileURLToPath, URL } from 'node:url'
 import { defineConfig, type Plugin, type UserConfig } from 'vite'
 import vue from '@vitejs/plugin-vue'
@@ -51,8 +52,9 @@ function inlineCss(extensionName: string, entry = 'main.js'): Plugin {
 }
 
 export interface ZenPluginOptions {
-  /** The pack's name — also the `data-extension` attribute on the injected style tag. */
-  name: string
+  /** The pack's name, the `data-extension` attribute on the injected style tag. Defaults to the
+   *  `name` in the package.json beside the config. */
+  name?: string
   /** Always `import.meta.url` from the pack's own vite config, so paths resolve relative to it. */
   configUrl: string
   /** Entry, relative to the config. Defaults to the conventional `./src/main.ts`. */
@@ -83,7 +85,7 @@ export function zenPluginConfig({
   const at = (p: string) => fileURLToPath(new URL(p, configUrl))
   const runtime = { ...COMFY_RUNTIME, ...(sharedRuntime ? ZENKIT_RUNTIME : {}) }
   return defineConfig({
-    plugins: [vue(), inlineCss(name)],
+    plugins: [vue(), inlineCss(name ?? packageName(at('package.json')))],
     resolve: {
       // `@` -> the pack's own src. Extra aliases merge in via `opts.alias` (this repo's
       // plugins use it to resolve @nynxz/zenkit-* to workspace source).
@@ -115,11 +117,21 @@ export function zenPluginConfig({
         output: {
           paths: runtime,
           entryFileNames: 'main.js',
+          // ComfyUI imports every .js under WEB_DIRECTORY at startup, so code split off to load
+          // on demand is named .mjs, which it leaves alone.
+          chunkFileNames: 'chunks/[name]-[hash].mjs',
           assetFileNames: 'assets/[name].[ext]',
         },
       },
     },
   })
+}
+
+function packageName(file: string): string {
+  const { name } = JSON.parse(readFileSync(file, 'utf8')) as { name?: unknown }
+  if (typeof name !== 'string' || !name)
+    throw new Error(`zenPluginConfig: pass \`name\`, or give ${file} a "name".`)
+  return name
 }
 
 const RUNTIME_ENTRY = 'zenkit-runtime:'

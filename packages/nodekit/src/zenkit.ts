@@ -7,12 +7,13 @@
 export {
   COMFY_ASSET_MIME,
   getZenKit,
-  mediaKindOf,
+  mediaKind,
   parseMediaRef,
   openViewer,
   useAppLocation,
   whenZen,
-  ZEN_IMAGE_MIME,
+  ZEN_MEDIA_LIST_MIME,
+  ZEN_MEDIA_MIME,
 } from '../../client/src/index'
 export type {
   AppContext,

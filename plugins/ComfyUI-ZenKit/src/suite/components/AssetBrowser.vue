@@ -256,7 +256,7 @@ import {
   ZenPeek,
   type FolderTreeEntry,
 } from '@nynxz/zenkit-ui'
-import { setImageDragData, openViewer, useJob, type ViewerItem } from '@nynxz/zenkit-client'
+import { setMediaDragData, openViewer, useJob, type ViewerItem } from '@nynxz/zenkit-client'
 import { app } from '@comfy/app'
 import {
   listAssets,
@@ -282,7 +282,7 @@ function onDragStart(e: DragEvent, it: AssetItem) {
   const img = (e.currentTarget as HTMLElement | null)?.querySelector(
     'img',
   ) as HTMLImageElement | null
-  setImageDragData(
+  setMediaDragData(
     e,
     {
       url: viewUrl(it, root.value),

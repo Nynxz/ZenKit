@@ -2,8 +2,8 @@
 // It owns the ZenKit contract (./contract, types only): consumers import every ZenKit type from
 // here, with `import type`.
 export type * from './contract'
-export { mediaKindOf, parseMediaRef } from './mediaRefs'
-import { mediaKindOf } from './mediaRefs'
+export { mediaKind, parseMediaRef } from './mediaRefs'
+import { mediaKind } from './mediaRefs'
 import type {
   Capability,
   AppRegistration,
@@ -39,7 +39,7 @@ function zwarn(msg: string, ...a: unknown[]): void {
 }
 
 /** URL for ZenKit's cached thumbnail service. Requires ZenKit installed (404s otherwise). */
-export function thumbUrl(
+export function zenThumbUrl(
   ref: { type?: string; filename: string; subfolder?: string },
   size = 256,
 ): string {
@@ -465,7 +465,7 @@ export { useLightbox } from './useLightbox'
 export type { Lightbox } from './useLightbox'
 
 /** MIME type carrying a draggable image for ZenKit's drag-to-graph bridge. */
-export const ZEN_IMAGE_MIME = 'application/x-zenkit-image'
+export const ZEN_MEDIA_MIME = 'application/x-zenkit-image'
 
 /** ComfyUI's own "this asset already lives on the server" drag MIME. Its payload is a
  *  ResultItem ({ filename, subfolder, type }) — the same shape /view takes. Nodes built on
@@ -490,7 +490,7 @@ function absoluteUrl(url: string): string {
 /** Populate a drag event's dataTransfer so dropping the image on the ComfyUI graph
  *  imports it (sets the image widget of the node under the cursor, or loads the file
  *  when dropped on empty canvas). Call from an element's `dragstart`:
- *    <img draggable @dragstart="e => setImageDragData(e, { url, filename })">
+ *    <img draggable @dragstart="e => setMediaDragData(e, { url, filename })">
  *  `url` should be the full-resolution image URL (e.g. ComfyUI's /view route); relative
  *  paths are resolved against the page before they go on the clipboard.
  *
@@ -500,7 +500,7 @@ function absoluteUrl(url: string): string {
  *  duplicate copy. Omit `type` for files ComfyUI doesn't host (they upload on drop).
  *
  *  Pass `dragImage` (usually the thumbnail <img>) for a nicer drag cursor. */
-export function setImageDragData(
+export function setMediaDragData(
   e: DragEvent,
   img: {
     url: string
@@ -524,7 +524,7 @@ export function setImageDragData(
   const ref =
     img.ref ??
     (img.filename && img.type ? comfyRef(img.type, img.subfolder, img.filename) : refFromUrl(url))
-  dt.setData(ZEN_IMAGE_MIME, JSON.stringify({ ...img, url, ref }))
+  dt.setData(ZEN_MEDIA_MIME, JSON.stringify({ ...img, url, ref }))
   // Native Comfy asset → let loader nodes reuse the server-side file as-is.
   if (img.filename && img.type) {
     dt.setData(
@@ -552,7 +552,7 @@ export function setImageDragData(
 }
 
 /** One media item recovered from a drop. */
-export interface DroppedImage {
+export interface DroppedMedia {
   url: string
   /** Its media ref (see `ZenMedia`) when the drag named one or it is a ComfyUI file. */
   ref?: string
@@ -596,7 +596,7 @@ function refFromUrl(url: string): string | undefined {
   }
 }
 
-/** The inverse of `setImageDragData`: recover the media a drop is carrying.
+/** The inverse of `setMediaDragData`: recover the media a drop is carrying.
  *
  *  Handles, in order of how much they tell us: ZenKit's own drag payload, ComfyUI's asset-info
  *  (so drags from ITS asset browser work too), a plain URL, and finally local files off the
@@ -606,16 +606,16 @@ function refFromUrl(url: string): string | undefined {
  *  Call `e.preventDefault()` yourself when you accept a drop — ComfyUI's document-level handler
  *  bails on `defaultPrevented`, which is what stops a drop on your panel from ALSO importing the
  *  file into the graph. */
-export function readImageDragData(e: DragEvent): DroppedImage[] {
+export function readMediaDragData(e: DragEvent): DroppedMedia[] {
   const dt = e.dataTransfer
   if (!dt) return []
 
   // 1. ZenKit's own payload — the richest: it already carries a resolved absolute url.
-  const zen = safeJson(dt.getData(ZEN_IMAGE_MIME))
+  const zen = safeJson(dt.getData(ZEN_MEDIA_MIME))
   if (zen && typeof zen.url === 'string' && zen.url) {
     const filename = typeof zen.filename === 'string' ? zen.filename : fileNameFromUrl(zen.url)
     const ref = typeof zen.ref === 'string' ? zen.ref : refFromUrl(zen.url)
-    return [{ url: zen.url, ref, filename, kind: mediaKindOf(filename || zen.url) }]
+    return [{ url: zen.url, ref, filename, kind: mediaKind(filename || zen.url) }]
   }
 
   // 2. ComfyUI's asset-info — a ResultItem naming a file the server already hosts.
@@ -632,7 +632,7 @@ export function readImageDragData(e: DragEvent): DroppedImage[] {
       String(asset.subfolder || ''),
       String(asset.filename),
     )
-    return [{ url: absoluteUrl(`/api/view?${q}`), ref, filename: name, kind: mediaKindOf(name) }]
+    return [{ url: absoluteUrl(`/api/view?${q}`), ref, filename: name, kind: mediaKind(name) }]
   }
 
   // 3. A plain URL. `file:` is unusable from an http document — fall through to the File below,
@@ -640,7 +640,7 @@ export function readImageDragData(e: DragEvent): DroppedImage[] {
   const uri = (dt.getData('text/uri-list') || dt.getData('text/plain') || '').split('\n')[0]?.trim()
   if (uri && /^(https?|data|blob):/i.test(uri)) {
     const filename = fileNameFromUrl(uri)
-    return [{ url: uri, ref: refFromUrl(uri), filename, kind: mediaKindOf(filename || uri) }]
+    return [{ url: uri, ref: refFromUrl(uri), filename, kind: mediaKind(filename || uri) }]
   }
 
   // 4. Local files off the desktop. Object URLs render immediately with no upload round trip;
@@ -659,7 +659,7 @@ export function readImageDragData(e: DragEvent): DroppedImage[] {
 
 /** A whole collection in one drag — a gallery, an album, a folder. Dragging only lets a source
  *  attach data synchronously, so the items travel as a same-origin URL that returns them
- *  (`MediaList`), fetched by whoever accepts the drop. Set it alongside `setImageDragData` for a
+ *  (`MediaList`), fetched by whoever accepts the drop. Set it alongside `setMediaDragData` for a
  *  single representative picture, so targets that only take one image (a loader node) still get
  *  something sensible. */
 export const ZEN_MEDIA_LIST_MIME = 'application/x-zenkit-media-list'
@@ -684,13 +684,13 @@ export function setMediaListDragData(e: DragEvent, list: MediaListRef): void {
 }
 
 /** Everything a drop carries, with a dropped media list fetched and expanded; otherwise the same
- *  as `readImageDragData`. The drop's data is read before anything is awaited — a DataTransfer
+ *  as `readMediaDragData`. The drop's data is read before anything is awaited — a DataTransfer
  *  goes blank once its event returns — so call this from the drop handler itself. If the list
  *  can't be fetched, the drop's single picture (if any) is returned instead. */
-export async function readMediaListDrop(
+export async function readMediaListDragData(
   e: DragEvent,
-): Promise<{ title?: string; items: DroppedImage[] }> {
-  const single = readImageDragData(e)
+): Promise<{ title?: string; items: DroppedMedia[] }> {
+  const single = readMediaDragData(e)
   const ref = safeJson(e.dataTransfer?.getData(ZEN_MEDIA_LIST_MIME) ?? '')
   if (!ref || typeof ref.url !== 'string') return { items: single }
   try {
@@ -702,7 +702,7 @@ export async function readMediaListDrop(
       items: list.items.map((it) => {
         const url = absoluteUrl(it.url)
         const filename = it.filename ?? fileNameFromUrl(url)
-        return { url, filename, kind: it.kind ?? mediaKindOf(filename || url) }
+        return { url, filename, kind: it.kind ?? mediaKind(filename || url) }
       }),
     }
   } catch {
@@ -710,14 +710,14 @@ export async function readMediaListDrop(
   }
 }
 
-/** True when a dragover is carrying something `readImageDragData` could use. `dataTransfer` is in
+/** True when a dragover is carrying something `readMediaDragData` could use. `dataTransfer` is in
  *  protected mode during dragover — `getData` returns '' — so this can only look at `types`. */
-export function hasImageDragData(e: DragEvent): boolean {
+export function hasMediaDragData(e: DragEvent): boolean {
   const t = e.dataTransfer?.types
   if (!t) return false
   return (
     t.includes(ZEN_MEDIA_LIST_MIME) ||
-    t.includes(ZEN_IMAGE_MIME) ||
+    t.includes(ZEN_MEDIA_MIME) ||
     t.includes(COMFY_ASSET_MIME) ||
     t.includes('text/uri-list') ||
     t.includes('Files')

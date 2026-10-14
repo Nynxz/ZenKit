@@ -20,7 +20,7 @@ const AUDIO_EXT = /\.(mp3|wav|flac|ogg|oga|m4a|aac|opus)(\?|#|$)/i
 /** Guess the media kind from a filename or url. A `data:` URI is read from its media type,
  *  since it has no extension to go on. Anything else, GIF included, is an image (the default,
  *  matching ChannelImage). */
-export function mediaKindOf(nameOrUrl: string): 'image' | 'video' | 'audio' {
+export function mediaKind(nameOrUrl: string): 'image' | 'video' | 'audio' {
   const s = nameOrUrl || ''
   const data = /^data:(image|video|audio)\//i.exec(s)
   if (data) return data[1]!.toLowerCase() as 'image' | 'video' | 'audio'

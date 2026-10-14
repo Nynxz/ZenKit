@@ -9,12 +9,10 @@ import type { MediaInfo, MediaRef, MediaSource, ZenMedia } from './types'
 // Import the pure shared source, without loading the consumer SDK's runtime helpers.
 import {
   COMFY_MEDIA_FOLDERS,
-  mediaKindOf,
+  mediaKind,
   parseMediaRef,
   type ComfyMediaFolder,
 } from '../../client/src/mediaRefs'
-
-export const kindOf = mediaKindOf
 
 function parseComfyRef(ref: MediaRef) {
   const file = parseMediaRef(ref)
@@ -31,7 +29,7 @@ function comfySource(type: ComfyMediaFolder): MediaSource {
       return {
         ref,
         url: api.apiURL(`/view?${q.toString()}`),
-        kind: kindOf(file.filename),
+        kind: mediaKind(file.filename),
         label: file.filename,
       }
     },

@@ -1,7 +1,7 @@
 // The capabilities ZenKit itself offers: seeing and arranging panels, and showing media.
 import { api } from '@comfy/api'
 
-import { kindOf } from './media'
+import { mediaKind } from '../../client/src/mediaRefs'
 import type { DockSide, ZenKitApi } from './types'
 
 const num = (v: unknown) => (typeof v === 'number' && Number.isFinite(v) ? v : undefined)
@@ -166,12 +166,12 @@ export function registerCoreCapabilities(zen: ZenKitApi): void {
       const names = ((await res.json()) as string[]).map((n) => n.replace(/ \[\w+\]$/, ''))
       const needle = str(search)?.toLowerCase()
       const files = names
-        .filter((n) => !kind || kindOf(n) === kind)
+        .filter((n) => !kind || mediaKind(n) === kind)
         .filter((n) => !needle || n.toLowerCase().includes(needle))
       const count = Math.max(1, Math.min(100, num(limit) ?? 10))
       return {
         total: files.length,
-        media: files.slice(0, count).map((n) => ({ media: `${dir}/${n}`, kind: kindOf(n) })),
+        media: files.slice(0, count).map((n) => ({ media: `${dir}/${n}`, kind: mediaKind(n) })),
       }
     },
   })

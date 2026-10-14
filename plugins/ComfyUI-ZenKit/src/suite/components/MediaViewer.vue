@@ -16,10 +16,10 @@ import {
 } from '@nynxz/zenkit-ui'
 import {
   getZenKit,
-  hasImageDragData,
-  readImageDragData,
-  readMediaListDrop,
-  setImageDragData,
+  hasMediaDragData,
+  readMediaDragData,
+  readMediaListDragData,
+  setMediaDragData,
   ZEN_MEDIA_LIST_MIME,
   type ChannelImage,
   type PanelContext,
@@ -425,7 +425,7 @@ function forget(it: Pick<HItem, 'url'>) {
 let draggingOwn = false
 function onThumbDrag(e: DragEvent, it: HItem) {
   draggingOwn = true
-  setImageDragData(
+  setMediaDragData(
     e,
     { url: it.url, filename: it.filename, ref: it.ref },
     (e.currentTarget as HTMLElement).querySelector('img'),
@@ -433,7 +433,7 @@ function onThumbDrag(e: DragEvent, it: HItem) {
 }
 
 function onDragOver(e: DragEvent) {
-  if (draggingOwn || !hasImageDragData(e)) return
+  if (draggingOwn || !hasMediaDragData(e)) return
   e.preventDefault() // required, or the browser never fires `drop` here
   if (e.dataTransfer) e.dataTransfer.dropEffect = 'copy'
   dragOver.value = true
@@ -447,13 +447,13 @@ function onDragLeave(e: DragEvent) {
 async function onDrop(e: DragEvent) {
   dragOver.value = false
   const isList = e.dataTransfer?.types.includes(ZEN_MEDIA_LIST_MIME) ?? false
-  if (!isList && !readImageDragData(e).length) return // nothing we understand — let ComfyUI have it
+  if (!isList && !readMediaDragData(e).length) return // nothing we understand — let ComfyUI have it
   // Claiming the event is what stops the graph ALSO importing the file: ComfyUI's
   // document-level drop handler returns early on `defaultPrevented`.
   e.preventDefault()
   e.stopPropagation()
   mode.value = 'view' // compare mode has no history strip; show what they just dropped
-  const dropped = readMediaListDrop(e) // reads the drop now; a gallery's items are fetched after
+  const dropped = readMediaListDragData(e) // reads the drop now; a gallery's items are fetched after
   loadingDrop.value = isList
   const { items } = await dropped
   loadingDrop.value = false

@@ -43,7 +43,6 @@ web/                   build output; WEB_DIRECTORY = "./web" in __init__.py
 import { zenPluginConfig } from '@nynxz/zenkit-nodekit/vite'
 
 export default zenPluginConfig({
-  name: 'comfyui-yourpack',
   configUrl: import.meta.url,
   srcDir: './frontend', // default './src'
   outDir: 'web', // default 'js'; must match WEB_DIRECTORY
@@ -74,17 +73,23 @@ it would be dropped along with `node_modules`.
 **`frontend/framework.ts`**
 
 ```ts
-import { createNodekit, defineNode, openZenPanel, readMediaDrop } from '@nynxz/zenkit-nodekit'
+import { createNodekit } from '@nynxz/zenkit-nodekit'
 import manifest from '../pack.json'
 
+// Everything identity-free (defineNode, readMediaDrop, openZenPanel, the types, …)…
+export * from '@nynxz/zenkit-nodekit'
+// …and what createNodekit binds to this pack.
 export const {
+  NAMESPACE,
+  DISPLAY_NAME,
   nodeId,
   typeId,
   route,
+  routeUrl,
   settingId,
   registerNodes,
-  discoverWidgets,
   discoverNodes,
+  discoverWidgets,
   widgetTypes,
   mountWidget,
   addNodeHeaderButton,
@@ -93,7 +98,6 @@ export const {
   uploadOrReuse,
   mediaInfo,
 } = createNodekit(manifest)
-export { defineNode, openZenPanel, readMediaDrop }
 ```
 
 **`frontend/main.ts`**

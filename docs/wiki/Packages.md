@@ -37,7 +37,7 @@ All packages are version `0.2.0`. The source has moved on since that release:
 
 | Package                 | Unreleased, not yet on npm                                                                                                                                                                                                                                   |
 | ----------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
-| `@nynxz/zenkit-client`  | The contract folded in (`@nynxz/zenkit-types` is gone); the pass-through helpers (`openPanel`, `onBus`, `publishChannel`, …) removed in favour of `whenZen()`; `readMediaDrop` renamed `readMediaListDrop`; widget views removed                             |
+| `@nynxz/zenkit-client`  | The contract folded in (`@nynxz/zenkit-types` is gone); the pass-through helpers (`openPanel`, `onBus`, `publishChannel`, …) removed in favour of `whenZen()`; `readMediaDrop` renamed `readMediaListDragData`; widget views removed                         |
 | `@nynxz/zenkit-ui`      | 14 of the 41 components (ZenMentionInput, ZenResolution, ZenVolume, ZenCurveEditor, ZenContextMenu, ZenMediaControls, ZenMediaPicker, ZenTimeline, ZenStepChart, ZenFolderTree, the LoRA components) — see [UI components](UI-Components.md#component-index) |
 | `@nynxz/zenkit-nodekit` | The media API (`readMediaDrop`, `mediaLibrary`, …), `openZenPanel`'s `onClose` / `close({ keep })` / `focus()`, and the client's `openViewer` / `registerSlotLink` signatures                                                                                |
 
@@ -84,7 +84,7 @@ Arrows point from a package to the things that import it.
 
 - `core` and `theme` import only types from `client` (`import type`), so there is no runtime edge.
 - `ui` is standalone at runtime: no imports from other ZenKit packages.
-- `nodekit` bundles the client code it shares (`whenZen`, `openViewer`, `mediaKindOf`, the drag
+- `nodekit` bundles the client code it shares (`whenZen`, `openViewer`, `mediaKind`, the drag
   MIME types) into its own build, and ships the matching `.d.ts` files. External node packs
   therefore don't depend on `client`.
 

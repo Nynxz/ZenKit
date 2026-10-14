@@ -1,7 +1,7 @@
 import {
-  hasImageDragData,
-  readImageDragData,
-  readMediaListDrop,
+  hasMediaDragData,
+  readMediaDragData,
+  readMediaListDragData,
   ZEN_MEDIA_LIST_MIME,
 } from '@nynxz/zenkit-client'
 import { ref } from 'vue'
@@ -17,7 +17,7 @@ import { resolveMedia, uploadLocal } from './vision'
 export function useMediaDrop(onMedia: (media: Attachment[]) => void) {
   const dropping = ref(false)
   function onDragOver(e: DragEvent): void {
-    if (!hasImageDragData(e)) return
+    if (!hasMediaDragData(e)) return
     e.preventDefault()
     if (e.dataTransfer) e.dataTransfer.dropEffect = 'copy'
     dropping.value = true
@@ -29,10 +29,10 @@ export function useMediaDrop(onMedia: (media: Attachment[]) => void) {
   async function onDrop(e: DragEvent): Promise<void> {
     dropping.value = false
     const isList = e.dataTransfer?.types.includes(ZEN_MEDIA_LIST_MIME) ?? false
-    if (!isList && !readImageDragData(e).length) return
+    if (!isList && !readMediaDragData(e).length) return
     e.preventDefault()
     e.stopPropagation()
-    const { items: dropped } = await readMediaListDrop(e)
+    const { items: dropped } = await readMediaListDragData(e)
     const media = await Promise.all(
       dropped.slice(0, 8).map(async (it): Promise<Attachment | null> => {
         try {

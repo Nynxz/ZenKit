@@ -91,7 +91,6 @@ Server routes go in their own module, imported at the top of `__init__.py` insid
 import { zenPluginConfig } from '@nynxz/zenkit-nodekit/vite'
 
 export default zenPluginConfig({
-  name: 'comfyui-myplugin',
   configUrl: import.meta.url,
   sharedRuntime: true,
 })
@@ -102,7 +101,7 @@ export default zenPluginConfig({
 
 | Option          | Default         | Meaning                                                                                                       |
 | --------------- | --------------- | ------------------------------------------------------------------------------------------------------------- |
-| `name`          | required        | Pack name; also the `data-extension` attribute on the injected `<style>`.                                     |
+| `name`          | package.json    | Pack name; also the `data-extension` attribute on the injected `<style>`. Defaults to package.json's `name`.  |
 | `configUrl`     | required        | Always `import.meta.url`.                                                                                     |
 | `entry`         | `./src/main.ts` | Entry file.                                                                                                   |
 | `outDir`        | `js`            | Must match `WEB_DIRECTORY`.                                                                                   |

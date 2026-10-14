@@ -81,17 +81,17 @@ With neither field set, the call logs a warning and resolves
 
 ## What each helper does without ZenKit
 
-| Helper                               | Without ZenKit                                                                      |
-| ------------------------------------ | ----------------------------------------------------------------------------------- |
-| `registerZenPlugin`                  | Runs the fallback, `connected: false`                                               |
-| `whenZen`                            | Resolves `null`                                                                     |
-| `startJob`                           | Resolves a handle whose methods do nothing (`id` is `''`)                           |
-| `useJob`                             | Ref stays `null`                                                                    |
-| `openViewer`                         | Opens the item at `opts.index` (default 0) in a new tab; resolves `null`            |
-| `useLightbox().open`                 | Same new-tab fallback; `isOpen` stays false                                         |
-| `mountVue`                           | Works (it only mounts a component)                                                  |
-| `thumbUrl`                           | Still returns `/zenkit/thumb?…`, which 404s (the route is served by ComfyUI-ZenKit) |
-| Drag-and-drop helpers, `mediaKindOf` | Work normally (no runtime needed)                                                   |
+| Helper                             | Without ZenKit                                                                      |
+| ---------------------------------- | ----------------------------------------------------------------------------------- |
+| `registerZenPlugin`                | Runs the fallback, `connected: false`                                               |
+| `whenZen`                          | Resolves `null`                                                                     |
+| `startJob`                         | Resolves a handle whose methods do nothing (`id` is `''`)                           |
+| `useJob`                           | Ref stays `null`                                                                    |
+| `openViewer`                       | Opens the item at `opts.index` (default 0) in a new tab; resolves `null`            |
+| `useLightbox().open`               | Same new-tab fallback; `isOpen` stays false                                         |
+| `mountVue`                         | Works (it only mounts a component)                                                  |
+| `zenThumbUrl`                      | Still returns `/zenkit/thumb?…`, which 404s (the route is served by ComfyUI-ZenKit) |
+| Drag-and-drop helpers, `mediaKind` | Work normally (no runtime needed)                                                   |
 
 When the host never announced itself, the first call that needs the runtime waits the full
 `ZEN_CONNECT_TIMEOUT` before giving up. That verdict is cached, so later calls resolve at once.
