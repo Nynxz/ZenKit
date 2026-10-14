@@ -692,7 +692,7 @@ export async function readMediaListDragData(
 ): Promise<{ title?: string; items: DroppedMedia[] }> {
   const single = readMediaDragData(e)
   const ref = safeJson(e.dataTransfer?.getData(ZEN_MEDIA_LIST_MIME) ?? '')
-  if (!ref || typeof ref.url !== 'string') return { items: single }
+  if (!ref || typeof ref.url !== 'string' || !sameOrigin(ref.url)) return { items: single }
   try {
     const response = await fetch(ref.url, { credentials: 'include' })
     if (!response.ok) throw new Error(String(response.status))
@@ -722,6 +722,16 @@ export function hasMediaDragData(e: DragEvent): boolean {
     t.includes('text/uri-list') ||
     t.includes('Files')
   )
+}
+
+/** Whether `url` is on this page's own origin: a dragged list from anywhere else is not fetched
+ *  (with this origin's cookies) at all. */
+function sameOrigin(url: string): boolean {
+  try {
+    return new URL(url, window.location.href).origin === window.location.origin
+  } catch {
+    return false
+  }
 }
 
 function safeJson(raw: string): Record<string, unknown> | null {

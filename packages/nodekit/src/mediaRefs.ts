@@ -48,6 +48,7 @@ function json(raw: string): Record<string, unknown> | null {
 /** The ComfyUI files of a dragged media list (a `MediaList` at `url`); [] if it can't be fetched. */
 async function listRefs(url: string): Promise<string[]> {
   try {
+    if (new URL(url, location.href).origin !== location.origin) return []
     const res = await fetch(url, { credentials: 'include' })
     if (!res.ok) return []
     const { items } = (await res.json()) as { items?: { url?: unknown }[] }

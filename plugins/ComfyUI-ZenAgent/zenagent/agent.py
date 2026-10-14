@@ -86,6 +86,9 @@ ASK_FOR_REPLY = "Reply to the user now, briefly, with what you did or found."
 
 DECLINED = "The user declined this action, so nothing was done. Don't retry it; carry on without it or ask the user what they'd like instead."
 UNANSWERED = "The user didn't answer the approval request in time, so nothing was done."
+#: Tools a card answer can only approve once: running the workflow spends GPU time or credits, and
+#: a deletion can't be undone, so neither is waved through for a reply or for good from a card.
+ASK_EVERY_TIME = frozenset({"queue_prompt", "remove_node"})
 DATA_TAG = re.compile(r"<(/?)(workflow_data|tool_result)", re.IGNORECASE)
 
 
@@ -441,6 +444,8 @@ async def run_turn(
                         and needs_approval(name, extra_names, extra_writes)
                     ):
                         decision = await ask_approval(turn, emit, call["id"], name, args)
+                        if name in ASK_EVERY_TIME and decision in ("allow_turn", "allow_always"):
+                            decision = "approve"
                         if decision == "allow_always":
                             _always_allow(name)
                         if decision in ("allow_turn", "allow_always"):

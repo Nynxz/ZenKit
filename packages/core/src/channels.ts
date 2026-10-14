@@ -6,6 +6,7 @@
 //   { channel, filename, subfolder?, type? }  (resolved via /view)  — publish
 //   { channel, url }                                                 — publish
 //   { channel }                          (no image)                  — declare only
+import { safeMediaUrl } from '@nynxz/zenkit-ui'
 import { reactive } from 'vue'
 import { api } from '@comfy/api'
 import { zdebug } from './log'
@@ -64,7 +65,7 @@ export function createChannels(bus: ZenBus, media: ZenMedia) {
     const isNew = !state.declared[name]
     const rec: ChannelImage = {
       channel: name,
-      url: img.url || viewUrl(img),
+      url: safeMediaUrl(img.url) ?? viewUrl(img),
       ref: refOf(img),
       filename: img.filename,
       label: img.label,

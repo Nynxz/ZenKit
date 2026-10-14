@@ -82,7 +82,7 @@ test('runtime and node widgets resolve the same refs without changing their publ
   }
 })
 
-test('a node widget takes every ComfyUI file of a dropped media list, else the single file', async () => {
+test('a node widget takes every ComfyUI file of a dropped media list from this origin, else the single file', async () => {
   const shared = await sourceUrl(sharedPath)
   const api = mockModule('export const api = { apiURL: path => "/api" + path }')
   const nodekit = await sourceModule('packages/nodekit/src/mediaRefs.ts', {
@@ -96,7 +96,7 @@ test('a node widget takes every ComfyUI file of a dropped media list, else the s
       export const ZEN_MEDIA_LIST_MIME = 'zen-list';
       export const COMFY_ASSET_MIME = 'comfy-asset';`),
   })
-  globalThis.location = { href: 'http://localhost/' }
+  globalThis.location = { href: 'http://localhost/', origin: 'http://localhost' }
   const drop = (data) => ({
     dataTransfer: { types: Object.keys(data), files: [], getData: (type) => data[type] ?? '' },
   })
@@ -116,4 +116,7 @@ test('a node widget takes every ComfyUI file of a dropped media list, else the s
   assert.deepEqual(await nodekit.readMediaDrop(drop(list)), ['output/s/a.png', 'input/b.mp4'])
   globalThis.fetch = async () => ({ ok: false })
   assert.deepEqual(await nodekit.readMediaDrop(drop(list)), ['output/one.png'])
+  const elsewhere = { ...single, 'zen-list': JSON.stringify({ url: 'https://example.com/album' }) }
+  globalThis.fetch = async () => assert.fail('a list on another origin is never fetched')
+  assert.deepEqual(await nodekit.readMediaDrop(drop(elsewhere)), ['output/one.png'])
 })

@@ -8,7 +8,12 @@ export interface CallSummary {
   title: string
   lines: { label: string; value: string }[]
   warning?: string
+  /** Some value or line was cut short: the full arguments need reading before approving. */
+  truncated?: boolean
 }
+
+/** Tools whose every call is asked about: no "for this reply" or "always" for them. */
+export const ASK_EVERY_TIME = new Set(['queue_prompt', 'remove_node'])
 
 const MAX_LINES = 6
 
@@ -51,6 +56,12 @@ const IRREVERSIBLE =
 
 /** The card's text for a call the model wants to make. */
 export function summarize(name: string, args: Record<string, unknown> | null): CallSummary {
+  const summary = describe(name, args)
+  const cut = summary.lines.some((l) => l.label === '…' || l.value.endsWith('…'))
+  return cut || summary.title.endsWith('…') ? { ...summary, truncated: true } : summary
+}
+
+function describe(name: string, args: Record<string, unknown> | null): CallSummary {
   const a = args ?? {}
   switch (name) {
     case 'add_node':

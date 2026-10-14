@@ -3,7 +3,7 @@ import { ZenButton } from '@nynxz/zenkit-ui'
 import { computed, nextTick, onMounted, ref, useId } from 'vue'
 
 import type { Decision } from '../lib/api'
-import { summarize } from '../lib/approval'
+import { ASK_EVERY_TIME, summarize } from '../lib/approval'
 import type { Item } from '../lib/conversation'
 import { useConversation } from '../lib/conversation'
 
@@ -14,6 +14,7 @@ const { decide } = useConversation()
 
 const summary = computed(() => summarize(step.name, step.args))
 const tool = computed(() => step.name.replace(/_/g, ' '))
+const blanket = computed(() => !ASK_EVERY_TIME.has(step.name))
 const sending = computed(() => step.approval?.sending ?? false)
 const titleId = useId()
 const card = ref<HTMLElement | null>(null)
@@ -57,6 +58,10 @@ onMounted(() => {
         <dd>{{ line.value }}</dd>
       </template>
     </dl>
+    <div v-if="summary.truncated" class="za-approval-warn">
+      <i class="mdi mdi-text-search" aria-hidden="true" />
+      Some values are cut short here. Read the full arguments below before approving.
+    </div>
     <div v-if="summary.warning" class="za-approval-warn">
       <i class="mdi mdi-alert-outline" aria-hidden="true" />
       {{ summary.warning }}
@@ -81,6 +86,7 @@ onMounted(() => {
         Deny
       </ZenButton>
       <ZenButton
+        v-if="blanket"
         variant="ghost"
         size="sm"
         :disabled="sending"
@@ -91,6 +97,7 @@ onMounted(() => {
         Allow for this reply
       </ZenButton>
       <ZenButton
+        v-if="blanket"
         variant="ghost"
         size="sm"
         :disabled="sending"
@@ -101,7 +108,7 @@ onMounted(() => {
         Always allow
       </ZenButton>
     </div>
-    <details class="za-approval-args">
+    <details class="za-approval-args" :open="summary.truncated">
       <summary>{{ step.name }} arguments</summary>
       <pre>{{ JSON.stringify(step.args, null, 2) }}</pre>
     </details>
