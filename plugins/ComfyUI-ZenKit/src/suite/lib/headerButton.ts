@@ -138,7 +138,8 @@ export function addNodeHeaderButton(
   const interval = window.setInterval(ensure, 500)
 
   // --- Nodes 1.0: a litegraph canvas title button ---
-  const redraw = () => (n.setDirtyCanvas ?? n.graph?.setDirtyCanvas)?.(true, true)
+  const redraw = () =>
+    n.setDirtyCanvas ? n.setDirtyCanvas(true, true) : n.graph?.setDirtyCanvas?.(true, true)
   let lgBtn: { bgColor?: string; fgColor?: string } | null = null
   if (typeof n.addTitleButton === 'function') {
     try {

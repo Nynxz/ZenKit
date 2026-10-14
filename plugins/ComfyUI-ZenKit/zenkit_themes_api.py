@@ -22,7 +22,7 @@ frontend only ever sees resolved CSS, never a path. (Structured ``regions`` styl
 and per-theme image assets from ComfyUI-NynxzExperimental are intentionally NOT
 handled yet — this route is the minimal "load themes without a rebuild" piece.)
 
-Route mirrors comfyui-zensuite/assets_api.py: registered as an import side effect on
+Route mirrors suite/assets_api.py: registered as an import side effect on
 ``PromptServer.instance.routes``, guarded so importing outside a running ComfyUI
 (tests, tooling) is a harmless no-op.
 """

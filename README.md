@@ -38,8 +38,8 @@ Search for **ZenKit** in ComfyUI-Manager, or use the CLI:
 comfy node install comfyui-zenkit
 ```
 
-Restart ComfyUI and the taskbar appears. Add [ZenSuite](https://github.com/Nynxz/ZenKit/wiki/Plugins)
-for the Media Viewer, Asset Browser and Timer.
+Restart ComfyUI and the taskbar appears, with a Media Viewer, Asset Browser and Timer in its Start
+menu. Not using them? Turn off **Built-in panels** in ZenKit's settings.
 
 ## Build on it
 
@@ -64,9 +64,8 @@ puts Vue widgets inside nodes, and works with or without ZenKit.
 
 ## Plugins
 
-ComfyUI-ZenKit is the host. Two plugins ship alongside it today:
+ComfyUI-ZenKit is the host, and comes with a Media Viewer, Asset Browser and Timer. Alongside it:
 
-- **ZenSuite**: Media Viewer, Asset Browser and Timer panels.
 - **ZenInspector**: shows what every node pack and extension actually registered.
 
 More are in progress. See [Plugins](https://github.com/Nynxz/ZenKit/wiki/Plugins).

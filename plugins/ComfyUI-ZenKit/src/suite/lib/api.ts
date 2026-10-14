@@ -1,4 +1,4 @@
-// Fetch helpers for the ZenSuite Asset Browser. Full files are served by
+// Fetch helpers for the Asset Browser. Full files are served by
 // ComfyUI's own /view route; thumbnails + listing come from /zensuite/.
 
 export type AssetRoot = 'output' | 'input' | 'temp'

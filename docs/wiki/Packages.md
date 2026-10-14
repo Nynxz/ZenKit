@@ -90,11 +90,10 @@ Arrows point from a package to the things that import it.
 
 ## Plugins
 
-| Plugin                         | Role                                                              | Details                                    |
-| ------------------------------ | ----------------------------------------------------------------- | ------------------------------------------ |
-| `plugins/ComfyUI-ZenKit`       | The host. Installs `window.ZenKit` and serves the shared runtime. | [Plugins](Plugins.md#comfyui-zenkit)       |
-| `plugins/ComfyUI-ZenSuite`     | Media Viewer, Asset Browser, Timer, channel nodes                 | [Plugins](Plugins.md#comfyui-zensuite)     |
-| `plugins/ComfyUI-ZenInspector` | Install-wide debug panel                                          | [Plugins](Plugins.md#comfyui-zeninspector) |
+| Plugin                         | Role                                                                                       | Details                                    |
+| ------------------------------ | ------------------------------------------------------------------------------------------ | ------------------------------------------ |
+| `plugins/ComfyUI-ZenKit`       | The host. Installs `window.ZenKit`, serves the shared runtime and has the built-in panels. | [Plugins](Plugins.md#comfyui-zenkit)       |
+| `plugins/ComfyUI-ZenInspector` | Install-wide debug panel                                                                   | [Plugins](Plugins.md#comfyui-zeninspector) |
 
 None of the plugins are npm packages. Every plugin except ComfyUI-ZenKit is built with
 `sharedRuntime: true`, so it requires ComfyUI-ZenKit to be installed.

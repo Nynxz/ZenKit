@@ -3,7 +3,7 @@
 An OUTPUT node: route any image into it with a channel name, and on execution it
 saves the first frame to the temp dir and broadcasts the ``zenkit.channel``
 websocket event. ZenKit's channel bus picks it up, so views subscribed to that
-channel (ZenSuite's **Media Viewer**) update live. The image passes through
+channel (ZenKit's **Media Viewer**) update live. The image passes through
 unchanged so the node can sit inline. Use different channel names (e.g. "A" / "B")
 to drive the Media Viewer's compare mode, or one channel for its live view.
 
@@ -27,7 +27,7 @@ class ZenSyncImage(ZenNode):
             node_id="Channel.SyncImage",
             display_name="Zen Sync Image",
             description=(
-                "Publish this image to a ZenKit channel (ZenSuite's Media Viewer updates "
+                "Publish this image to a ZenKit channel (ZenKit's Media Viewer updates "
                 "live). Passes the image through so the node can sit inline."
             ),
             inputs=[
@@ -95,7 +95,7 @@ class ZenSyncImage(ZenNode):
                 # Surface in the node's own preview too, so it works without a panel.
                 ui_images = [{"filename": fn, "subfolder": "", "type": "temp"}]
             except Exception as e:  # noqa: BLE001 - never fail the graph
-                print(f"[ZenSuite] channel publish failed: {e}")
+                print(f"[ZenKit] channel publish failed: {e}")
 
         return io.NodeOutput(image, ui={"images": ui_images})
 
@@ -224,7 +224,7 @@ class ZenSync(ZenNode):
                 media, ui=cls._publish_media(media, name, image_batch, fps)
             )
         except Exception as e:  # noqa: BLE001 - never fail the graph over a preview
-            print(f"[ZenSuite] Zen Sync publish failed: {e}")
+            print(f"[ZenKit] Zen Sync publish failed: {e}")
             return io.NodeOutput(media)
 
     @classmethod
@@ -424,5 +424,5 @@ class ZenSave(ZenNode):
                 try:
                     _publish(name, saved, kind, width=w, height=h)
                 except Exception as e:  # noqa: BLE001 - the file is saved; only the live view misses it
-                    print(f"[ZenSuite] Zen Save publish failed: {e}")
+                    print(f"[ZenKit] Zen Save publish failed: {e}")
         return io.NodeOutput(media, ui=out_ui)

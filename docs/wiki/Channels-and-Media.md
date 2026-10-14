@@ -83,8 +83,8 @@ PromptServer.instance.send_sync("zenkit.channel", {
 
 There is no shared Python helper; `send_sync` without a client id goes to every connected tab.
 Events that arrive before the ZenKit runtime has installed are buffered (up to 200) and replayed.
-ComfyUI-ZenSuite's **Zen Sync** nodes and **Media Viewer** panel are the reference producer and
-consumer (`plugins/ComfyUI-ZenSuite/channel_node.py`).
+ComfyUI-ZenKit's **Zen Sync** nodes and built-in **Media Viewer** panel are the reference producer
+and consumer (`plugins/ComfyUI-ZenKit/suite/channel_node.py`).
 
 ## Media refs
 

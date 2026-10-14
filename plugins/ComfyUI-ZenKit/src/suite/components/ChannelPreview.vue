@@ -131,7 +131,7 @@ import {
   ZenWidget,
 } from '@nynxz/zenkit-ui'
 import { getZenKit, openViewer, type ChannelImage, type ViewerItem } from '@nynxz/zenkit-client'
-import { addNodeHeaderButton, type NodeHeaderButtonHandle } from '@/lib/headerButton'
+import { addNodeHeaderButton, type NodeHeaderButtonHandle } from '@/suite/lib/headerButton'
 
 interface Widget {
   value: unknown
@@ -188,7 +188,8 @@ let counter = 0
 const shown = computed(() => history.value.slice(skip.value, skip.value + count.value))
 
 function redraw() {
-  ;(props.node.setDirtyCanvas ?? props.node.graph?.setDirtyCanvas)?.(true, true)
+  if (props.node.setDirtyCanvas) props.node.setDirtyCanvas(true, true)
+  else props.node.graph?.setDirtyCanvas?.(true, true)
 }
 function writeWidget(w: Widget | undefined, v: unknown) {
   if (!w) return

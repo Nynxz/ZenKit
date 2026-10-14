@@ -57,10 +57,9 @@ Keyboard: <kbd>Alt</kbd>+<kbd>`</kbd> flips between the graph and the last works
 Install these the same way. All of them need ComfyUI-ZenKit: they load
 Vue and the ZenKit libraries from its `/zenkit/runtime/` route rather than bundling their own.
 
-| Plugin               | What it adds                                                                | Registry               |
-| -------------------- | --------------------------------------------------------------------------- | ---------------------- |
-| ComfyUI-ZenSuite     | Media Viewer, Asset Browser, Timer panels; Zen Sync / Channel Preview nodes | `comfyui-zensuite`     |
-| ComfyUI-ZenInspector | A debug panel listing every node pack and what it registered                | `comfyui-zeninspector` |
+| Plugin               | What it adds                                                 | Registry               |
+| -------------------- | ------------------------------------------------------------ | ---------------------- |
+| ComfyUI-ZenInspector | A debug panel listing every node pack and what it registered | `comfyui-zeninspector` |
 
 See [Plugins](Plugins.md) for details.
 

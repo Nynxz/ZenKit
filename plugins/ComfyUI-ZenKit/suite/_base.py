@@ -1,4 +1,4 @@
-"""Shared base for ZenSuite's nodes: node-id namespace and menu category."""
+"""Shared base for the nodes ZenKit ships: node-id namespace and menu category."""
 
 from __future__ import annotations
 
@@ -6,7 +6,7 @@ from comfy_api.latest import io
 
 
 class ZenNode(io.ComfyNode):
-    """Base for every ZenSuite node. Build the schema via `make_schema`."""
+    """Base for every ZenKit node. Build the schema via `make_schema`."""
 
     NAMESPACE = "zen"
     CATEGORY = "Zen/Suite"

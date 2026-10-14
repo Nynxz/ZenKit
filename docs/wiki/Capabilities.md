@@ -117,7 +117,7 @@ and any of it can try to steer the model. So the agent panel keeps the user in t
 | `workflows.list`, `workflows.templates`                      | read   | Saved workflows and templates.                                                |
 | `workflows.open`, `workflows.new`, `workflows.open_template` | write  | Open or create workflows.                                                     |
 
-ComfyUI-ZenSuite adds `viewer.show` and `viewer.merge` for its Media Viewer.
+ComfyUI-ZenKit's built-in Media Viewer adds `viewer.show` and `viewer.merge`.
 
 ## Capabilities vs. panel commands
 

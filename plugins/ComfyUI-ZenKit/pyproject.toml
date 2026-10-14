@@ -5,7 +5,7 @@ build-backend = "setuptools.build_meta"
 [project]
 name = "comfyui-zenkit"
 version = "0.2.0"
-description = "ZenKit — a UX framework for ComfyUI: panels, a theme token system, and a cross-plugin event bus, exposed as window.ZenKit."
+description = "ZenKit — a UX framework for ComfyUI: panels, a theme token system and a cross-plugin event bus, exposed as window.ZenKit, with a Media Viewer, Asset Browser and Timer built in."
 license = { text = "MIT" }
 
 [project.urls]

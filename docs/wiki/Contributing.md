@@ -24,7 +24,7 @@ packages/
   core      @nynxz/zenkit-core     private the runtime behind window.ZenKit
 plugins/
   ComfyUI-ZenKit         host: js/main.js + runtime/ + themes/
-  ComfyUI-ZenSuite       ComfyUI-ZenInspector
+  ComfyUI-ZenInspector   ComfyUI-ZenAgent       ComfyUI-ZenExample
 docs/wiki/               this wiki (published to the GitHub wiki)
 workspace-aliases.ts     Vite aliases for in-repo plugin builds
 tsconfig.base.json       shared compiler options
@@ -73,7 +73,7 @@ nothing prebuilt is committed.
 Build one plugin and what it depends on:
 
 ```sh
-pnpm --filter "comfyui-zensuite..." build
+pnpm --filter "comfyui-zeninspector..." build
 ```
 
 ### Running the plugins in ComfyUI
@@ -176,7 +176,7 @@ of each tarball with `--access public`.
 ### publish-registry
 
 1. Bump the plugin's `version` in `pyproject.toml` (and `package.json`, which the frontend reads).
-2. Run the workflow and pick `all`, `ComfyUI-ZenKit`, `ComfyUI-ZenSuite` or `ComfyUI-ZenInspector`.
+2. Run the workflow and pick `all` or one plugin.
 
 Per plugin it runs `pnpm --filter "<package>..." build`, fails if `js/main.js` is missing,
 `git add -f plugins/<name>/js` (comfy-cli archives tracked files only and `js/` is gitignored;

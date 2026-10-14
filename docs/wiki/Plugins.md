@@ -5,8 +5,7 @@ are ZenKit plugins built on it.
 
 | Plugin                                        | Adds                                               | Nodes | Needs ComfyUI-ZenKit | In `publish-registry` | Version |
 | --------------------------------------------- | -------------------------------------------------- | ----- | -------------------- | --------------------- | ------- |
-| [ComfyUI-ZenKit](#comfyui-zenkit)             | `window.ZenKit`, taskbar, panels, themes, settings | none  | is the host          | yes                   | 0.2.0   |
-| [ComfyUI-ZenSuite](#comfyui-zensuite)         | Media Viewer, Asset Browser, Timer, channel nodes  | 4     | yes                  | yes                   | 0.2.0   |
+| [ComfyUI-ZenKit](#comfyui-zenkit)             | `window.ZenKit`, taskbar, panels, themes, settings | 4     | is the host          | yes                   | 0.2.0   |
 | [ComfyUI-ZenInspector](#comfyui-zeninspector) | Install-wide debug panel                           | none  | yes                  | yes                   | 0.2.0   |
 
 More plugins are in progress and will be documented here when they ship.
@@ -25,15 +24,16 @@ Every plugin:
 
 ## ComfyUI-ZenKit
 
-The runtime host. Ships no nodes.
+The runtime host, with its [built-in panels](#built-in-panels) and the channel nodes they show.
 
-| Part             | What it does                                                                                                                                                                                                                                                                                                  |
-| ---------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `js/main.js`     | Installs `window.ZenKit` (`installZenKit` from `@nynxz/zenkit-core`), the taskbar, the theme system and the background. Sets `window.ZenKitPending = true` before installing so plugins wait for `zen:ready`. With `?zen-panel=<id>` in the URL it mounts just that panel fullscreen (detached-panel window). |
-| `runtime/`       | `vue.js`, `ui.js`, `client.js` (+ `chunks/`), built by `zenRuntimeConfig`: the single Vue, zenkit-ui and zenkit-client every `sharedRuntime` plugin imports                                                                                                                                                   |
-| `themes/`        | 25 theme packs as `themes/<id>/theme.json`, discovered at runtime (no rebuild to add one). See [Themes](Themes.md).                                                                                                                                                                                           |
-| ComfyUI settings | Background, layout and appearance settings                                                                                                                                                                                                                                                                    |
-| Commands         | `ZenKit.openSettings`, `ZenKit.togglePanels`, `ZenKit.Themes` (also placed in the logo menu); an action-bar button opens Zen Settings                                                                                                                                                                         |
+| Part                   | What it does                                                                                                                                                                                                                                                                                                  |
+| ---------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `js/main.js`           | Installs `window.ZenKit` (`installZenKit` from `@nynxz/zenkit-core`), the taskbar, the theme system and the background. Sets `window.ZenKitPending = true` before installing so plugins wait for `zen:ready`. With `?zen-panel=<id>` in the URL it mounts just that panel fullscreen (detached-panel window). |
+| `runtime/`             | `vue.js`, `ui.js`, `client.js` (+ `chunks/`), built by `zenRuntimeConfig`: the single Vue, zenkit-ui and zenkit-client every `sharedRuntime` plugin imports                                                                                                                                                   |
+| `themes/`              | 25 theme packs as `themes/<id>/theme.json`, discovered at runtime (no rebuild to add one). See [Themes](Themes.md).                                                                                                                                                                                           |
+| ComfyUI settings       | Background, layout and appearance settings                                                                                                                                                                                                                                                                    |
+| `src/suite/`, `suite/` | The [built-in panels](#built-in-panels) and their nodes and routes                                                                                                                                                                                                                                            |
+| Commands               | `ZenKit.openSettings`, `ZenKit.togglePanels`, `ZenKit.Themes` (also placed in the logo menu); an action-bar button opens Zen Settings                                                                                                                                                                         |
 
 Routes:
 
@@ -43,13 +43,13 @@ Routes:
 | `GET /zenkit/themes`                                 | Theme packs found on disk, with CSS file refs inlined                                                                     |
 | `GET /zenkit/thumb?type=&filename=&subfolder=&size=` | Cached JPEG thumbnail of an input/output/temp file (first frame for video). Used by `thumbUrl` in `@nynxz/zenkit-client`. |
 
-> Note: `runtime/` is gitignored and `[tool.comfy] includes` lists only `js`. The
-> `publish-registry` workflow force-adds only `plugins/<name>/js`, so as configured the registry
-> package of ComfyUI-ZenKit does not contain `runtime/`, which every other plugin needs.
+### Built-in panels
 
-## ComfyUI-ZenSuite
-
-The core panel pack, plus nodes that publish to ZenKit channels.
+Once a separate pack (ComfyUI-ZenSuite), now part of ComfyUI-ZenKit. They register through
+`registerZenPlugin` like any plugin's (plugin id `zensuite`, so saved layouts keep working), and
+the **Built-in panels** setting (`ZenKit.BuiltinPanels`) leaves them out of the Start menu. If an
+old ComfyUI-ZenSuite is still installed, ZenKit leaves all of this to it and logs a reminder to
+remove it.
 
 Panels (registered, none open automatically):
 
@@ -61,7 +61,7 @@ Panels (registered, none open automatically):
 
 Capabilities: `viewer.show` and `viewer.merge` (see [Capabilities](Capabilities.md)).
 
-Nodes (category `Zen/Suite`):
+Nodes (category `Zen/Suite`; the ids are unchanged, so workflows saved with ZenSuite load):
 
 | Node id                 | Display name        | Does                                                                        |
 | ----------------------- | ------------------- | --------------------------------------------------------------------------- |
@@ -73,8 +73,10 @@ Nodes (category `Zen/Suite`):
 The Sync/Save nodes hide their `channel`/`enable` widgets and show them in a popover from a header
 cog; Channel Preview replaces its widgets with a live grid.
 
-Routes: `GET /zensuite/roots`, `/zensuite/assets`, `/zensuite/outputs`, `/zensuite/thumb`
-(Asset Browser).
+Routes: `GET /zensuite/roots`, `/zensuite/assets`, `/zensuite/outputs`, `/zensuite/thumb`,
+`/zensuite/search` (Asset Browser), and `/zensuite/visual` for the experimental search by
+description, which embeds files with a model from `models/embedders` and loads nothing until it is
+first used.
 
 ## ComfyUI-ZenInspector
 

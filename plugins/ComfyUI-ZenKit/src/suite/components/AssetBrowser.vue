@@ -696,7 +696,7 @@ function openNewTab(it: AssetItem) {
   window.open(viewUrl(it, root.value), '_blank')
   closeMenu()
 }
-// Show the asset in the ZenSuite Media Viewer: publish it to a channel (the viewer's
+// Show the asset in the Media Viewer: publish it to a channel (the viewer's
 // default "$last" picks it up), opening a viewer panel if none is open yet.
 function openInViewer(it: AssetItem) {
   closeMenu()
@@ -767,7 +767,7 @@ async function loadWorkflow(it: AssetItem) {
       new File([blob], it.name, { type }),
     )
   } catch (err) {
-    console.warn('[ZenSuite] load workflow failed', err)
+    console.warn('[ZenKit] load workflow failed', err)
   }
 }
 

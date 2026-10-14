@@ -3,7 +3,7 @@
 // run progresses. Order view = execution order (the waterfall); Slowest = sorted desc.
 import { computed, onBeforeUnmount, onMounted, ref } from 'vue'
 import { ZenEmpty, ZenIconButton, ZenToggleGroup } from '@nynxz/zenkit-ui'
-import { createTimer, type NodeTiming } from '@/lib/timing'
+import { createTimer, type NodeTiming } from '@/suite/lib/timing'
 
 const timer = createTimer()
 const state = timer.state

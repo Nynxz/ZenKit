@@ -1,10 +1,10 @@
-"""HTTP routes for the ZenSuite Asset Browser.
+"""HTTP routes for the Asset Browser.
 
 Browses ComfyUI's asset directories (output / input / temp), serving a cached
 listing with file metadata + embedded-workflow info (PNG), plus fast JPEG
 thumbnails. Full files (incl. video) are served by ComfyUI's own /view route.
 
-The metadata index is a SQLite file in ZenSuite's cache dir: a row per file with
+The metadata index is a SQLite file in the Asset Browser's cache dir: a row per file with
 what the grid shows plus the generation settings and prompt text read from its
 embedded workflow, and a full-text index over the text. The expensive read happens
 once per file and is reused while its mtime+size are unchanged; a scan after a
@@ -55,13 +55,20 @@ except Exception as e:  # pragma: no cover - only outside a running server
     PromptServer = None
     folder_paths = None
     _routes = None
-    print(f"[ZenSuite] routes unavailable: {e}")
+    print(f"[ZenKit] routes unavailable: {e}")
 
-try:
-    from . import embedder
-except Exception as e:  # a ComfyUI without Qwen3-VL: the browser works, visual search doesn't
-    embedder = None
-    print(f"[ZenSuite] visual search unavailable: {e}")
+_embedder_module: list = []
+
+
+def _embedding():
+    """embedder.py, imported the first time visual search is used (it brings in transformers and
+    Qwen3-VL, too much for every ComfyUI start). Raises where it can't load, e.g. a ComfyUI
+    without Qwen3-VL: the browser works, visual search doesn't."""
+    if not _embedder_module:
+        from . import embedder
+
+        _embedder_module.append(embedder)
+    return _embedder_module[0]
 
 _IMAGE_EXTS = {".png", ".jpg", ".jpeg", ".webp", ".gif", ".bmp", ".tiff", ".tif", ".avif"}
 _VIDEO_EXTS = {".mp4", ".webm", ".mkv", ".mov", ".avi", ".m4v"}
@@ -694,7 +701,7 @@ def _visual_model() -> str | None:
 
 
 def _visual_models() -> list[str]:
-    if folder_paths is None or embedder is None:
+    if folder_paths is None:
         return []
     return [n for n in folder_paths.get_filename_list("embedders") if n.endswith((".safetensors", ".sft"))]
 
@@ -707,7 +714,7 @@ def _embedder(name: str):
     """The loaded embedder for `name` (call with the lock held)."""
     if _Visual.loaded != name:
         _Visual.embedder = None
-        _Visual.embedder = embedder.load(folder_paths.get_full_path_or_raise("embedders", name))
+        _Visual.embedder = _embedding().load(folder_paths.get_full_path_or_raise("embedders", name))
         _Visual.loaded = name
     _Visual.used = time.monotonic()
     return _Visual.embedder
@@ -776,7 +783,7 @@ def _index_visual(name: str) -> None:
         # Vectors from another model can't be compared with this one's.
         with con:
             con.execute("DELETE FROM vectors WHERE model != ?", (name,))
-        kinds = embedder.kinds(folder_paths.get_full_path_or_raise("embedders", name))
+        kinds = _embedding().kinds(folder_paths.get_full_path_or_raise("embedders", name))
         pending = []
         for root in _roots():
             _scan(root)
@@ -809,7 +816,7 @@ def _index_visual(name: str) -> None:
                 with _Visual.lock:
                     vec = _embed_file(_embedder(name), path, kind)
             except Exception as e:  # noqa: BLE001 - one unreadable file mustn't stop the index
-                print(f"[ZenSuite] visual search skipped {rel}: {e}")
+                print(f"[ZenKit] visual search skipped {rel}: {e}")
                 continue
             batch.append((root, rel, name, st.st_mtime, vec.tobytes()))
             _Visual.state["done"] += 1
@@ -840,7 +847,7 @@ def _visual_loop() -> None:
                     _index_visual(name)
             except Exception as e:  # noqa: BLE001 - report it; indexing again retries
                 _Visual.state.update(state="error", error=str(e))
-                print(f"[ZenSuite] visual search index failed: {e}")
+                print(f"[ZenKit] visual search index failed: {e}")
         if _Visual.embedder is not None and (
             _visual_model() != _Visual.loaded or time.monotonic() - _Visual.used > _VISUAL_IDLE
         ):
@@ -854,7 +861,10 @@ def _visual_status() -> dict:
     out = {"models": _visual_models(), "model": name, **_Visual.state, "pending": 0}
     if name is None or _Visual.state["state"] in ("loading", "indexing", "paused"):
         return out
-    kinds = embedder.kinds(folder_paths.get_full_path_or_raise("embedders", name))
+    try:
+        kinds = _embedding().kinds(folder_paths.get_full_path_or_raise("embedders", name))
+    except Exception as e:  # noqa: BLE001 - shown in the browser instead of failing the route
+        return {**out, "state": "error", "error": f"visual search unavailable: {e}"}
     con = _db()
     try:
         out["done"] = con.execute("SELECT COUNT(*) FROM vectors WHERE model = ?", (name,)).fetchone()[0]
@@ -916,8 +926,7 @@ def _rank(root: str, query: str, visual: bool) -> tuple[list[str], str, int]:
 
 
 if _routes is not None:
-    if embedder is not None:
-        threading.Thread(target=_visual_loop, name="zensuite-visual", daemon=True).start()
+    threading.Thread(target=_visual_loop, name="zensuite-visual", daemon=True).start()
 
     @_routes.get("/zensuite/visual")
     async def zs_visual(request):
@@ -1009,4 +1018,4 @@ if _routes is not None:
         # The client versions the URL with the file's mtime, so a response never goes stale.
         return web.FileResponse(thumb, headers={"Cache-Control": "public, max-age=31536000, immutable"})
 
-    print("[ZenSuite] asset browser routes registered under /zensuite/")
+    print("[ZenKit] asset browser routes registered under /zensuite/")

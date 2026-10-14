@@ -1,20 +1,19 @@
 import { app } from '@comfy/app'
-// The pack version, read from package.json so it cannot drift from what ships.
-import { version } from '../package.json'
+import { version } from '../../package.json'
 // The family tile from docs/assets/render/brand.mjs; the build inlines it as a data URI.
 import logo from './logo.svg'
 import { getZenKit, mountVue, registerZenPlugin, type ZenPanelDef } from '@nynxz/zenkit-client'
-import { viewerCapabilities } from '@/lib/viewerCapabilities'
-import MediaViewer from '@/components/MediaViewer.vue'
-import AssetBrowser from '@/components/AssetBrowser.vue'
-import TimerPanel from '@/components/TimerPanel.vue'
-import SyncControls from '@/components/SyncControls.vue'
-import { mountHeaderPopover } from '@/lib/headerPopover'
-import ChannelPreview from '@/components/ChannelPreview.vue'
-import { mountNodeControls } from '@/lib/mountControls'
+import { viewerCapabilities } from '@/suite/lib/viewerCapabilities'
+import MediaViewer from '@/suite/components/MediaViewer.vue'
+import AssetBrowser from '@/suite/components/AssetBrowser.vue'
+import TimerPanel from '@/suite/components/TimerPanel.vue'
+import SyncControls from '@/suite/components/SyncControls.vue'
+import { mountHeaderPopover } from '@/suite/lib/headerPopover'
+import ChannelPreview from '@/suite/components/ChannelPreview.vue'
+import { mountNodeControls } from '@/suite/lib/mountControls'
 
-// ZenSuite — the ZenKit core panel pack. Panels are registered (discoverable in the
-// Start menu) but none auto-open; users launch what they want.
+// The panels ZenKit comes with (once ComfyUI-ZenSuite). Registered through the public client
+// API like any plugin's, discoverable in the Start menu, none auto-open.
 const PANELS: ZenPanelDef[] = [
   {
     id: 'zensuite:viewer',
@@ -58,12 +57,38 @@ function hideWidget(w: any) {
   w.options.hidden = true
 }
 
-app.registerExtension({
-  name: 'nynxz.zensuite',
+const SHOW_PANELS = 'ZenKit.BuiltinPanels'
+
+// A ComfyUI-ZenSuite still installed from before the fold registers all of this itself.
+const standalone = () => app.extensions.some((e: { name: string }) => e.name === 'nynxz.zensuite')
+
+export function registerSuite() {
+  app.registerExtension(suiteExtension)
+}
+
+const suiteExtension = {
+  name: 'nynxz.zenkit.suite',
+  settings: [
+    {
+      id: SHOW_PANELS,
+      category: ['ZenKit', 'Panels', 'Built-in panels'],
+      name: 'Built-in panels (Media Viewer, Asset Browser, Timer)',
+      tooltip: 'Offer the panels ZenKit comes with in the Start menu. Takes effect on reload.',
+      type: 'boolean',
+      defaultValue: true,
+    },
+  ],
   setup() {
+    if (standalone()) {
+      console.warn(
+        '[ZenKit] ComfyUI-ZenSuite is now part of ZenKit; remove ComfyUI-ZenSuite from custom_nodes.',
+      )
+      return
+    }
+    if (app.extensionManager.setting.get(SHOW_PANELS) === false) return
     void registerZenPlugin({
       id: 'zensuite',
-      plugin: 'ZenSuite',
+      plugin: 'ZenKit panels',
       version,
       logo,
       panels: PANELS,
@@ -75,6 +100,7 @@ app.registerExtension({
   // `nodeCreated` hook (not beforeRegisterNodeDef): litegraph populates the widgets first
   // and fires nodeCreated afterwards, so this.widgets is ready here.
   nodeCreated(node: any) {
+    if (standalone()) return
     const cls = node?.comfyClass ?? node?.type
     if (
       cls === 'zen.Channel.SyncImage' ||
@@ -99,7 +125,7 @@ app.registerExtension({
           )
         }
       } catch (e) {
-        console.error('[ZenSuite] ZenSyncImage widget setup failed', e)
+        console.error('[ZenKit] ZenSyncImage widget setup failed', e)
       }
     } else if (cls === 'zen.Channel.Preview') {
       // Display-only node: hide the raw channel/count/layout widgets and mount the live wall.
@@ -139,8 +165,8 @@ app.registerExtension({
           )
         }
       } catch (e) {
-        console.error('[ZenSuite] ZenChannelPreview widget setup failed', e)
+        console.error('[ZenKit] ZenChannelPreview widget setup failed', e)
       }
     }
   },
-} as never)
+} as never

@@ -1,6 +1,7 @@
 import { app } from '@comfy/app'
 import { registerBackgroundSettings } from './backgroundSettings'
 import { registerAppearanceSettings } from './appearanceSettings'
+import { registerSuite } from './suite'
 import {
   fetchThemes,
   installZenKit,
@@ -40,6 +41,7 @@ if (detachedPanel) {
 // including in detached-panel mode, where the runtime install is skipped entirely.
 registerBackgroundSettings()
 registerAppearanceSettings()
+registerSuite()
 
 app.registerExtension({
   name: 'nynxz.zenkit',

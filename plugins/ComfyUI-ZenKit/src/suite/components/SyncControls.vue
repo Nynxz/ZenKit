@@ -44,7 +44,8 @@ const channel = ref(
 const enable = ref(props.enableWidget.value !== false)
 
 function redraw() {
-  ;(props.node.setDirtyCanvas ?? props.node.graph?.setDirtyCanvas)?.(true, true)
+  if (props.node.setDirtyCanvas) props.node.setDirtyCanvas(true, true)
+  else props.node.graph?.setDirtyCanvas?.(true, true)
 }
 function writeWidget(w: Widget, v: unknown) {
   w.value = v

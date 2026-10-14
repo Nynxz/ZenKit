@@ -111,7 +111,7 @@ export function mountNodeControls(
         node.graph?.setDirtyCanvas?.(true, true)
       }
     } catch (err) {
-      console.error('[ZenSuite] mount controls failed', err)
+      console.error('[ZenKit] mount controls failed', err)
       return
     }
     const prev = widget.onRemove

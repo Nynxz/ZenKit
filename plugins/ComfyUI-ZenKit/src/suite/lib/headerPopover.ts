@@ -1,8 +1,8 @@
 // mountHeaderPopover — settings for a node in a popover from a cog in its header (both
 // renderers), rather than a widget in its body. Unmounted with the node.
 import { createApp, reactive, watch, type App, type Component } from 'vue'
-import HeaderPopover from '@/components/HeaderPopover.vue'
-import { addNodeHeaderButton } from '@/lib/headerButton'
+import HeaderPopover from '@/suite/components/HeaderPopover.vue'
+import { addNodeHeaderButton } from '@/suite/lib/headerButton'
 
 interface NodeLike {
   id?: number | string
