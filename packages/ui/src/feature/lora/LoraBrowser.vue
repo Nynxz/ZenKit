@@ -90,7 +90,9 @@
             >
               <span
                 class="lb-rthumb"
-                @mouseenter="hoverStart(it.name, $event.currentTarget as HTMLElement, $event.shiftKey)"
+                @mouseenter="
+                  hoverStart(it.name, $event.currentTarget as HTMLElement, $event.shiftKey)
+                "
                 @mouseleave="hoverEnd($event.currentTarget as HTMLElement)"
               >
                 <img
