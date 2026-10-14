@@ -13,6 +13,8 @@ Repository = "https://github.com/Nynxz/ZenKit"
 
 [tool.comfy]
 PublisherId = "nynxz"
+Banner = "https://raw.githubusercontent.com/Nynxz/ZenKit/main/docs/assets/banner-dark.webp"
+Icon = "https://raw.githubusercontent.com/Nynxz/ZenKit/main/docs/assets/brand/zenkit.png"
 DisplayName = "ComfyUI-ZenKit"
 # The built frontend must ship in the registry package. It is gitignored, so CI
 # builds and stages it — see .github/workflows/publish-registry.yml. `runtime/` is the shared
