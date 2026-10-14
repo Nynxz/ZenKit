@@ -19,6 +19,7 @@
 // first load after upgrading) they seed it.
 import { app } from '@comfy/app'
 import {
+  backgroundActivity,
   backgroundEffectIntensity,
   backgroundEffectList,
   backgroundEffects,
@@ -29,6 +30,7 @@ import {
   backgroundList,
   backgroundStored,
   onBackgroundChange,
+  setBackgroundActivity,
   setBackgroundBlobFlow,
   setBackgroundEffectIntensity,
   setBackgroundEffects,
@@ -42,6 +44,7 @@ import {
 
 const ENABLED_ID = 'zenkit.background.enabled'
 const KIND_ID = 'zenkit.background.kind'
+const ACTIVITY_ID = 'zenkit.background.activity'
 const IMAGE_URL_ID = 'zenkit.background.imageUrl'
 const IMAGE_FIT_ID = 'zenkit.background.imageFit'
 const IMAGE_OPACITY_ID = 'zenkit.background.imageOpacity'
@@ -74,6 +77,7 @@ const effectOptions = () => [
 const fromCore: Record<string, () => unknown> = {
   [ENABLED_ID]: () => backgroundEnabled(),
   [KIND_ID]: () => backgroundKind(),
+  [ACTIVITY_ID]: () => backgroundActivity(),
   [IMAGE_URL_ID]: () => backgroundImage().url,
   [IMAGE_FIT_ID]: () => backgroundImage().fit,
   [IMAGE_OPACITY_ID]: () => Math.round(backgroundImage().opacity * 100),
@@ -159,8 +163,31 @@ export function registerBackgroundSettings(): void {
         sortOrder: 95,
         tooltip:
           'Interactive Grid is the WebGL field of glowing dots that reacts to your cursor and ' +
-          'follows your theme. Image puts a picture back there instead.',
+          'follows your theme. Contours draws drifting topographic lines, Starfield parallax ' +
+          "stars, and Ambient a slow wash of your theme's colours. Image puts a picture back " +
+          'there instead.',
         onChange: mirrored<string>(KIND_ID, (value) => setBackgroundKind(String(value))),
+      },
+      {
+        id: ACTIVITY_ID,
+        name: 'Run glow',
+        category: cat('Run glow'),
+        type: 'combo',
+        defaultValue: 'off',
+        options: [
+          { text: 'Off', value: 'off' },
+          { text: 'Breathe', value: 'breathe' },
+          { text: 'Sweep (follows the sampler)', value: 'sweep' },
+          { text: 'Ripple (each node)', value: 'ripple' },
+          { text: 'Aurora', value: 'aurora' },
+        ],
+        sortOrder: 94,
+        tooltip:
+          "While a workflow runs, the background glows in your theme's accent: Breathe swells " +
+          "slowly, Sweep crosses the screen with the sampler's steps, Ripple sends a ring out as " +
+          'each node starts, Aurora drifts. It animates at a modest rate so it costs the GPU ' +
+          'little while it works. Not shown by the Image background.',
+        onChange: mirrored<string>(ACTIVITY_ID, (value) => setBackgroundActivity(String(value))),
       },
       {
         id: IMAGE_URL_ID,
@@ -358,6 +385,8 @@ export function registerBackgroundSettings(): void {
           setBackgroundEffectIntensity(Number(s.get(EFFECT_STRENGTH_ID) ?? 60))
           const effect = String(s.get(EFFECT_ID) ?? 'none')
           setBackgroundEffects(effect && effect !== 'none' ? [effect] : [])
+          const activity = s.get(ACTIVITY_ID)
+          if (activity !== undefined) setBackgroundActivity(String(activity))
           const kind = s.get(KIND_ID)
           if (kind !== undefined) setBackgroundKind(String(kind))
           // Last: enabling activates whatever the settings above just described.

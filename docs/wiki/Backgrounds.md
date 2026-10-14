@@ -1,7 +1,7 @@
 # Backgrounds
 
-ZenKit can draw a background behind the node graph: an interactive WebGL grid, a picture, or one
-you register. Over it sit a **finish** (dim, frost, vignette) and optional **effects** (extra
+ZenKit can draw a background behind the node graph: an interactive WebGL grid, contour lines, a
+starfield, an ambient wash, a picture, or one you register. Over it sit a **finish** (dim, frost, vignette) and optional **effects** (extra
 overlay passes such as grid lines). All of it pans and zooms with the graph and takes its colours
 from the active theme.
 
@@ -42,15 +42,16 @@ ComfyUI Settings → **ZenKit → Canvas**. These are native ComfyUI settings th
 own background state: an edit there applies here, and a change made through the API is written
 back there.
 
-| Setting                                    | Default          | Maps to                    |
-| ------------------------------------------ | ---------------- | -------------------------- |
-| Graph background                           | off              | on/off                     |
-| Background                                 | Interactive Grid | which background           |
-| Background image, Image fit, Image opacity | none, cover, 100 | `setImage`                 |
-| Dim, Frost (blur), Vignette                | 0, 0, 0          | `setFinish`                |
-| Overlay effect                             | None             | `effects.set` (one effect) |
-| Effect strength                            | 60               | `effects.setIntensity`     |
-| Cursor follow, Follow speed, Blob flow     |                  | grid cursor behaviour      |
+| Setting                                    | Default          | Maps to                      |
+| ------------------------------------------ | ---------------- | ---------------------------- |
+| Graph background                           | off              | on/off                       |
+| Background                                 | Interactive Grid | which background             |
+| Background image, Image fit, Image opacity | none, cover, 100 | `setImage`                   |
+| Dim, Frost (blur), Vignette                | 0, 0, 0          | `setFinish`                  |
+| Overlay effect                             | None             | `effects.set` (one effect)   |
+| Effect strength                            | 60               | `effects.setIntensity`       |
+| Run glow                                   | Off              | how a running workflow shows |
+| Cursor follow, Follow speed, Blob flow     |                  | grid cursor behaviour        |
 
 ZenKit saves the background state itself (`localStorage`, `zenkit.bg.v2`), so a `set`, `setImage`,
 `setFinish` or `effects.set` from any plugin survives a reload, and the values ComfyUI replays on
@@ -64,8 +65,26 @@ choice whose plugin registers late is kept, and switches on when it registers.
 | Kind       | Id          | Label                                  |
 | ---------- | ----------- | -------------------------------------- |
 | Background | `grid`      | Interactive Grid (WebGL2, 2D fallback) |
+| Background | `contours`  | Contours: drifting topographic lines   |
+| Background | `starfield` | Starfield: parallax stars              |
+| Background | `ambient`   | Ambient: a slow wash of theme colours  |
 | Background | `image`     | Image                                  |
-| Effect     | `gridlines` | Mecha grid (`order: 10`)               |
+
+## Run glow
+
+With **Run glow** on, the shader backgrounds glow in the theme's accent while a workflow runs:
+
+| Pattern   | Looks like                                                                 |
+| --------- | -------------------------------------------------------------------------- |
+| `breathe` | A slow swell, strongest in the middle                                      |
+| `sweep`   | A band crossing the screen with the sampler's step progress, lit behind it |
+| `ripple`  | A ring out from the middle each time the run moves on to a node            |
+| `aurora`  | Slow curtains of light                                                     |
+
+It eases up when a prompt starts and settles after the queue empties, and animates at 30 fps at
+most while showing, so it costs the GPU little during a run. The image background doesn't show it.
+A background you write reads it from `BackgroundContext.activity`.
+| Effect | `gridlines` | Mecha grid (`order: 10`) |
 
 ## API
 
@@ -130,15 +149,16 @@ be active at once.
 
 ### `BackgroundContext`
 
-| Field                      | Meaning                                                                                        |
-| -------------------------- | ---------------------------------------------------------------------------------------------- |
-| `layer`                    | Your canvas, device-pixel sized. Create your own 2D or WebGL context on it.                    |
-| `w`, `h`, `dpr`            | Layer size in device pixels, device pixel ratio.                                               |
-| `scale`, `offset`          | Graph zoom and pan (LiteGraph `ds.scale` / `ds.offset`).                                       |
-| `mouse`                    | `{ x, y, over }` in device px; `over` is false when the cursor is off the canvas.              |
-| `trail`                    | Recent cursor path in graph space: `pts` (flat x,y list), `radii`, `n`. `n < 2` means no tail. |
-| `time`, `dt`               | ms timestamps for animation.                                                                   |
-| `color(cssVar, fallback?)` | Resolve a token such as `'--zen-accent'` to a canvas-usable colour (handles `oklch`).          |
+| Field                      | Meaning                                                                                                                                                                                     |
+| -------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `layer`                    | Your canvas, device-pixel sized. Create your own 2D or WebGL context on it.                                                                                                                 |
+| `w`, `h`, `dpr`            | Layer size in device pixels, device pixel ratio.                                                                                                                                            |
+| `scale`, `offset`          | Graph zoom and pan (LiteGraph `ds.scale` / `ds.offset`).                                                                                                                                    |
+| `mouse`                    | `{ x, y, over }` in device px; `over` is false when the cursor is off the canvas.                                                                                                           |
+| `trail`                    | Recent cursor path in graph space: `pts` (flat x,y list), `radii`, `n`. `n < 2` means no tail.                                                                                              |
+| `time`, `dt`               | ms timestamps for animation.                                                                                                                                                                |
+| `activity`                 | `{ pattern, level, progress, beat }`: the Run glow pattern ('off' draws nothing), how busy ComfyUI is (0..1, eased), the sampler's step progress, seconds since the run moved on to a node. |
+| `color(cssVar, fallback?)` | Resolve a token such as `'--zen-accent'` to a canvas-usable colour (handles `oklch`).                                                                                                       |
 
 Gotchas:
 

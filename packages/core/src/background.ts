@@ -17,6 +17,13 @@ import type {
   ZenBackgrounds,
 } from '@nynxz/zenkit-client'
 import { imageBackground, imageOptions, setImageOptions } from './backgroundImage'
+import {
+  ACTIVITY_PATTERNS,
+  activityShowing,
+  readActivity,
+  watchActivity,
+  type ActivityPattern,
+} from './backgroundActivity'
 import { listEffects, registerEffect, resolveEffects } from './backgroundEffects'
 import { zwarn } from './log'
 import { theme } from './theme'
@@ -216,22 +223,88 @@ function flowParams(v: number): { ttl: number; tailRadius: number } {
   return { ttl: 140 + n * 300, tailRadius: 60 - n * 42 } // 140–440ms; tip 60→18 graph units
 }
 
-const VERT = `#version 300 es
-const vec2 V[3] = vec2[3](vec2(-1.0,-1.0), vec2(3.0,-1.0), vec2(-1.0,3.0));
-void main(){ gl_Position = vec4(V[gl_VertexID], 0.0, 1.0); }
-`
-
-const FRAG = `#version 300 es
+/* ── what every shader background shares ────────────────────────────────────── */
+// The common uniforms (set by bindCommon), noise, and activityAt(): how a running workflow lights
+// a pixel, by the user's pattern. Each background composes its own look from these.
+const HEAD = `#version 300 es
 precision highp float;
-#define MAX_TRAIL 20
 out vec4 fragColor;
 uniform vec2  u_res;
 uniform float u_dpr;
 uniform float u_scale;
 uniform vec2  u_offset;
-uniform vec2  u_mouse;
+uniform vec2  u_mouse;     // graph space
 uniform float u_over;
-uniform float u_time;
+uniform float u_time;      // seconds
+uniform vec3  u_bgColor;
+uniform vec3  u_text;
+uniform vec3  u_accent;
+uniform float u_act;       // 0..1, eased: how busy ComfyUI is
+uniform float u_prog;      // the sampler's step progress
+uniform float u_beat;      // seconds since the run moved on to a node
+uniform int   u_pattern;   // 0 off, 1 breathe, 2 sweep, 3 ripple, 4 aurora
+float hash21(vec2 p){ return fract(sin(dot(p, vec2(127.1, 311.7))) * 43758.5453); }
+float vnoise(vec2 p){
+  vec2 i = floor(p), f = fract(p);
+  vec2 u = f * f * (3.0 - 2.0 * f);
+  return mix(mix(hash21(i), hash21(i + vec2(1.0, 0.0)), u.x),
+             mix(hash21(i + vec2(0.0, 1.0)), hash21(i + vec2(1.0, 1.0)), u.x), u.y);
+}
+float fbm(vec2 p){
+  float v = 0.0, a = 0.5;
+  for (int i = 0; i < 5; i++) { v += a * vnoise(p); p = p * 2.03 + vec2(17.0, 9.0); a *= 0.5; }
+  return v;
+}
+// The pixel in device px (top-left origin) and the graph point under it.
+vec2 devPx(){ return vec2(gl_FragCoord.x, u_res.y - gl_FragCoord.y); }
+vec2 graphPt(vec2 dev){ return dev / (u_dpr * u_scale) - u_offset; }
+// How strongly a running workflow lights the screen point uv (0..1), already scaled by u_act.
+float activityAt(vec2 uv){
+  if (u_pattern == 0 || u_act < 0.001) return 0.0;
+  vec2 p = (uv - 0.5) * vec2(u_res.x / u_res.y, 1.0);
+  float a = 0.0;
+  if (u_pattern == 1) {        // breathe: a slow swell, strongest in the middle
+    a = (0.6 + 0.4 * sin(u_time * 2.2)) * (1.0 - 0.65 * smoothstep(0.0, 1.1, length(p)));
+  } else if (u_pattern == 2) { // sweep: a band crossing as the sampler steps, lit behind it
+    float x = uv.x * 0.8 + uv.y * 0.2;
+    float pos = u_prog > 0.001 ? mix(-0.1, 1.1, u_prog) : fract(u_time * 0.18) * 1.3 - 0.15;
+    a = exp(-pow((x - pos) / 0.07, 2.0)) + (x < pos ? 0.2 * exp((x - pos) * 4.0) : 0.0);
+  } else if (u_pattern == 3) { // ripple: rings out from the middle each time a node starts
+    float d = length(p), r = u_beat * 0.9;
+    float fade = exp(-u_beat * 1.2);
+    a = (exp(-pow((d - r) / 0.045, 2.0)) + 0.5 * exp(-pow((d - r + 0.22) / 0.035, 2.0))) * fade
+      + 0.12 * (0.5 + 0.5 * sin(u_time * 1.6));
+  } else if (u_pattern == 4) { // aurora: slow curtains of light drifting across
+    float n = fbm(vec2(p.x * 1.6 + u_time * 0.07, p.y * 2.4 - u_time * 0.05));
+    a = smoothstep(0.35, 0.8, n) * (0.55 + 0.45 * sin(p.x * 3.0 + u_time * 0.6 + n * 4.0));
+  }
+  return clamp(a, 0.0, 1.0) * u_act;
+}
+`
+const COMMON_UNIFORMS = [
+  'u_res',
+  'u_dpr',
+  'u_scale',
+  'u_offset',
+  'u_mouse',
+  'u_over',
+  'u_time',
+  'u_bgColor',
+  'u_text',
+  'u_accent',
+  'u_act',
+  'u_prog',
+  'u_beat',
+  'u_pattern',
+] as const
+
+const VERT = `#version 300 es
+const vec2 V[3] = vec2[3](vec2(-1.0,-1.0), vec2(3.0,-1.0), vec2(-1.0,3.0));
+void main(){ gl_Position = vec4(V[gl_VertexID], 0.0, 1.0); }
+`
+
+const FRAG = `${HEAD}
+#define MAX_TRAIL 20
 uniform float u_spacing;
 uniform float u_dotRadius;
 uniform float u_restAlpha;
@@ -242,8 +315,6 @@ uniform float u_lit;
 uniform float u_base;
 uniform float u_speed;
 uniform float u_rainbow;
-uniform vec3  u_dotColor;
-uniform vec3  u_bgColor;
 uniform float u_vignette;
 uniform float u_tailFade;         // brightness at the tail tip (< 1 ⇒ fades out)
 uniform int   u_trailN;           // number of active trail points (0/1 ⇒ plain circle at u_mouse)
@@ -262,7 +333,6 @@ vec3 hsl2rgb(float h, float s, float l){
   else              rgb = vec3(c, 0.0, x);
   return rgb + (l - c/2.0);
 }
-float hash(vec2 p){ return fract(sin(dot(p, vec2(127.1, 311.7))) * 43758.5453); }
 // Distance from p to segment a→b; returns the clamped projection param in t.
 float segDist(vec2 p, vec2 a, vec2 b, out float t){
   vec2 ab = b - a;
@@ -270,9 +340,11 @@ float segDist(vec2 p, vec2 a, vec2 b, out float t){
   return length(p - (a + t * ab));
 }
 void main(){
-  vec2 dev = vec2(gl_FragCoord.x, u_res.y - gl_FragCoord.y);
-  vec2 g = dev / (u_dpr * u_scale) - u_offset;
-  vec3 col = u_bgColor;
+  vec2 dev = devPx();
+  vec2 g = graphPt(dev);
+  // A running workflow: a faint wash, and the dots it reaches lift and take the accent.
+  float act = activityAt(dev / u_res);
+  vec3 col = mix(u_bgColor, u_accent, act * 0.07);
   vec2 baseCell = floor(g / u_spacing + 0.5);
   float aa = max(fwidth(g.x), fwidth(g.y)) + 0.001;
   for (int oy = -1; oy <= 1; oy++) {
@@ -301,10 +373,10 @@ void main(){
         }
         prox = max(0.0, prox);
       }
-      float h = hash(cell);
+      float h = hash21(cell);
       float pulse = sin(u_time * (0.2 + h * 0.4) + h * 6.2831) * 0.5 + 0.5;
       float baseAlpha = u_restAlpha + h * 0.08;
-      float alpha = baseAlpha + prox * 0.75 + pulse * 0.06;
+      float alpha = baseAlpha + prox * 0.75 + pulse * 0.06 + act * 0.7;
       vec3 dotc;
       if (u_rainbow > 0.5) {
         float flow = (dotPos.x + dotPos.y) * 0.12
@@ -316,12 +388,14 @@ void main(){
         float lit = u_base + prox * (u_lit - u_base);
         dotc = hsl2rgb(hue, sat, lit);
       } else {
-        dotc = min(vec3(1.0), u_dotColor * (1.0 + prox * 0.7));
+        dotc = min(vec3(1.0), u_text * (1.0 + prox * 0.7));
       }
-      float coreR = u_dotRadius + prox * u_dotRadius * 1.8;
+      dotc = mix(dotc, min(vec3(1.0), u_accent * (1.0 + act * 0.4)), act * 0.8);
+      float lift = max(prox, act);
+      float coreR = u_dotRadius + prox * u_dotRadius * 1.8 + act * u_dotRadius;
       float core = (1.0 - smoothstep(coreR - aa, coreR + aa, dist)) * alpha;
-      float glowR = u_dotRadius + prox * u_glow;
-      float glow = prox > 0.05 ? (1.0 - smoothstep(0.0, glowR, dist)) * prox * 0.4 * alpha : 0.0;
+      float glowR = u_dotRadius + lift * u_glow;
+      float glow = lift > 0.05 ? (1.0 - smoothstep(0.0, glowR, dist)) * lift * 0.4 * alpha : 0.0;
       col = mix(col, dotc, clamp(core + glow, 0.0, 1.0));
     }
   }
@@ -334,14 +408,7 @@ void main(){
 }
 `
 
-const UNIFORMS = [
-  'u_res',
-  'u_dpr',
-  'u_scale',
-  'u_offset',
-  'u_mouse',
-  'u_over',
-  'u_time',
+const GRID_UNIFORMS = [
   'u_spacing',
   'u_dotRadius',
   'u_restAlpha',
@@ -352,8 +419,6 @@ const UNIFORMS = [
   'u_base',
   'u_speed',
   'u_rainbow',
-  'u_dotColor',
-  'u_bgColor',
   'u_vignette',
   'u_tailFade',
   'u_trailN',
@@ -381,7 +446,11 @@ function compile(gl: WebGL2RenderingContext, type: number, src: string): WebGLSh
   return sh
 }
 
-function createGL(canvas: HTMLCanvasElement): GLState | null {
+function createGL(
+  canvas: HTMLCanvasElement,
+  frag: string,
+  uniforms: readonly string[],
+): GLState | null {
   const gl = canvas.getContext('webgl2', {
     alpha: false,
     premultipliedAlpha: false,
@@ -389,7 +458,7 @@ function createGL(canvas: HTMLCanvasElement): GLState | null {
   })
   if (!gl) return null
   const vs = compile(gl, gl.VERTEX_SHADER, VERT)
-  const fs = compile(gl, gl.FRAGMENT_SHADER, FRAG)
+  const fs = compile(gl, gl.FRAGMENT_SHADER, frag)
   if (!vs || !fs) return null
   const prog = gl.createProgram()!
   gl.attachShader(prog, vs)
@@ -401,20 +470,27 @@ function createGL(canvas: HTMLCanvasElement): GLState | null {
   }
   gl.useProgram(prog)
   const u: Record<string, WebGLUniformLocation | null> = {}
-  for (const name of UNIFORMS) u[name] = gl.getUniformLocation(prog, name)
+  for (const name of [...COMMON_UNIFORMS, ...uniforms]) u[name] = gl.getUniformLocation(prog, name)
   return { gl, prog, u }
 }
 
-function renderGL(host: BackgroundContext, st: GLState) {
+const rgb01 = (host: BackgroundContext, cssVar: string, fallback: string) =>
+  (hexToRgb(host.color(cssVar, fallback)) ?? hexToRgb(fallback)!).map((v) => v / 255)
+
+/** Start a frame of a shader background: viewport and the common uniforms (HEAD). False when
+ *  there's nothing to draw into (zero size, or a lost context — drawn again once restored). */
+function bindCommon(host: BackgroundContext, st: GLState): boolean {
   const vw = host.w | 0
   const vh = host.h | 0
-  if (vw <= 0 || vh <= 0) return
+  if (vw <= 0 || vh <= 0) return false
   const { gl, u } = st
-  if (gl.isContextLost()) return // drawn again once the context is restored (see buildStack)
+  if (gl.isContextLost()) return false
   gl.useProgram(st.prog)
   gl.viewport(0, 0, vw, vh)
-  const bg = (hexToRgb(host.color('--zen-bg', '#121212')) ?? [18, 18, 18]).map((v) => v / 255)
-  const dot = (hexToRgb(host.color('--zen-text', '#cccccc')) ?? [200, 200, 200]).map((v) => v / 255)
+  const bg = rgb01(host, '--zen-bg', '#121212')
+  const text = rgb01(host, '--zen-text', '#cccccc')
+  const accent = rgb01(host, '--zen-accent', '#6366f1')
+  const act = host.activity
   gl.uniform2f(u.u_res!, vw, vh)
   gl.uniform1f(u.u_dpr!, host.dpr)
   gl.uniform1f(u.u_scale!, host.scale)
@@ -422,6 +498,19 @@ function renderGL(host: BackgroundContext, st: GLState) {
   gl.uniform2f(u.u_mouse!, host.mouse.x, host.mouse.y)
   gl.uniform1f(u.u_over!, host.mouse.over ? 1 : 0)
   gl.uniform1f(u.u_time!, host.time * 0.001)
+  gl.uniform3f(u.u_bgColor!, bg[0]!, bg[1]!, bg[2]!)
+  gl.uniform3f(u.u_text!, text[0]!, text[1]!, text[2]!)
+  gl.uniform3f(u.u_accent!, accent[0]!, accent[1]!, accent[2]!)
+  gl.uniform1f(u.u_act!, act.level)
+  gl.uniform1f(u.u_prog!, act.progress)
+  gl.uniform1f(u.u_beat!, act.beat)
+  gl.uniform1i(u.u_pattern!, Math.max(0, ACTIVITY_PATTERNS.indexOf(act.pattern as ActivityPattern)))
+  return true
+}
+
+function renderGL(host: BackgroundContext, st: GLState) {
+  if (!bindCommon(host, st)) return
+  const { gl, u } = st
   gl.uniform1f(u.u_spacing!, S.dotSpacing)
   gl.uniform1f(u.u_dotRadius!, S.dotRadius)
   gl.uniform1f(u.u_restAlpha!, S.restAlpha)
@@ -432,8 +521,6 @@ function renderGL(host: BackgroundContext, st: GLState) {
   gl.uniform1f(u.u_base!, S.baseBrightness)
   gl.uniform1f(u.u_speed!, S.colorSpeed)
   gl.uniform1f(u.u_rainbow!, S.rainbow)
-  gl.uniform3f(u.u_dotColor!, dot[0]!, dot[1]!, dot[2]!)
-  gl.uniform3f(u.u_bgColor!, bg[0]!, bg[1]!, bg[2]!)
   gl.uniform1f(u.u_vignette!, S.vignette)
   gl.uniform1f(u.u_tailFade!, S.tailFade)
   gl.uniform1i(u.u_trailN!, host.trail.n)
@@ -494,7 +581,7 @@ const grid: ZenBackground = {
   id: 'grid',
   label: 'Interactive Grid',
   init(host) {
-    const gl = createGL(host.layer)
+    const gl = createGL(host.layer, FRAG, GRID_UNIFORMS)
     if (!gl) console.warn('[ZenKit] WebGL2 unavailable — 2D fallback grid.')
     return { gl, ctx2d: null } as GridState
   },
@@ -509,10 +596,143 @@ const grid: ZenBackground = {
   },
 }
 
+/* ── more shader backgrounds ───────────────────────────────────────────────── */
+// Each is one fragment shader over HEAD: it follows the graph's pan and zoom (or, for Ambient,
+// the screen), the cursor and the theme, and lights up with a running workflow.
+
+/** A background drawn by one fragment shader. Without WebGL2 it paints the theme's plain
+ *  background colour. */
+function shaderBackground(id: string, label: string, body: string): ZenBackground {
+  const frag = `${HEAD}\n${body}`
+  return {
+    id,
+    label,
+    init(host) {
+      const gl = createGL(host.layer, frag, [])
+      if (!gl) console.warn(`[ZenKit] WebGL2 unavailable — "${label}" shows a plain background.`)
+      return gl
+    },
+    frame(host, state) {
+      const st = state as GLState | null
+      if (st) {
+        if (bindCommon(host, st)) st.gl.drawArrays(st.gl.TRIANGLES, 0, 3)
+        return
+      }
+      const ctx = host.layer.getContext('2d')
+      if (!ctx) return
+      ctx.fillStyle = host.color('--zen-bg', '#121212')
+      ctx.fillRect(0, 0, host.w, host.h)
+    },
+    dispose(state) {
+      ;(state as GLState | null)?.gl.getExtension('WEBGL_lose_context')?.loseContext()
+    },
+  }
+}
+
+// Topographic lines over a slowly shifting height field, in graph space: every fourth is a
+// stronger contour, the cursor lifts the lines near it, and a run speeds the drift and lights
+// them in the accent.
+const contours = shaderBackground(
+  'contours',
+  'Contours',
+  `
+void main(){
+  vec2 dev = devPx();
+  vec2 g = graphPt(dev);
+  vec2 uv = dev / u_res;
+  float act = activityAt(uv);
+  float t = u_time * (0.015 + u_act * 0.04);
+  float v = fbm(g * 0.0014 + vec2(t, -t * 0.7)) * 14.0;
+  float w = fwidth(v);
+  float line = (1.0 - smoothstep(0.0, w * 1.2, abs(v - floor(v + 0.5))))
+             * (1.0 - smoothstep(0.15, 0.45, w)); // zoomed far out the lines would crowd into noise
+  float major = step(mod(floor(v + 0.5), 4.0), 0.5);
+  float prox = u_over > 0.5 ? max(0.0, 1.0 - length(g - u_mouse) / 260.0) : 0.0;
+  float alpha = line * (0.1 + major * 0.12 + prox * 0.45 + act * 0.45);
+  vec3 ink = mix(u_text, u_accent, clamp(prox * 0.6 + act * 1.2, 0.0, 1.0));
+  vec3 col = mix(u_bgColor, u_accent, act * 0.05);
+  col = mix(col, ink, clamp(alpha, 0.0, 1.0));
+  float d = distance(uv, vec2(0.5, 0.45));
+  fragColor = vec4(mix(col, u_bgColor, smoothstep(0.6, 1.1, d) * 0.6), 1.0);
+}
+`,
+)
+
+// Three depths of stars drifting with the graph at different rates (parallax), twinkling; near the
+// cursor they brighten, and a run tints them and wakes a faint nebula in the accent.
+const starfield = shaderBackground(
+  'starfield',
+  'Starfield',
+  `
+float stars(vec2 p, float cell, float tw){
+  vec2 c = floor(p / cell);
+  vec2 f = p / cell - c;
+  float h = hash21(c);
+  vec2 at = vec2(hash21(c + 3.1), hash21(c + 7.7)) * 0.8 + 0.1;
+  float d = length(f - at) * cell;
+  float size = mix(1.1, 2.8, h * h);
+  float twinkle = 0.55 + 0.45 * sin(u_time * tw * (1.0 + h * 3.0) + h * 40.0);
+  float core = 1.0 - smoothstep(0.0, size, d);
+  float halo = (1.0 - smoothstep(0.0, size * 4.0, d)) * 0.25; // a soft bloom so they read at a glance
+  return step(0.4, h) * (core + halo) * twinkle;
+}
+void main(){
+  vec2 dev = devPx();
+  vec2 uv = dev / u_res;
+  float act = activityAt(uv);
+  vec2 css = dev / u_dpr;
+  float tw = 1.0 + u_act * 2.5;
+  float s = 0.0;
+  // Far layers move less with a pan and shrink less with a zoom.
+  s += stars(css / (u_scale * 0.5 + 0.5) - u_offset * 0.25, 46.0, tw) * 0.5;
+  s += stars(css / (u_scale * 0.75 + 0.25) - u_offset * 0.55, 70.0, tw) * 0.75;
+  s += stars(graphPt(dev), 110.0, tw);
+  float prox = u_over > 0.5 ? max(0.0, 1.0 - length(graphPt(dev) - u_mouse) / 320.0) : 0.0;
+  vec3 col = u_bgColor;
+  float neb = fbm(uv * vec2(2.2, 1.6) + vec2(u_time * 0.02, 0.0));
+  col = mix(col, u_accent, smoothstep(0.45, 0.85, neb) * (0.03 + act * 0.18));
+  vec3 star = mix(u_text, u_accent, clamp(act * 1.3 + prox * 0.4, 0.0, 1.0));
+  col = mix(col, star, clamp(s * (0.75 + prox * 0.6 + act * 0.6), 0.0, 1.0));
+  fragColor = vec4(col, 1.0);
+}
+`,
+)
+
+// A slow mesh of soft light in the theme's colours, fixed to the screen rather than the graph: the
+// quietest background. The cursor carries a faint light; a run brightens and quickens it.
+const ambient = shaderBackground(
+  'ambient',
+  'Ambient',
+  `
+void main(){
+  vec2 dev = devPx();
+  vec2 uv = dev / u_res;
+  vec2 p = (uv - 0.5) * vec2(u_res.x / u_res.y, 1.0);
+  float act = activityAt(uv);
+  float t = u_time * (0.05 + u_act * 0.12);
+  vec3 col = u_bgColor;
+  for (int i = 0; i < 4; i++) {
+    float k = float(i);
+    vec2 c = vec2(sin(t * (0.7 + k * 0.31) + k * 2.0) * 0.6, cos(t * (0.5 + k * 0.27) + k * 1.3) * 0.35);
+    float w = exp(-dot(p - c, p - c) * 3.0);
+    vec3 tint = mod(k, 2.0) < 0.5 ? u_accent : mix(u_text, u_accent, 0.35);
+    col = mix(col, tint, w * (0.06 + u_act * 0.08));
+  }
+  if (u_over > 0.5) {
+    vec2 m = (u_mouse + u_offset) * u_scale * u_dpr;
+    float d = length(dev - m) / u_res.y;
+    col = mix(col, u_accent, exp(-d * d * 14.0) * 0.06);
+  }
+  col = mix(col, u_accent, act * 0.16);
+  col += (hash21(dev + fract(u_time)) - 0.5) / 255.0 * 2.0; // grain: no banding in the gradients
+  fragColor = vec4(col, 1.0);
+}
+`,
+)
+
 /* ── registry + host ───────────────────────────────────────────────────────── */
 const registry = new Map<string, ZenBackground>()
-registry.set(grid.id, grid)
-registry.set(imageBackground.id, imageBackground)
+for (const bg of [grid, contours, starfield, ambient, imageBackground]) registry.set(bg.id, bg)
 let desiredId: string | null = 'grid'
 
 const clamp = (v: number, lo: number, hi: number) => Math.min(hi, Math.max(lo, v))
@@ -548,6 +768,7 @@ class Host {
   private saved: { bg?: unknown; clear?: unknown } = {}
   // Cursor-follow state (see setBackgroundFollow* below). Defaults keep the classic snap look;
   // flow params are pre-seeded so 'blob' works even before the sliders are first touched.
+  private activity: ActivityPattern = 'off'
   private followMode: FollowMode = 'snap'
   private followTau = speedToTau(45) // smoothing time-constant, seconds
   private trailTtl = flowParams(55).ttl // ms a trail point survives ⇒ tail length ∝ speed × ttl
@@ -562,6 +783,10 @@ class Host {
   }
   setFollowSpeed(v: number) {
     this.followTau = speedToTau(v)
+  }
+  setActivity(pattern: ActivityPattern) {
+    this.activity = pattern
+    if (pattern !== 'off') watchActivity()
   }
   setBlobFlow(v: number) {
     const p = flowParams(v)
@@ -826,6 +1051,8 @@ class Host {
       return true
     }
     if (now < this.busyUntil || this.trail.length > 0 || this.fx.length > 0) return true
+    // A run is showing: animate at a modest rate, so the glow costs the GPU little while it works.
+    if (this.activity !== 'off' && activityShowing()) return now - this.last >= 1000 / 30
     // The ambient pulse runs only while the pointer is on the graph itself: working in a node, a
     // panel or a workspace, the background holds still and costs nothing.
     if (!this.ptr.onCanvas || document.body.classList.contains('disable-animations')) return false
@@ -897,6 +1124,7 @@ class Host {
       trail: { pts, radii, n },
       time: now,
       dt,
+      activity: { pattern: this.activity, ...readActivity(now) },
       color: (v, fb = '#888888') => cssColor(v, fb),
     }
   }
@@ -972,7 +1200,7 @@ class Host {
   }
 
   private tick(now: number) {
-    if ('zenWorkspace' in document.documentElement.dataset) return // covered by a workspace
+    if ('zenCovered' in document.documentElement.dataset) return // covered by a workspace or an app
     const lg = lgCanvas()
     if (!this.active || !this.layer || !lg) return
     if (!this.due(lg, now)) return
@@ -1029,6 +1257,8 @@ interface Saved {
   /** Wanted effect ids, registered or not (a plugin's effect may register after load). */
   effects: string[]
   intensity: number
+  /** How a running workflow shows in the background ('off' by default). */
+  activity: ActivityPattern
 }
 
 function readJson(key: string): unknown {
@@ -1055,11 +1285,15 @@ const saved: Saved = {
   finish: { ...FINISH_OFF, ...stored?.finish },
   effects: Array.isArray(stored?.effects) ? stored.effects.map(String) : [],
   intensity: typeof stored?.intensity === 'number' ? stored.intensity : 60,
+  activity: ACTIVITY_PATTERNS.includes(stored?.activity as ActivityPattern)
+    ? (stored!.activity as ActivityPattern)
+    : 'off',
 }
 setImageOptions(saved.image)
 host.setFinish(saved.finish)
 host.setEffects(saved.effects)
 host.setEffectIntensity(saved.intensity)
+host.setActivity(saved.activity)
 
 let isStored = stored !== null
 const changeListeners = new Set<() => void>()
@@ -1123,6 +1357,21 @@ export function setBackgroundEnabled(on: boolean) {
 export function startBackground(id: string | null = null) {
   desiredId = saved.enabled ? (id ?? shownKind()) : null
   host.mount()
+}
+
+/** How a running workflow shows in the background: 'off', or a pattern every built-in background
+ *  draws ('breathe', 'sweep', 'ripple', 'aurora'). */
+export function backgroundActivity(): ActivityPattern {
+  return saved.activity
+}
+export function setBackgroundActivity(pattern: string): void {
+  const next = (ACTIVITY_PATTERNS as readonly string[]).includes(pattern)
+    ? (pattern as ActivityPattern)
+    : 'off'
+  if (next === saved.activity) return
+  saved.activity = next
+  host.setActivity(next)
+  persist()
 }
 
 /** Point the `image` background at a picture. `url` takes an http(s) URL, a `data:` URI, or a
