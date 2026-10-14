@@ -2,6 +2,7 @@ import { app } from '@comfy/app'
 import { registerBackgroundSettings } from './backgroundSettings'
 import { registerAppearanceSettings } from './appearanceSettings'
 import { registerSuite } from './suite'
+import { allowedHostsSetting } from './allowedHosts'
 import {
   fetchThemes,
   installZenKit,
@@ -42,6 +43,9 @@ if (detachedPanel) {
 registerBackgroundSettings()
 registerAppearanceSettings()
 registerSuite()
+const securitySettings = allowedHostsSetting()
+if (securitySettings.length)
+  app.registerExtension({ name: 'nynxz.zenkit.security', settings: securitySettings })
 
 app.registerExtension({
   name: 'nynxz.zenkit',

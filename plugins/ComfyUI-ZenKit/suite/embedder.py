@@ -155,7 +155,7 @@ class GemmaEmbedder:
         # Held in a plain module: the patcher sets `.device` on what it manages, which a
         # transformers model only has as a read-only property.
         holder = torch.nn.Module()
-        holder.model = AutoModel.from_pretrained(folder, dtype=dtype).eval().requires_grad_(False)
+        holder.model = AutoModel.from_pretrained(folder, dtype=dtype).train(False).requires_grad_(False)
         self.processor = AutoProcessor.from_pretrained(folder)
         # The plain patcher, not CoreModelPatcher: with dynamic VRAM on, that one streams weights
         # through ComfyUI's ops, which transformers layers don't use, so it copied the whole

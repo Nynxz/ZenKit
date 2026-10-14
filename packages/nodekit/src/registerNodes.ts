@@ -2,6 +2,7 @@
 // nodeCreated applies sizing and the run-result mapper, settings and slot-links are collected.
 
 import { app } from '@comfy/app'
+import { allowedHostsSetting } from './allowedHosts'
 import { mountWidget } from './mountWidget'
 import { registerSlotLink } from './zenGraph'
 import type { Identity } from './identity'
@@ -95,7 +96,7 @@ export function registerNodes(defs: NodeDef[], name: string, identity: Identity)
         )
     }
 
-  const settings = defs.flatMap((d) => d.settings ?? [])
+  const settings = [...defs.flatMap((d) => d.settings ?? []), ...allowedHostsSetting()]
 
   app.registerExtension({
     name,

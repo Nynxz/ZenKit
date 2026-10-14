@@ -82,7 +82,8 @@ def _pyproject(path: str) -> dict[str, Any]:
 
 
 def _git(path: str) -> dict[str, str]:
-    """Branch + short commit for the repo a pack lives in — no subprocess, no gitpython.
+    """Branch + short commit for the repo a pack lives in, read from its .git files: no git
+    binary, no gitpython.
 
     Walks up a few levels because a monorepo checkout symlinked into `custom_nodes/`
     (ZenKit's own plugins do exactly this) has its `.git` several folders above the pack.

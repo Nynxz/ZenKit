@@ -12,6 +12,7 @@ Every route that changes state, or reads the user's files or paths, starts with:
 
 from __future__ import annotations
 
+import json
 import logging
 import os
 import socket
@@ -45,13 +46,35 @@ def _listen_hosts() -> frozenset[str] | None:
     return _LOOPBACK | names
 
 
+#: The ComfyUI setting (Settings > ZenKit > Security) with the names a reverse proxy serves ComfyUI
+#: under. Read from the default user's settings file, and read again only when that file changes.
+ALLOWED_HOSTS_SETTING = "ZenKit.Security.AllowedHosts"
+_hosts_cache: tuple[float, set[str]] | None = None
+
+
 def _proxied_hosts() -> set[str]:
-    """Names a reverse proxy serves ComfyUI under (ZENKIT_ALLOWED_HOSTS), ports dropped."""
+    """Names a reverse proxy serves ComfyUI under (the Allowed host names setting), ports dropped."""
+    global _hosts_cache
+    try:
+        import folder_paths
+
+        path = os.path.join(folder_paths.get_user_directory(), "default", "comfy.settings.json")
+        mtime = os.path.getmtime(path)
+    except Exception:  # noqa: BLE001 - outside ComfyUI, or no settings saved yet
+        return set()
+    if _hosts_cache is not None and _hosts_cache[0] == mtime:
+        return _hosts_cache[1]
+    try:
+        with open(path, encoding="utf-8") as f:
+            raw = json.load(f).get(ALLOWED_HOSTS_SETTING, "")
+    except (OSError, ValueError, AttributeError):
+        raw = ""
     out = set()
-    for name in os.environ.get("ZENKIT_ALLOWED_HOSTS", "").split(","):
+    for name in str(raw or "").replace("\n", ",").split(","):
         parsed = _host_port(name.strip(), "http") if name.strip() else None
         if parsed:
             out.add(parsed[0])
+    _hosts_cache = (mtime, out)
     return out
 
 
@@ -94,7 +117,7 @@ def request_allowed(request):
         return _deny(
             request,
             f"Host {host[0]!r} is not an address this server listens on; open ComfyUI at one it "
-            "does, add it to --listen, or (behind a proxy) to ZENKIT_ALLOWED_HOSTS",
+            "does, add it to --listen, or (behind a proxy) to Settings > ZenKit > Security > Allowed host names",
         )
 
     origin = request.headers.get("Origin")
