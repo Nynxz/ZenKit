@@ -50,7 +50,8 @@ jobs:
       - name: Publish
         run: |
           for p in ui nodekit client; do
-            tgz=$(ls dist-tarballs/nynxz-zenkit-$p-*.tgz)
+            # An absolute path: npm reads a bare `dir/file.tgz` as GitHub shorthand (user/repo).
+            tgz=$(ls "$GITHUB_WORKSPACE"/dist-tarballs/nynxz-zenkit-$p-*.tgz)
             if [ "${{ inputs.dry-run }}" = "true" ]; then
               npm publish "$tgz" --access public --dry-run
             else
