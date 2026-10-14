@@ -38,6 +38,22 @@
           <span class="lb-fname">Bookmarked</span>
           <span class="lb-count">{{ favCount }}</span>
         </button>
+        <template v-if="pinnedFolders.length">
+          <div class="lb-sep" />
+          <button
+            v-for="f in pinnedFolders"
+            :key="f.path"
+            type="button"
+            class="lb-folder"
+            :class="{ on: scope === f.path }"
+            :title="f.path"
+            @click="setScope(f.path)"
+          >
+            <i class="mdi mdi-pin-outline" />
+            <span class="lb-fname">{{ f.path.split('/').pop() }}</span>
+            <span class="lb-count">{{ f.count }}</span>
+          </button>
+        </template>
         <div v-if="tree.length" class="lb-sep" />
         <ZenFolderTree
           :folders="tree"
@@ -54,6 +70,14 @@
             <i class="mdi" :class="scope === FAV ? 'mdi-star' : 'mdi-folder-outline'" />
             {{ scopeLabel }}
             <span class="lb-soft">· {{ visible.length }}</span>
+            <ZenIconButton
+              v-if="scope !== ALL && scope !== FAV"
+              :icon="isPinned(scope) ? 'mdi mdi-pin' : 'mdi mdi-pin-outline'"
+              :title="isPinned(scope) ? 'Unpin this folder' : 'Pin this folder to the top'"
+              :active="isPinned(scope)"
+              size="sm"
+              @click="togglePin(scope)"
+            />
           </span>
           <span class="lb-grow" />
           <ZenToggleGroup v-model="sort" :options="SORTS" />
@@ -343,6 +367,35 @@ function setOpen(v: boolean) {
 function setScope(s: string) {
   scope.value = s
 }
+
+// Folders pinned above the tree: a per-browser convenience, so it lives in localStorage.
+const PINS = 'zenkit.loraBrowser.pinned'
+const pinned = ref<string[]>(readPins())
+function readPins(): string[] {
+  try {
+    const v: unknown = JSON.parse(localStorage.getItem(PINS) ?? '[]')
+    return Array.isArray(v) ? v.filter((p): p is string => typeof p === 'string') : []
+  } catch {
+    return []
+  }
+}
+function isPinned(path: string) {
+  return pinned.value.includes(path)
+}
+function togglePin(path: string) {
+  pinned.value = isPinned(path) ? pinned.value.filter((p) => p !== path) : [...pinned.value, path]
+  try {
+    localStorage.setItem(PINS, JSON.stringify(pinned.value))
+  } catch {
+    // pins are a convenience
+  }
+}
+const pinnedFolders = computed(() =>
+  pinned.value.flatMap((path) => {
+    const node = lib.folderIndex.value.get(path)
+    return node ? [{ path, count: node.total }] : []
+  }),
+)
 
 const favCount = computed(() => lib.favorites.value.filter((n) => !lib.isMissing(n)).length)
 const scopeLabel = computed(() =>
