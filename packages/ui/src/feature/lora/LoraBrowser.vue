@@ -8,6 +8,10 @@
       <span class="lb-search">
         <ZenInput v-model="query" sm :placeholder="`Search ${scopeLabel}…`" />
       </span>
+      <span class="lb-grow" />
+      <ZenToggleGroup v-model="sort" :options="SORTS" />
+      <ZenToggleGroup v-if="view === 'grid'" v-model="size" :options="SIZES" />
+      <ZenToggleGroup v-model="view" :options="VIEWS" />
       <ZenIconButton
         icon="mdi mdi-refresh"
         title="Rescan the LoRA folders"
@@ -79,10 +83,6 @@
               @click="togglePin(scope)"
             />
           </span>
-          <span class="lb-grow" />
-          <ZenToggleGroup v-model="sort" :options="SORTS" />
-          <ZenToggleGroup v-if="view === 'grid'" v-model="size" :options="SIZES" />
-          <ZenToggleGroup v-model="view" :options="VIEWS" />
         </div>
 
         <!-- list: one line per LoRA, quick to scan and to scroll -->
@@ -111,14 +111,10 @@
               :title="it.name"
               @click="focused = it.name"
               @dblclick="emit('pick', it.name)"
+              @mouseenter="hoverStart(it.name, rowThumb($event), $event.shiftKey)"
+              @mouseleave="hoverEnd(rowThumb($event))"
             >
-              <span
-                class="lb-rthumb"
-                @mouseenter="
-                  hoverStart(it.name, $event.currentTarget as HTMLElement, $event.shiftKey)
-                "
-                @mouseleave="hoverEnd($event.currentTarget as HTMLElement)"
-              >
+              <span class="lb-rthumb">
                 <img
                   v-if="lib.hasPreview(it.name)"
                   :src="lib.preview(it.name, 26)"
@@ -360,6 +356,11 @@ watch(
   },
   { immediate: true },
 )
+
+function rowThumb(e: MouseEvent): HTMLElement {
+  const row = e.currentTarget as HTMLElement
+  return row.querySelector<HTMLElement>('.lb-rthumb') ?? row
+}
 
 function setOpen(v: boolean) {
   emit('update:open', v)
