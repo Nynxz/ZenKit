@@ -18,6 +18,8 @@ import os
 
 from aiohttp import web
 
+from .request_guard import request_allowed
+
 try:
     from server import PromptServer
     import folder_paths
@@ -90,6 +92,8 @@ if _routes is not None:
 
     @_routes.get("/zenkit/thumb")
     async def _thumb(request: web.Request) -> web.StreamResponse:
+        if (denied := request_allowed(request)) is not None:
+            return denied
         q = request.rel_url.query
         path = _source(q.get("type", "output"), q.get("subfolder", ""), q.get("filename", ""))
         if path is None:

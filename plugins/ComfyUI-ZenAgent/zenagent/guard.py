@@ -3,7 +3,7 @@ nodekit `request_allowed`):
 
 1. Host: when ComfyUI listens only on loopback, the Host header must name loopback too, which
    defeats DNS rebinding. When the user listens on other addresses, those are allowed as well, and
-   so is this machine's own name (`archon`, `archon.local`): a rebinding page sends its own domain
+   so is this machine's own name (`mybox`, `mybox.local`): a rebinding page sends its own domain
    as the Host, never this machine's name. Listening on every interface (0.0.0.0, ::) allows any
    Host, since that exposure is their choice. Behind a reverse proxy, list the names it serves
    ComfyUI under in ZENKIT_ALLOWED_HOSTS (comma-separated); the proxy must pass the Host through.

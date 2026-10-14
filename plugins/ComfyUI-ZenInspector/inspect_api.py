@@ -29,6 +29,8 @@ from typing import Any
 
 from aiohttp import web
 
+from .request_guard import request_allowed
+
 try:
     from server import PromptServer
     import folder_paths
@@ -317,7 +319,9 @@ def _scan() -> dict[str, Any]:
 if _routes is not None:
 
     @_routes.get("/zeninspector/inspect")
-    async def zeninspector_inspect(_request):
+    async def zeninspector_inspect(request):
+        if (denied := request_allowed(request)) is not None:
+            return denied
         try:
             return web.json_response(_scan())
         except Exception as e:  # never let the debug panel take the server down

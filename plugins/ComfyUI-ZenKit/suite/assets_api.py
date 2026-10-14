@@ -45,6 +45,8 @@ import numpy as np
 from aiohttp import web
 from PIL import Image as PILImage
 
+from ..request_guard import request_allowed
+
 try:
     import comfy.model_management
     import folder_paths
@@ -930,11 +932,23 @@ if _routes is not None:
 
     @_routes.get("/zensuite/visual")
     async def zs_visual(request):
+        if (denied := request_allowed(request)) is not None:
+            return denied
         return web.json_response(await asyncio.get_event_loop().run_in_executor(None, _visual_status))
 
     @_routes.post("/zensuite/visual")
     async def zs_visual_set(request):
-        name = (await request.json()).get("model") or None
+        if (denied := request_allowed(request)) is not None:
+            return denied
+        try:
+            body = await request.json()
+        except ValueError:
+            body = None
+        if not isinstance(body, dict):
+            return web.json_response({"error": "expected a JSON object"}, status=400)
+        name = body.get("model") or None
+        if name is not None and not isinstance(name, str):
+            return web.json_response({"error": "model must be a name"}, status=400)
         if name is not None and name not in _visual_models():
             return web.json_response({"error": f"no embedding model named {name}"}, status=400)
         with open(_visual_config_path(), "w", encoding="utf-8") as f:
@@ -944,6 +958,8 @@ if _routes is not None:
 
     @_routes.post("/zensuite/visual/index")
     async def zs_visual_index(request):
+        if (denied := request_allowed(request)) is not None:
+            return denied
         if _visual_model() is None:
             return web.json_response({"error": "choose a visual search model first"}, status=400)
         if _Visual.state["state"] not in ("loading", "indexing", "paused"):
@@ -953,11 +969,15 @@ if _routes is not None:
 
     @_routes.get("/zensuite/roots")
     async def zs_roots(request):
+        if (denied := request_allowed(request)) is not None:
+            return denied
         out = [{"name": n, "dir": d, "exists": os.path.isdir(d)} for n, d in _roots().items()]
         return web.json_response({"roots": out})
 
     @_routes.get("/zensuite/assets")
     async def zs_assets(request):
+        if (denied := request_allowed(request)) is not None:
+            return denied
         root = (request.rel_url.query.get("root", "output") or "output").strip()
         if root not in _roots():
             return web.json_response({"error": f"unknown root: {root}", "items": [], "root": root})
@@ -974,6 +994,8 @@ if _routes is not None:
 
     @_routes.get("/zensuite/search")
     async def zs_search(request):
+        if (denied := request_allowed(request)) is not None:
+            return denied
         q = request.rel_url.query
         root = (q.get("root", "output") or "output").strip()
         if root not in _roots():
@@ -990,6 +1012,8 @@ if _routes is not None:
     # Back-compat: the old Output Browser route.
     @_routes.get("/zensuite/outputs")
     async def zs_outputs(request):
+        if (denied := request_allowed(request)) is not None:
+            return denied
         items = await asyncio.get_event_loop().run_in_executor(None, _scan, "output")
         return web.json_response(
             {"root": "output", "dir": _root_dir("output"), "items": items, "truncated": len(items) >= _MAX_FILES}
@@ -997,6 +1021,8 @@ if _routes is not None:
 
     @_routes.get("/zensuite/thumb")
     async def zs_thumb(request):
+        if (denied := request_allowed(request)) is not None:
+            return denied
         q = request.rel_url.query
         root = (q.get("root", "output") or "output").strip()
         rel = q.get("rel", "").strip()
