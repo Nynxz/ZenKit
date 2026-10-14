@@ -8,7 +8,7 @@ on:
       plugin:
         description: Which plugin to publish
         type: choice
-        options: [all, ComfyUI-ZenKit, ComfyUI-ZenInspector, ComfyUI-ZenAgent, ComfyUI-ZenExample]
+        options: [all, ComfyUI-ZenKit, ComfyUI-ZenInspector]
         default: all
 
 jobs:
@@ -24,7 +24,7 @@ jobs:
           PLUGIN: ${{ inputs.plugin }}
         run: |
           if [ "$PLUGIN" = all ]; then
-            echo 'plugins=["ComfyUI-ZenKit","ComfyUI-ZenInspector","ComfyUI-ZenAgent","ComfyUI-ZenExample"]' >> "$GITHUB_OUTPUT"
+            echo 'plugins=["ComfyUI-ZenKit","ComfyUI-ZenInspector"]' >> "$GITHUB_OUTPUT"
           else
             echo "plugins=[\"$PLUGIN\"]" >> "$GITHUB_OUTPUT"
           fi

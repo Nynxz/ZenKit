@@ -3,10 +3,12 @@
 The ComfyUI plugins that live in this repo under `plugins/`. ComfyUI-ZenKit is the host; the rest
 are ZenKit plugins built on it.
 
-| Plugin                                        | Adds                                               | Nodes | Needs ComfyUI-ZenKit | In `publish-registry` | Version |
-| --------------------------------------------- | -------------------------------------------------- | ----- | -------------------- | --------------------- | ------- |
-| [ComfyUI-ZenKit](#comfyui-zenkit)             | `window.ZenKit`, taskbar, panels, themes, settings | 4     | is the host          | yes                   | 0.2.0   |
-| [ComfyUI-ZenInspector](#comfyui-zeninspector) | Install-wide debug panel                           | none  | yes                  | yes                   | 0.2.0   |
+| Plugin                                        | Adds                                               | Nodes | Needs ComfyUI-ZenKit | In `publish-registry`   | Version |
+| --------------------------------------------- | -------------------------------------------------- | ----- | -------------------- | ----------------------- | ------- |
+| [ComfyUI-ZenKit](#comfyui-zenkit)             | `window.ZenKit`, taskbar, panels, themes, settings | 4     | is the host          | yes                     | 0.2.0   |
+| [ComfyUI-ZenInspector](#comfyui-zeninspector) | Install-wide debug panel                           | none  | yes                  | yes                     | 0.2.0   |
+| ComfyUI-ZenAgent                              | Agent panel on a local OpenAI-compatible model     | none  | yes                  | no, still in testing    | 0.1.0   |
+| ComfyUI-ZenExample                            | Reference plugin exercising the toolkit            | none  | yes                  | no, read it in the repo | 0.1.0   |
 
 More plugins are in progress and will be documented here when they ship.
 
