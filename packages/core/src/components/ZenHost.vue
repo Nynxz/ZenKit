@@ -9,8 +9,18 @@
     <div v-if="store.state.snap" class="snapprev" :style="snapStyle" />
     <!-- highlights the side a dragged panel would dock into -->
     <div v-if="dockDropStyle" class="dockprev" :style="dockDropStyle" />
-    <!-- full-screen app (covers the graph + graph-edge chrome; panels/toasts/taskbar stay above) -->
-    <ZenApp v-if="appStore.state.active.app" />
+    <!-- full-screen apps (cover the graph + graph-edge chrome; panels/toasts/taskbar stay above),
+         or apps tiled in a workspace (in their tile). One surface per running app that has been
+         shown; each shows itself while it is active or its workspace is, and stays mounted,
+         hidden, otherwise. An app shown before its plugin registers gets an empty surface. -->
+    <ZenApp v-for="key in appStore.state.mounted" :key="key" :app-key="key" />
+    <ZenApp
+      v-if="
+        appStore.state.active.app && !appStore.state.mounted.includes(appStore.state.active.app)
+      "
+      :key="'pending:' + appStore.state.active.app"
+      :app-key="appStore.state.active.app"
+    />
     <!-- the active workspace: covers the graph and tiles panels; null = the graph itself -->
     <ZenWorkspace v-if="ws.active" />
     <ZenPanel v-for="p in hostPanels" :key="p.id" :panel="p" />

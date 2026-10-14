@@ -1,8 +1,10 @@
 // App router store: full-screen apps that cover the graph + a built-in namespaced
 // router. Sibling to panelStore (the window manager); this is the "which app/route
-// is showing" model. One global location (the graph is the root); apps register
-// async as their plugin bundle loads, so a saved location restores on register —
-// the same pattern panelStore.register() uses for panels.
+// is showing" model. Open apps run like windows: each keeps its own location and
+// history and a taskbar chip, one shows at a time (or none: the graph), and a
+// minimized app stays running until it is closed. Apps register async as their
+// plugin bundle loads, so a saved location restores on register — the same pattern
+// panelStore.register() uses for panels.
 //
 // Routes are PLUGIN-NAMESPACED: an app's routing key is '<namespace>/<id>' where the
 // namespace is the owning plugin's (explicit `namespace`, else a slug of its display
@@ -16,11 +18,11 @@ import type { ZenBus } from './bus'
 import { zlog } from './log'
 import type { AppLocation, AppRegistration, AppRoute, AppRouter, AppHandle } from './types'
 
-const APPS_LS = 'zenkit.apps.v1' // the active location (full path), for restore
+const APPS_LS = 'zenkit.apps.v1' // the active location and the running apps (full paths)
 const STATE_LS = 'zenkit.appstate.v1' // per-app persisted blob (RouteContext.state)
 const URLSYNC_LS = 'zenkit.appurlsync.v1' // opt-in: mirror the route into location.hash
 
-const GRAPH: AppLocation = { app: null, path: '', params: {}, query: {} }
+const GRAPH: AppLocation = { app: null, path: '', route: '', params: {}, query: {} }
 
 // ── Namespacing ────────────────────────────────────────────────────────────
 // A plugin's route namespace: explicit `namespace`, else a slug of its display `plugin`
@@ -119,12 +121,26 @@ function hashOwnedByHost(): boolean {
 export type AppStore = ReturnType<typeof createAppStore>
 export const APP_STORE_KEY: InjectionKey<AppStore> = Symbol('zenkit-apps')
 
+const HISTORY_MAX = 50
+
+/** One app's own back/forward stack of full paths. */
+interface History {
+  stack: string[]
+  index: number
+}
+
 export function createAppStore(bus: ZenBus) {
   const state = reactive({
     registry: [] as AppRegistration[],
     active: { ...GRAPH } as AppLocation,
-    /** The app we dropped out of, if any — what the taskbar chip restores. */
-    minimized: null as AppLocation | null,
+    /** Every open app, in taskbar order, at its current (active) or last (minimized) location. */
+    running: [] as AppLocation[],
+    /** Running apps whose surface has been shown this session, so it stays mounted. A restored
+     *  chip mounts only when it is first shown. */
+    mounted: [] as string[],
+    /** The running app last minimized: what restore() with no id brings back. */
+    lastMinimized: null as string | null,
+    history: {} as Record<string, History>,
     urlSync: false, // OFF by default — routing is internal; no URL hash (ComfyUI owns it)
   })
   try {
@@ -134,25 +150,27 @@ export function createAppStore(bus: ZenBus) {
     /* ignore */
   }
 
-  // Internal history (authoritative unless urlSync is ON — then the browser's own hash
-  // history is the stack and back/forward defer to it).
-  let stack: string[] = ['']
-  let sIndex = 0
-
   // A target we want to be at but whose app isn't registered yet (restore, or a navigate
-  // that raced ahead of the plugin). Resolved in register().
+  // that raced ahead of the plugin). Resolved in register(). Saved running apps wait the same
+  // way, to come back as chips.
   const hashPath = (): string | null => {
     const m = /^#zen=(.*)$/.exec(location.hash)
     return m ? decodeSegment(m[1]) : null
   }
-  const loadSaved = (): string | null => {
+  const loadSaved = (): { path: string | null; running: string[] } => {
     try {
-      return (JSON.parse(localStorage.getItem(APPS_LS) || 'null') || {}).path || null
+      const saved = JSON.parse(localStorage.getItem(APPS_LS) || 'null') || {}
+      return {
+        path: saved.path || null,
+        running: Array.isArray(saved.running) ? saved.running.filter(Boolean) : [],
+      }
     } catch {
-      return null
+      return { path: null, running: [] }
     }
   }
-  let pending: string | null = (state.urlSync && hashPath()) || loadSaved() || null
+  const saved = loadSaved()
+  let pending: string | null = (state.urlSync && hashPath()) || saved.path
+  let pendingRunning: string[] = saved.running
 
   // Resolve a clean base path → which registered app owns it + the in-app route remainder.
   // Matches the longest registered key that is a segment-prefix of the path; falls back to
@@ -173,13 +191,33 @@ export function createAppStore(bus: ZenBus) {
     return byId.length === 1 ? { reg: byId[0], rest: segs.slice(1).join('/') } : null
   }
 
-  const saveActive = () => {
+  /** Apps in workspace tiles (set by workspaces): their routes move them where they are, never
+   *  full screen, and opening one shows its workspace. */
+  let tiles: { has(key: string): boolean; reveal(key: string): void } = {
+    has: () => false,
+    reveal: () => {},
+  }
+
+  const regOf = (key: string | null | undefined) =>
+    key ? (state.registry.find((r) => keyOf(r) === key) ?? null) : null
+  /** A routing key from a key or a bare id (unique among the registered apps). */
+  const keyFor = (idOrKey: string): string => {
+    const byId = state.registry.filter((r) => r.id === idOrKey)
+    const reg = regOf(idOrKey) ?? (byId.length === 1 ? byId[0] : null)
+    return reg ? keyOf(reg) : idOrKey
+  }
+  const runningOf = (key: string) => state.running.find((l) => l.app === key) ?? null
+
+  const save = () => {
     try {
-      const reg = state.active.app
-        ? state.registry.find((r) => keyOf(r) === state.active.app)
-        : null
-      if (state.active.app && reg && reg.persist === false) localStorage.removeItem(APPS_LS)
-      else localStorage.setItem(APPS_LS, JSON.stringify({ path: locToPath(state.active) }))
+      const persists = (loc: AppLocation) => regOf(loc.app)?.persist !== false
+      localStorage.setItem(
+        APPS_LS,
+        JSON.stringify({
+          path: state.active.app && persists(state.active) ? locToPath(state.active) : null,
+          running: state.running.filter(persists).map(locToPath),
+        }),
+      )
     } catch {
       /* ignore */
     }
@@ -203,38 +241,42 @@ export function createAppStore(bus: ZenBus) {
     }
   }
 
+  /** Put `loc` on its running entry (adding the app to the taskbar when it is new). */
+  function track(loc: AppLocation) {
+    const i = state.running.findIndex((l) => l.app === loc.app)
+    if (i === -1) state.running.push(loc)
+    else state.running.splice(i, 1, loc)
+  }
+
   function setActive(loc: AppLocation) {
-    // Remember where we were before dropping to the graph, so the taskbar can offer the app
-    // back. Without this, closing an app erased every trace of it: the chip's `v-if` went
-    // false, the chip vanished, and the only way back was the launcher — starting over at the
-    // app's home route. A taskbar whose entries disappear when you click them isn't a switcher.
-    if (state.active.app && !loc.app) state.minimized = { ...state.active }
-    // Entering an app (or a different one) clears the memo — it's a "you left this" marker,
-    // not a history.
-    if (loc.app) state.minimized = null
+    const left = state.active.app
+    if (left && left !== loc.app && runningOf(left)) state.lastMinimized = left
+    if (loc.app && runningOf(loc.app)) {
+      if (!state.mounted.includes(loc.app)) state.mounted.push(loc.app)
+      if (state.lastMinimized === loc.app) state.lastMinimized = null
+    }
     state.active = loc
-    saveActive()
+    save()
     bus.emit('app:change', loc)
   }
 
-  /** Go back into the app the user last dropped out of, at the route they left. */
-  function restore(): boolean {
-    const m = state.minimized
-    if (!m?.app) return false
-    navigate(locToPath(m))
-    return true
+  /** Record `fullPath` in its app's history: push a new entry, replace the current one, or
+   *  'none' when moving within the history itself (back/forward, restore). */
+  function record(key: string, fullPath: string, how: 'push' | 'replace' | 'none') {
+    const h = (state.history[key] ??= { stack: [], index: -1 })
+    if (how === 'none' && h.index >= 0) return
+    if (how === 'replace' && h.index >= 0) {
+      h.stack[h.index] = fullPath
+      return
+    }
+    if (h.stack[h.index] === fullPath) return
+    h.stack = h.stack.slice(Math.max(0, h.index + 2 - HISTORY_MAX), h.index + 1)
+    h.stack.push(fullPath)
+    h.index = h.stack.length - 1
   }
 
-  // Resolve a full path into the active location. `record` controls the internal stack
-  // (used when urlSync is off); 'none' = don't touch it (back/forward + hash echoes).
-  function applyLocation(fullPath: string, record: 'push' | 'replace' | 'none') {
-    if (record === 'push') {
-      stack = stack.slice(0, sIndex + 1)
-      stack.push(fullPath)
-      sIndex = stack.length - 1
-    } else if (record === 'replace') {
-      stack[sIndex] = fullPath
-    }
+  // Resolve a full path into the active location, recording it in its app's history.
+  function applyLocation(fullPath: string, how: 'push' | 'replace' | 'none') {
     const { base, query } = splitQuery(fullPath)
     if (!base) {
       pending = null
@@ -248,7 +290,13 @@ export function createAppStore(bus: ZenBus) {
       // during this window doesn't lose the route.
       const segs = base.split('/').filter(Boolean)
       pending = fullPath
-      setActive({ app: segs[0] ?? '', path: segs.slice(1).join('/'), params: {}, query })
+      setActive({
+        app: segs[0] ?? '',
+        path: segs.slice(1).join('/'),
+        route: '',
+        params: {},
+        query,
+      })
       return
     }
     pending = null
@@ -257,12 +305,22 @@ export function createAppStore(bus: ZenBus) {
     // still set the path (ZenApp shows a "route not found" notice).
     const exact = matchRoute(found.reg.routes, found.rest)
     const fallback = exact ? null : matchRoute(found.reg.routes, found.reg.home ?? '')
-    setActive({
+    const m = exact ?? fallback
+    const loc: AppLocation = {
       app: key,
       path: exact ? found.rest : fallback ? (found.reg.home ?? '') : found.rest,
-      params: (exact ?? fallback)?.params ?? {},
+      route: m?.route.path ?? '',
+      params: m?.params ?? {},
       query,
-    })
+    }
+    record(key, locToPath(loc), how)
+    track(loc)
+    if (tiles.has(key) && state.active.app !== key) {
+      save()
+      bus.emit('app:change', loc)
+      return
+    }
+    setActive(loc)
   }
 
   // Mirror a path into the URL hash WITHOUT firing hashchange (replaceState) — used to
@@ -278,7 +336,7 @@ export function createAppStore(bus: ZenBus) {
 
   function onHash() {
     if (!state.urlSync) return
-    applyLocation(hashPath() ?? '', 'none')
+    applyLocation(hashPath() ?? '', 'push')
   }
   if (state.urlSync) window.addEventListener('hashchange', onHash)
 
@@ -304,11 +362,11 @@ export function createAppStore(bus: ZenBus) {
       // (and fires hashchange → applyLocation); replace uses replaceState + apply.
       if (opts?.replace) {
         syncHashSilently(norm)
-        applyLocation(norm, 'none')
+        applyLocation(norm, 'replace')
       } else {
         const next = norm ? '#zen=' + encodeURIComponent(norm) : ''
         if (location.hash === next)
-          applyLocation(norm, 'none') // no hashchange when unchanged
+          applyLocation(norm, 'push') // no hashchange when unchanged
         else location.hash = next
       }
     } else {
@@ -316,12 +374,42 @@ export function createAppStore(bus: ZenBus) {
     }
   }
 
+  /** Step through `key`'s own history. Moving an app that isn't showing only updates where it
+   *  waits on the taskbar. */
+  function step(key: string, by: -1 | 1) {
+    const h = state.history[key]
+    if (!h || h.index + by < 0 || h.index + by >= h.stack.length) return
+    h.index += by
+    const path = h.stack[h.index]
+    if (state.active.app === key) applyLocation(path, 'none')
+    else {
+      const { base, query } = splitQuery(path)
+      const found = resolveApp(base)
+      if (!found) return
+      const m = matchRoute(found.reg.routes, found.rest)
+      const loc: AppLocation = {
+        app: key,
+        path: found.rest,
+        route: m?.route.path ?? '',
+        params: m?.params ?? {},
+        query,
+      }
+      track(loc)
+      save()
+      bus.emit('app:change', loc)
+    }
+  }
+  const canStep = (key: string | null, by: -1 | 1) => {
+    const h = key ? state.history[key] : undefined
+    return !!h && h.index + by >= 0 && h.index + by < h.stack.length
+  }
+
   function makeRouter(appKey: string): AppRouter {
     return {
       go: (p, opts) => navigate(resolveFor(appKey, p), opts),
-      back,
-      forward,
-      location: () => ({ ...state.active }),
+      back: () => step(appKey, -1),
+      forward: () => step(appKey, 1),
+      location: () => ({ ...(runningOf(appKey) ?? GRAPH) }),
       on: (cb) =>
         bus.on('app:change', (x) => {
           const loc = x as AppLocation
@@ -331,46 +419,84 @@ export function createAppStore(bus: ZenBus) {
   }
 
   function makeHandle(appKey: string): AppHandle {
-    return { id: appKey, router: makeRouter(appKey), close }
+    return { id: appKey, router: makeRouter(appKey), close: () => close(appKey) }
   }
 
-  // Open by app id OR full key. Bare ids resolve to their (unique) key for ergonomics.
+  // Open by app id OR full key. Bare ids resolve to their (unique) key for ergonomics. A
+  // running app comes back where it was unless a route is asked for.
   function open(
     idOrKey: string,
     opts?: { path?: string; query?: Record<string, string> },
   ): AppHandle {
-    const reg =
-      state.registry.find((r) => keyOf(r) === idOrKey) ??
-      state.registry.find((r) => r.id === idOrKey)
-    const key = reg ? keyOf(reg) : idOrKey
+    const key = keyFor(idOrKey)
+    const reg = regOf(key)
+    if (opts?.path === undefined && !opts?.query && restore(key)) return makeHandle(key)
     const route = opts?.path ?? reg?.home ?? ''
     navigate(resolveFor(key, route.replace(/^\//, '')), { query: opts?.query })
+    if (tiles.has(key)) tiles.reveal(key)
     return makeHandle(key)
   }
 
-  function close() {
-    navigate('')
+  /** Back to the graph; the active app keeps running on the taskbar. */
+  function minimize() {
+    if (state.active.app) navigate('')
+  }
+
+  /** Show a running app at the location it was left. */
+  function restore(idOrKey?: string): boolean {
+    const loc = runningOf(idOrKey ? keyFor(idOrKey) : (state.lastMinimized ?? ''))
+    if (!loc?.app) return false
+    if (tiles.has(loc.app)) {
+      tiles.reveal(loc.app)
+      return true
+    }
+    if (state.active.app === loc.app) return true
+    if (state.urlSync) navigate(locToPath(loc))
+    else applyLocation(locToPath(loc), 'none')
+    return true
+  }
+
+  /** Run an app in a workspace tile: running and mounted where it was (its home route when new),
+   *  without showing it full screen. */
+  function runTiled(key: string) {
+    const reg = regOf(key)
+    if (!reg) return
+    if (!runningOf(key)) {
+      const home = reg.home ?? ''
+      const m = matchRoute(reg.routes, home)
+      const loc: AppLocation = {
+        app: key,
+        path: home,
+        route: m?.route.path ?? '',
+        params: m?.params ?? {},
+        query: {},
+      }
+      record(key, locToPath(loc), 'push')
+      track(loc)
+      save()
+    }
+    if (!state.mounted.includes(key)) state.mounted.push(key)
+  }
+
+  /** Stop an app: off the taskbar, its surface unmounted, its history dropped. */
+  function close(idOrKey?: string) {
+    const target = idOrKey ? keyFor(idOrKey) : state.active.app
+    if (!target) return
+    state.running = state.running.filter((l) => l.app !== target)
+    state.mounted = state.mounted.filter((k) => k !== target)
+    delete state.history[target]
+    if (state.lastMinimized === target) state.lastMinimized = null
+    if (state.active.app === target) navigate('')
+    else save()
   }
 
   function back() {
-    if (state.urlSync) {
-      window.history.back()
-      return
-    }
-    if (sIndex > 0) {
-      sIndex--
-      applyLocation(stack[sIndex], 'none')
-    }
+    if (state.urlSync) window.history.back()
+    else if (state.active.app) step(state.active.app, -1)
   }
   function forward() {
-    if (state.urlSync) {
-      window.history.forward()
-      return
-    }
-    if (sIndex < stack.length - 1) {
-      sIndex++
-      applyLocation(stack[sIndex], 'none')
-    }
+    if (state.urlSync) window.history.forward()
+    else if (state.active.app) step(state.active.app, 1)
   }
 
   function setUrlSync(on: boolean) {
@@ -403,21 +529,41 @@ export function createAppStore(bus: ZenBus) {
     // Re-registering a key replaces it, like panels.register; each registration's unregister
     // only removes its own entry.
     const entry = markRaw(reg)
-    const existing = state.registry.findIndex((r) => keyOf(r) === keyOf(reg))
+    const key = keyOf(reg)
+    const existing = state.registry.findIndex((r) => keyOf(r) === key)
     if (existing === -1) {
       state.registry.push(entry)
-      zlog(`registered app "${reg.title}" — ${keyOf(reg)}` + (reg.plugin ? ` · ${reg.plugin}` : ''))
+      zlog(`registered app "${reg.title}" — ${key}` + (reg.plugin ? ` · ${reg.plugin}` : ''))
     } else {
       state.registry.splice(existing, 1, entry)
     }
     bus.emit('app:registry')
 
-    // Restore: a saved/pending location targeting this app resolves now that it's here.
-    if (reg.persist !== false && pending) {
-      const found = resolveApp(splitQuery(pending).base)
-      if (found && keyOf(found.reg) === keyOf(reg)) {
+    // Restore: saved running apps come back as chips, and a saved/pending location targeting
+    // this app shows it.
+    if (reg.persist !== false) {
+      const mine = (p: string) => {
+        const found = resolveApp(splitQuery(p).base)
+        return !!found && keyOf(found.reg) === key
+      }
+      for (const p of pendingRunning.filter(mine)) {
+        const { base, query } = splitQuery(p)
+        const rest = resolveApp(base)!.rest
+        const m = matchRoute(reg.routes, rest)
+        record(key, p, 'push')
+        if (!runningOf(key))
+          track({
+            app: key,
+            path: rest,
+            route: m?.route.path ?? '',
+            params: m?.params ?? {},
+            query,
+          })
+      }
+      pendingRunning = pendingRunning.filter((p) => !mine(p))
+      if (pending && mine(pending)) {
         const target = pending
-        applyLocation(target, state.urlSync ? 'none' : 'push')
+        applyLocation(target, 'none')
         if (state.urlSync) syncHashSilently(target) // reflect without a second nav
       }
     }
@@ -426,8 +572,7 @@ export function createAppStore(bus: ZenBus) {
       if (i < 0) return // already replaced by a newer registration of the same key
       state.registry.splice(i, 1)
       bus.emit('app:registry')
-      if (state.active.app === keyOf(reg)) close()
-      if (state.minimized?.app === keyOf(reg)) state.minimized = null
+      close(key)
     }
   }
 
@@ -436,9 +581,16 @@ export function createAppStore(bus: ZenBus) {
     register,
     registered: () => state.registry.slice(),
     open,
+    minimize,
     close,
     restore,
-    minimized: (): AppLocation | null => (state.minimized ? { ...state.minimized } : null),
+    runTiled,
+    setTiles: (next: typeof tiles) => (tiles = next),
+    running: (): AppLocation[] => state.running.map((l) => ({ ...l })),
+    minimized: (): AppLocation | null => {
+      const loc = state.lastMinimized ? runningOf(state.lastMinimized) : null
+      return loc ? { ...loc } : null
+    },
     current: () => state.active.app,
     navigate: (p: string, opts?: { query?: Record<string, string>; replace?: boolean }) =>
       navigate(p, opts),
@@ -447,8 +599,11 @@ export function createAppStore(bus: ZenBus) {
     location: (): AppLocation => ({ ...state.active }),
     on: (cb: (loc: AppLocation) => void) => bus.on('app:change', (x) => cb(x as AppLocation)),
     setUrlSync,
-    // internal helpers for the Vue surface
+    // internal helpers for the Vue surfaces
     keyOf,
+    regOf,
+    runningOf,
+    canStep,
     makeRouter,
     getState,
     setState,

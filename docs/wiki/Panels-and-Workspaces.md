@@ -197,7 +197,8 @@ is reopened through the registration's `open()`. User-closing a panel forgets it
 
 Users dock from the panel menu (⋯ or right-click the header → Dock) or by dragging a panel to a
 screen edge; Escape cancels a drag. Dragging to the sides and corners away from the docks snaps to
-halves and quarters.
+halves and quarters. While a full-screen app covers the graph its docks are out of sight, so a
+dragged panel only floats or snaps there.
 
 A side dock titles its panels on its tab rail. The bottom dock has no rail (its tabs are icons in
 the taskbar), so a panel docked there keeps a title bar with float, collapse and close buttons;
@@ -271,10 +272,12 @@ Behaviour worth knowing as a plugin author:
 - The taskbar lists the panels that belong on screen: floating ones (they show over the graph and
   every workspace) and those tiled in the workspace on screen. Another workspace's panels sit behind
   its tab: hover it for their names, right-click it to jump straight to one.
-- Opening an app leaves the active workspace, and "Hide panels" steps out of it until panels show
-  again.
+- Opening an app full screen leaves the active workspace, and "Hide panels" steps out of it until
+  panels show again. An app can also be tiled in a workspace beside panels (see
+  [Apps and routing](Apps-and-Routing.md#apps-in-workspaces)).
 - Removing a workspace floats its panels rather than closing them.
-- While a workspace covers it, the graph and canvas background stop rendering.
+- While a workspace or a full-screen app covers it, the graph and canvas background stop
+  rendering.
 - A node's own panel (an id with the graph and node in it, like H3 Studio's or ZenCut's) keeps its
   tile in its workflow's layout; the node opens and closes the panel itself as its workflow comes
   and goes.

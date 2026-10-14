@@ -6,6 +6,7 @@ import { api } from '@comfy/api'
 import { app } from '@comfy/app'
 
 import type { ZenKitApi } from './types'
+import { carryView } from './workspaces'
 
 interface Workflow {
   path: string
@@ -153,6 +154,7 @@ export function registerWorkflowCapabilities(zen: ZenKitApi): void {
         throw new Error(`No workflow "${String(workflow)}". workflows.list shows the names.`)
       if (store().activeWorkflow?.path !== found.path) {
         const loaded = found.isLoaded ? found : await found.load()
+        carryView()
         await comfy().loadGraphData(loaded.activeState, true, true, loaded)
       }
       return activeInfo()
@@ -165,6 +167,7 @@ export function registerWorkflowCapabilities(zen: ZenKitApi): void {
     description: 'Open a new, empty workflow tab and make it active.',
     params: { type: 'object', properties: { name: { type: 'string' } } },
     run: async ({ name }) => {
+      carryView()
       await comfy().loadGraphData(
         structuredClone(BLANK),
         true,
@@ -251,6 +254,7 @@ export function registerWorkflowCapabilities(zen: ZenKitApi): void {
           : api.apiURL(`/workflow_templates/${group.moduleName}/${entry.name}.json`)
       const res = await fetch(url)
       if (!res.ok) throw new Error(`Could not load template "${entry.name}" (${res.status}).`)
+      carryView()
       await comfy().loadGraphData(
         await res.json(),
         true,

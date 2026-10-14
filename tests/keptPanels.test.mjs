@@ -183,7 +183,14 @@ async function workspacesWith({ nodes = {}, loading = false, ls = storage() } = 
       setDock: () => {},
     },
   }
-  const apps = { state: { active: { app: null } }, close: () => {} }
+  const apps = {
+    state: { active: { app: null }, registry: [] },
+    close: () => {},
+    minimize: () => {},
+    regOf: () => null,
+    runTiled: () => {},
+    setTiles: () => {},
+  }
   mod.attachWorkspaces(panels, apps)
   const flush = () => {
     while (timers.length) timers.shift()()

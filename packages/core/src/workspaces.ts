@@ -107,11 +107,19 @@ const warned = new WeakSet<object>()
 let swapping = false
 /** A workspace to show once a pending workflow switch lands (a jump from the workflow menu). */
 let landOn: { key: string; id: string } | null = null
+/** Until when the next workflow switch carries the workspace on screen along (see carryView). */
+let carryUntil = 0
 const parked = new Set<string>()
 /** Panels closed with `{ keep: true }` (a followed panel waiting for its workspace, a node's panel
  *  whose workflow went to the background): their tiles still count and are listed. What they show
  *  as while closed. Saved with the workspaces, so counts survive a reload. */
 const kept = reactive(new Map<string, KeptMeta>())
+
+/** A tile that holds a full-screen app rather than a panel: `app:<routing key>`. */
+const APP_TILE = 'app:'
+export const appTileId = (appKey: string) => APP_TILE + appKey
+const appKeyOf = (tileId: string) =>
+  tileId.startsWith(APP_TILE) ? tileId.slice(APP_TILE.length) : null
 
 const own = () => ws.list.filter((w) => w.scope === 'workflow')
 const globals = () => ws.list.filter((w) => w.scope === 'global')
@@ -120,6 +128,13 @@ const byId = (id: string | null) => ws.list.find((w) => w.id === id)
 export function attachWorkspaces(store: PanelStore, appStore: AppStore) {
   panels = store
   apps = appStore
+  appStore.setTiles({
+    has: (key) => isTiled(appTileId(key)),
+    reveal: (key) => {
+      const home = workspaceOf(appTileId(key))
+      if (home) activate(home.id)
+    },
+  })
   load()
   // Saved a moment after the last change, so a divider drag doesn't write storage every frame.
   let pending = 0
@@ -152,6 +167,17 @@ export function attachWorkspaces(store: PanelStore, appStore: AppStore) {
     () => appStore.state.active.app,
     (app) => {
       if (app && ws.active) show(null)
+      syncCover()
+    },
+  )
+  // The active workspace's app tiles mount when it shows (an app registering late included).
+  watch(
+    () => [ws.active, ws.epoch, appStore.state.registry.length],
+    () => {
+      for (const id of leafIds(byId(ws.active)?.tree ?? null)) {
+        const key = appKeyOf(id)
+        if (key) appStore.runTiled(key)
+      }
     },
   )
   // A plugin that registers after its workflow loaded: open its panels that workflow tiles.
@@ -285,10 +311,14 @@ export interface TileEntry {
  *  ambient, frameless ones) and the kept ones. */
 export function tilesOf(w: Workspace): TileEntry[] {
   const open = (id: string) => {
+    if (appKeyOf(id)) return !!apps?.regOf(appKeyOf(id))
     const p = panels?._ops.get(id)
     return !!p && p.frame !== 'none'
   }
   return panelsHere(leafIds(w.tree), open, isKept).map((id) => {
+    const app = apps?.regOf(appKeyOf(id))
+    if (app)
+      return { id, title: app.title, icon: app.icon ?? 'mdi mdi-application-outline', kept: false }
     const p = panels?._ops.get(id)
     if (p) return { id, title: p.title, icon: p.icon, kept: false }
     const m = kept.get(id)!
@@ -411,6 +441,12 @@ function swapWorkflow(prev: ComfyWorkflowLike | null, next: ComfyWorkflowLike) {
         ? { workspaces: outgoing.map(stored), active: null }
         : { workspaces: [], active: null })
   }
+  // Opened by a tool (an agent's call), not a tab click: the workspace on screen comes along, so
+  // whoever asked keeps their chat and panels while the new workflow loads under them.
+  const carried = prev && Date.now() < carryUntil ? byId(ws.active) : undefined
+  carryUntil = 0
+  if (carried?.scope === 'workflow' && !incoming.workspaces.some((w) => w.id === carried.id))
+    incoming = { workspaces: [...incoming.workspaces, stored(carried)], active: carried.id }
   bootKey = null
   sweptSinceSwap = false
   scheduleSweep(false)
@@ -469,6 +505,12 @@ function reopenTiled() {
       }
 }
 
+/** The workflow about to be opened programmatically keeps the workspace on screen: it comes along
+ *  to that workflow instead of going to the background with the one left. */
+export function carryView() {
+  carryUntil = Date.now() + 5000
+}
+
 /** Switch to a workflow tab and show one of its workspaces once it lands. */
 export function landOnAfterSwitch(key: string, workspaceId: string) {
   landOn = { key, id: workspaceId }
@@ -505,22 +547,29 @@ export function leave() {
 function show(id: string | null) {
   if (id === null) {
     ws.active = null
-    coverGraph(false)
+    syncCover()
     return
   }
   if (!byId(id)) return
-  if (apps?.state.active.app) apps.close()
+  if (apps?.state.active.app) apps.minimize()
   if (panels?.state.panelsHidden) panels.state.panelsHidden = false
   ws.active = id
   ws.last = id
-  coverGraph(true)
+  syncCover()
 }
 
-/** While a workspace covers it, the graph (and an animated background) stop drawing: nothing of
- *  them is visible, and redrawing under the tiles is what made resizing them slow. */
-function coverGraph(covered: boolean) {
-  if (covered) document.documentElement.dataset.zenWorkspace = ''
-  else delete document.documentElement.dataset.zenWorkspace
+/** A full-screen app is showing: the graph, its docks and ComfyUI's sidebar are under it, so a
+ *  panel dragged to an edge must not dock there, out of sight. */
+export function appCoversGraph(): boolean {
+  return !!apps?.state.active.app
+}
+
+/** While a workspace or an app covers it, the graph (and an animated background) stop drawing:
+ *  nothing of them is visible, and redrawing under the tiles is what made resizing them slow. */
+function syncCover() {
+  const covered = !!ws.active || appCoversGraph()
+  if (covered) document.documentElement.dataset.zenCovered = ''
+  else delete document.documentElement.dataset.zenCovered
   const canvas = (
     window as {
       app?: { canvas?: { pause_rendering?: boolean; setDirty?: (a: boolean, b: boolean) => void } }
@@ -612,6 +661,20 @@ export function untile(panelId: string) {
   unkeep(panelId)
   if (removeEverywhere(panelId)) commitLayout()
 }
+
+/** Tile a full-screen app into a workspace (the active one, else the last, else a new one): it
+ *  keeps running there beside the panels, and its workspace shows. */
+export function tileApp(appKey: string, workspaceId?: string) {
+  if (!apps?.regOf(appKey)) return
+  apps.runTiled(appKey)
+  if (apps.state.active.app === appKey) apps.minimize()
+  tilePanel(appTileId(appKey), undefined, workspaceId)
+}
+/** Take an app out of its workspace and show it full screen again. */
+export function untileApp(appKey: string) {
+  untile(appTileId(appKey))
+  apps?.restore(appKey)
+}
 /** Set a split's ratio. Not written to the workflow: call commitLayout when the drag ends. */
 export function setRatio(path: TilePath, ratio: number, workspaceId = ws.active) {
   const w = byId(workspaceId)
@@ -630,6 +693,8 @@ export const tileGap = () => freeArea.value.g
 /** Whether a tile takes space: its panel is open (not minimized), or kept — closed while it waits
  *  to reopen there, so its rect is held for it and the other tiles don't reflow when it does. */
 const shown = (id: string) => {
+  const appKey = appKeyOf(id)
+  if (appKey) return !!apps?.regOf(appKey)
   const p = panels?._ops.get(id)
   return p ? p.status !== 'minimized' : kept.has(id)
 }

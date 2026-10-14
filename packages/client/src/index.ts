@@ -459,7 +459,8 @@ export async function openViewer(
   return null
 }
 
-export { mountVue } from './mountVue'
+export { mountVue, mountVueApp } from './mountVue'
+export { useAppLocation } from './useAppLocation'
 export { useLightbox } from './useLightbox'
 export type { Lightbox } from './useLightbox'
 

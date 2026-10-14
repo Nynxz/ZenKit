@@ -13,6 +13,7 @@ export {
 // what a host's settings UI calls (see ComfyUI-ZenKit's backgroundSettings.ts).
 export {
   backgrounds,
+  backgroundActivity,
   backgroundEnabled,
   backgroundEffectList,
   backgroundEffectIntensity,
@@ -23,6 +24,7 @@ export {
   backgroundList,
   backgroundStored,
   onBackgroundChange,
+  setBackgroundActivity,
   setBackgroundEnabled,
   setBackgroundEffectIntensity,
   setBackgroundEffects,

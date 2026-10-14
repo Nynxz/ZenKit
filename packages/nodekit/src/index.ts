@@ -46,6 +46,8 @@ export {
   type ZenPanelSpec,
   type ZenPanelHandle,
 } from './zenPanel'
+export { registerZenApp, type ZenAppEntry } from './zenApp'
+export { useAppLocation, type AppContext, type AppLocation, type AppRouter } from './zenkit'
 export { highlightNode, revealNode } from './highlightNode'
 export { registerZenCapability, type ZenCapability } from './zenCapability'
 

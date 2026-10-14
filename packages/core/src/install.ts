@@ -197,10 +197,10 @@ function buildApi(store: PanelStore, appStore: AppStore, bus: ZenBus): ZenKitApi
       register: appStore.register,
       registered: appStore.registered,
       open: appStore.open,
+      minimize: appStore.minimize,
       close: appStore.close,
-      // `close` drops to the graph but the taskbar keeps the app as minimized; `restore` goes
-      // back to the route you left, which is what clicking its chip does.
       restore: appStore.restore,
+      running: appStore.running,
       minimized: appStore.minimized,
       current: appStore.current,
       navigate: appStore.navigate,

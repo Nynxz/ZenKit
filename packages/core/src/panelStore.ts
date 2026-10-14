@@ -1068,9 +1068,14 @@ export function createPanelStore(bus: ZenBus) {
         /* …EXCEPT the gutter touching the restyled sidebar (.side-bar-panel): that side is a
            free-floating glass card, so its resize edge should blend, not show a hard divider.
            ComfyUI puts .side-bar-panel on whichever side the sidebar is docked, so cover both
-           — the gutter directly after a left-docked sidebar, or before a right-docked one. */
+           — the gutter directly after a left-docked sidebar, or before a right-docked one.
+           Same for a panel ComfyUI already floats as its own card (.separated-panel, e.g. the
+           properties panel): the card is inset top/bottom but the gutter spans the full
+           height, so a line there runs past the card down the whole side. */
         body.zen-inset-sb .side-bar-panel + [data-resize-handle],
-        body.zen-inset-sb [data-resize-handle]:has(+ .side-bar-panel) {
+        body.zen-inset-sb [data-resize-handle]:has(+ .side-bar-panel),
+        body.zen-inset-sb .separated-panel + [data-resize-handle],
+        body.zen-inset-sb [data-resize-handle]:has(+ .separated-panel) {
           background: transparent !important;
         }
 

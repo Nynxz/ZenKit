@@ -10,10 +10,15 @@ export {
   mediaKindOf,
   parseMediaRef,
   openViewer,
+  useAppLocation,
   whenZen,
   ZEN_IMAGE_MIME,
 } from '../../client/src/index'
 export type {
+  AppContext,
+  AppLocation,
+  AppRegistration,
+  AppRouter,
   PanelHandle,
   SlotMatch,
   ViewerHandle,

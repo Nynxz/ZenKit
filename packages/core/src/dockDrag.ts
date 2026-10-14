@@ -4,6 +4,7 @@
 // click on the tab.
 import { dockDropFor } from './dockDrop'
 import { snapZoneFor, type PanelStore } from './panelStore'
+import { appCoversGraph } from './workspaces'
 
 const DRAG_OUT = 14 // px before a press on a dock tab becomes an undock
 
@@ -62,7 +63,9 @@ export function startDockTabDrag(
       beginInteract(store, 'grabbing')
     }
     ops.setRect(id, { x: mv.clientX - off.x, y: mv.clientY - off.y })
-    const drop = dockDropFor(mv.clientX, mv.clientY, store.state.sidebarAvailable)
+    const drop = appCoversGraph()
+      ? null
+      : dockDropFor(mv.clientX, mv.clientY, store.state.sidebarAvailable)
     store.state.dockDrop = drop
     store.state.snap = drop ? null : snapZoneFor(mv.clientX, mv.clientY)
   }

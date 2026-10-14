@@ -1,6 +1,6 @@
 import { createApp } from 'vue'
 import type { Component } from 'vue'
-import type { PanelContext } from './contract'
+import type { AppContext, PanelContext } from './contract'
 
 function declaresCtx(component: Component): boolean {
   const props = (component as { props?: unknown }).props
@@ -17,6 +17,19 @@ export function mountVue(component: Component, props: Record<string, unknown> = 
   const wantsCtx = declaresCtx(component)
   return (el: HTMLElement, ctx?: PanelContext) => {
     const app = createApp(component, wantsCtx ? { ...props, ctx } : props)
+    app.mount(el)
+    return () => app.unmount()
+  }
+}
+
+/**
+ * An app's `mount` that mounts a Vue component once, for as long as the app runs, and unmounts
+ * it when the app closes. The component gets the AppContext as its `ctx` prop; pair it with
+ * `useAppLocation(ctx.router)` to follow the app's routes.
+ */
+export function mountVueApp(component: Component, props: Record<string, unknown> = {}) {
+  return (el: HTMLElement, ctx: AppContext) => {
+    const app = createApp(component, { ...props, ctx })
     app.mount(el)
     return () => app.unmount()
   }

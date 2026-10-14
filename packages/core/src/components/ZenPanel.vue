@@ -255,6 +255,7 @@ import { dockDropFor } from '../dockDrop'
 import { startDockTabDrag } from '../dockDrag'
 import { detachPanel } from '../detach'
 import {
+  appCoversGraph,
   createWorkspace,
   dropAt,
   tilePanel,
@@ -621,8 +622,11 @@ function startDrag(e: PointerEvent) {
       store.state.snap = null
       return
     }
-    // edge → dock-drop preview, else snap preview
-    const drop = dockDropFor(m.clientX, m.clientY, store.state.sidebarAvailable)
+    // edge → dock-drop preview, else snap preview. Under an app the docks and ComfyUI's
+    // sidebar are out of sight, so the panel only floats or snaps.
+    const drop = appCoversGraph()
+      ? null
+      : dockDropFor(m.clientX, m.clientY, store.state.sidebarAvailable)
     store.state.dockDrop = drop
     store.state.snap = drop ? null : snapZoneFor(m.clientX, m.clientY)
   }

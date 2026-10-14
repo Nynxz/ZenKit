@@ -23,14 +23,18 @@ import { cleanName } from '../workflowLayout'
 import { startDockTabDrag } from '../dockDrag'
 import {
   activate,
+  appTileId,
   createWorkspace,
   currentWorkflowName,
   hasWorkflow,
+  leave,
   pinWorkspace,
   removeWorkspace,
   renameWorkspace,
   revealTile,
+  tileRectOf,
   tilesOf,
+  untile,
   workspaceOf,
   ws,
   type Workspace,
@@ -51,17 +55,29 @@ function appByKey(key: string | null | undefined) {
   )
 }
 
-// The app the chip represents: the one we're IN, or the one we last dropped out of. Keeping
-// the chip after you leave is the whole point of a taskbar — clicking it used to close the app
-// and remove its own chip, so the app disappeared with no way back except the launcher.
-const appChip = computed(
-  () => appByKey(appStore.state.active.app) ?? appByKey(appStore.state.minimized?.app),
+// A chip per running app, like a window list: one on screen (full screen, or in the workspace
+// showing) drops to the graph when clicked and keeps running; one off screen comes back where it
+// was left (its workspace, for a tiled app); ✕ closes it.
+const onScreen = (key: string) => {
+  const tile = tileRectOf(appTileId(key))
+  return tile ? tile !== 'hidden' : appStore.state.active.app === key
+}
+const appChips = computed(() =>
+  appStore.state.running.map((loc) => {
+    const reg = appByKey(loc.app)!
+    return { key: loc.app!, title: reg.title, icon: reg.icon, active: onScreen(loc.app!) }
+  }),
 )
-const appChipActive = computed(() => !!appStore.state.active.app)
 
-function toggleApp() {
-  if (appChipActive.value) appStore.close()
-  else appStore.restore()
+function toggleApp(key: string) {
+  if (!onScreen(key)) appStore.restore(key)
+  else if (appStore.state.active.app === key) appStore.minimize()
+  else leave()
+}
+
+function closeApp(key: string) {
+  untile(appTileId(key))
+  appStore.close(key)
 }
 
 // --- workspaces ------------------------------------------------------------------------------
@@ -616,25 +632,20 @@ function openTaskFromOverflow(p: Parameters<typeof taskClick>[0]) {
       <span class="tb-start-lbl">{{ branding.title }}</span>
     </button>
 
-    <!-- Full-screen app chip. Stays put once the app has been opened: active = we're in it
-         (click drops to the graph), inactive = minimized (click goes back where you left). -->
+    <!-- Running full-screen apps: active = showing (click minimizes to the graph), otherwise
+         minimized (click shows it where it was left). ✕ or a middle-click closes one. -->
     <button
-      v-if="appChip"
+      v-for="a in appChips"
+      :key="a.key"
       class="tb-task tb-app"
-      :class="{ active: appChipActive }"
-      :title="
-        appChipActive
-          ? 'In ' + appChip.title + ' — click for the graph'
-          : 'Back to ' + appChip.title
-      "
-      @click="toggleApp"
+      :class="{ active: a.active }"
+      :title="a.active ? a.title + ' — click to minimize' : 'Show ' + a.title"
+      @click="toggleApp(a.key)"
+      @auxclick.prevent="$event.button === 1 && closeApp(a.key)"
     >
-      <ZenIcon :icon="appChip.icon" />
-      <span class="tb-task-lbl">{{ appChip.title }}</span>
-      <i
-        class="tb-app-home mdi"
-        :class="appChipActive ? 'mdi-home-outline' : 'mdi-arrow-top-right'"
-      />
+      <ZenIcon :icon="a.icon" />
+      <span class="tb-task-lbl">{{ a.title }}</span>
+      <i class="tb-app-x mdi mdi-close" title="Close" @click.stop="closeApp(a.key)" />
     </button>
 
     <!-- workspaces: the graph, then a tab per workspace (named, with its panel count); Alt+`
@@ -1173,18 +1184,26 @@ img.tb-logo {
     0 1px 2px rgb(0 0 0 / 45%),
     inset 0 0 0 1px color-mix(in srgb, var(--zen-accent, #6366f1) 55%, transparent);
 }
-/* active full-screen app chip — sits just after Start, never collapses into overflow */
+/* running full-screen app chips — sit just after Start, never collapse into overflow */
 .tb-app {
   flex: 0 0 auto;
   max-width: 220px;
 }
-.tb-app-home {
-  font-size: 13px !important;
+.tb-app-x {
+  font-size: 12px !important;
   color: var(--zen-muted, #9aa0aa) !important;
   margin-left: 2px;
+  border-radius: 50%;
+  opacity: 0;
+  transition: opacity var(--zen-dur-fast, 0.12s);
 }
-.tb-app:hover .tb-app-home {
-  color: var(--zen-accent, #3b82f6) !important;
+.tb-app:hover .tb-app-x,
+.tb-app.active .tb-app-x {
+  opacity: 1;
+}
+.tb-app-x:hover {
+  color: var(--zen-text, #e5e5ea) !important;
+  background: color-mix(in srgb, var(--zen-text, #e5e5ea) 14%, transparent);
 }
 /* the full-screen glyph trailing an app row in the launcher */
 .tb-appglyph {

@@ -302,6 +302,12 @@ export interface BackgroundContext {
   trail: { pts: number[]; radii: number[]; n: number }
   time: number
   dt: number
+  /** How busy ComfyUI is, for a background to show while a workflow runs. `pattern` is the
+   *  user's choice of how to show it ('off', 'breathe', 'sweep', 'ripple', 'aurora'; draw nothing
+   *  for 'off' or a pattern you don't know). `level` eases 0..1 as runs start and settle,
+   *  `progress` is the current sampler's step progress (0 between samplers), and `beat` the
+   *  seconds since the run last moved on to a node. */
+  activity: { pattern: string; level: number; progress: number; beat: number }
   /** Resolve a CSS variable (e.g. '--zen-accent') to a canvas-usable color. */
   color(cssVar: string, fallback?: string): string
 }
@@ -480,6 +486,8 @@ export interface ZenViewer {
 export interface AppLocation {
   app: string | null
   path: string
+  /** The route pattern `path` matched (e.g. 'item/:id'), '' for the index or the graph. */
+  route: string
   /** Path params from the matched route pattern (e.g. { id: '42' } for 'item/:id'). */
   params: Record<string, string>
   /** Query-string params (?k=v). */
@@ -492,10 +500,11 @@ export interface AppRouter {
   /** Navigate within the app: `go('item/42')`. An absolute path ('/datasets/item/42')
    *  also works. `replace` overwrites the current history entry instead of pushing. */
   go(path: string, opts?: { query?: Record<string, string>; replace?: boolean }): void
-  /** Step back / forward through history (the graph is the root entry). */
+  /** Step back / forward through this app's own history. Each app keeps its own, so back
+   *  never leaves the app; minimize or close it to get to the graph. */
   back(): void
   forward(): void
-  /** The current location. */
+  /** This app's location: where it is, or where it was left while minimized. */
   location(): AppLocation
   /** Subscribe to location changes for this app. Returns an unsubscribe fn. */
   on(cb: (loc: AppLocation) => void): () => void
@@ -518,17 +527,33 @@ export interface RouteContext {
   setState: (state: unknown) => void
 }
 
+/** What a mounted app gets (`AppRegistration.mount`): it lives as long as the app runs and
+ *  follows its routes through `router` (`router.on`, `router.location()`). */
+export interface AppContext {
+  /** The app's own id. */
+  app: string
+  /** The routing key ('<namespace>/<id>'). */
+  key: string
+  router: AppRouter
+  /** Per-app persisted state blob + its setter (the same blob routes see). */
+  state: unknown
+  setState: (state: unknown) => void
+}
+
 /** One screen ("page") inside an app, matched by a namespaced path pattern. */
 export interface AppRoute {
   /** Path pattern relative to the app: '' (index), 'item/:id', 'settings'. */
   path: string
   /** Title for the chrome bar / breadcrumb — a string or a fn of the matched params. */
   title?: string | ((params: Record<string, string>) => string)
-  render: (container: HTMLElement, ctx: RouteContext) => void | (() => void)
+  /** Fill the surface for this route; runs again on every route change. Leave it out when the
+   *  app has `mount`: the routes then only name the pages (matching, titles). */
+  render?: (container: HTMLElement, ctx: RouteContext) => void | (() => void)
 }
 
 /** A full-screen app registered once; launched from the Start menu or programmatically.
- *  An app covers the graph (the "desktop"); the taskbar stays as the way back. */
+ *  An app covers the graph (the "desktop"). Open apps run like windows: each has a taskbar
+ *  chip, one shows at a time, and a minimized app stays mounted until it is closed. */
 export interface AppRegistration {
   /** App id (kebab-case), e.g. 'datasets'. Unique within its plugin namespace. */
   id: string
@@ -548,11 +573,16 @@ export interface AppRegistration {
   spawnOnly?: boolean
   /** Restore the active app + route across reloads (default true). */
   persist?: boolean
-  /** Keep ZenKit's slim app chrome bar (home / back / forward + title). Default true. */
+  /** Keep ZenKit's slim app chrome bar (back / forward, title, minimize / close). Default true. */
   chrome?: boolean
   /** Default route opened when the app is launched without one (default ''). */
   home?: string
   routes: AppRoute[]
+  /** Mount the app once, for as long as it runs (minimized included), instead of rendering
+   *  per route. Route changes arrive through `ctx.router`, so the app keeps its own state
+   *  (scroll, loaded data, a running generation) across navigation. Returns a cleanup, run
+   *  when the app closes. */
+  mount?: (container: HTMLElement, ctx: AppContext) => void | (() => void)
 }
 
 /** Live controls for the active app, returned by `apps.open`. */
@@ -560,7 +590,7 @@ export interface AppHandle {
   readonly id: string
   /** App-scoped navigator (same instance as `RouteContext.router`). */
   readonly router: AppRouter
-  /** Close the app → back to the graph. */
+  /** Close the app: it stops running and leaves the taskbar. */
   close(): void
 }
 
@@ -871,19 +901,25 @@ export interface ZenKitApi {
     register(reg: AppRegistration): () => void
     /** All registered apps (drives the Start menu). */
     registered(): AppRegistration[]
-    /** Launch an app (optionally at a route) full-screen over the graph. */
+    /** Show an app full-screen over the graph. A running app comes back where it was left,
+     *  unless `path` asks for a route. */
     open(id: string, opts?: { path?: string; query?: Record<string, string> }): AppHandle
-    /** Close the active app → back to the graph (the desktop). It stays MINIMIZED: the
-     *  taskbar keeps its chip so the user can get back to where they were. */
-    close(): void
-    /** Re-enter the app last closed, at the route it was left on. False if there isn't one. */
-    restore(): boolean
-    /** The app that was closed but is still on the taskbar, or null. */
+    /** Back to the graph; the active app keeps running on the taskbar. */
+    minimize(): void
+    /** Stop an app (the active one by default): it unmounts and leaves the taskbar. */
+    close(id?: string): void
+    /** Show a running app where it was left (the one last minimized by default). False if
+     *  there isn't one. */
+    restore(id?: string): boolean
+    /** Every running app, in taskbar order, each at its current or last location. */
+    running(): AppLocation[]
+    /** The running app last minimized, or null. */
     minimized(): AppLocation | null
     /** The active app id, or null when the graph is showing. */
     current(): string | null
     /** Global navigation by full path: `navigate('datasets/item/42')`. '' or '/' = the graph. */
     navigate(path: string, opts?: { query?: Record<string, string>; replace?: boolean }): void
+    /** Back / forward in the active app's history. */
     back(): void
     forward(): void
     /** The current global location (app + route). */

@@ -34,8 +34,10 @@ the links for details.
 | `register`        | `(reg: AppRegistration) => () => void`                     |
 | `registered`      | `() => AppRegistration[]`                                  |
 | `open`            | `(idOrKey: string, opts?: { path?; query? }) => AppHandle` |
-| `close`           | `() => void`                                               |
-| `restore`         | `() => boolean`                                            |
+| `minimize`        | `() => void`                                               |
+| `close`           | `(idOrKey?: string) => void`                               |
+| `restore`         | `(idOrKey?: string) => boolean`                            |
+| `running`         | `() => AppLocation[]`                                      |
 | `minimized`       | `() => AppLocation \| null`                                |
 | `current`         | `() => string \| null`                                     |
 | `navigate`        | `(path: string, opts?: { query?; replace? }) => void`      |
@@ -279,12 +281,14 @@ design and never prefixed: plugins share them on purpose.
 
 ### Vue
 
-| Export        | Signature                                                          |
-| ------------- | ------------------------------------------------------------------ |
-| `mountVue`    | `(component, props?) => (el, ctx?) => () => void`                  |
-| `useJob`      | `(match: (job: Job) => boolean) => DeepReadonly<Ref<Job \| null>>` |
-| `useLightbox` | `() => Lightbox` (`isOpen`, `index`, `open`, `show`, `close`)      |
-| `Lightbox`    | type                                                               |
+| Export           | Signature                                                          |
+| ---------------- | ------------------------------------------------------------------ |
+| `mountVue`       | `(component, props?) => (el, ctx?) => () => void`                  |
+| `mountVueApp`    | `(component, props?) => (el, ctx: AppContext) => () => void`       |
+| `useAppLocation` | `(router: AppRouter) => DeepReadonly<Ref<AppLocation>>`            |
+| `useJob`         | `(match: (job: Job) => boolean) => DeepReadonly<Ref<Job \| null>>` |
+| `useLightbox`    | `() => Lightbox` (`isOpen`, `index`, `open`, `show`, `close`)      |
+| `Lightbox`       | type                                                               |
 
 ### Fallbacks
 
@@ -317,7 +321,7 @@ design and never prefixed: plugins share them on purpose.
 The `window.ZenKit` contract, types only: `ZenKitApi`, `PanelSpec`, `PanelHandle`, `PanelContext`,
 `PanelApi`, `PanelCommand`, `PanelRegistration`, `PanelStatus`, `PanelEvent`, `DockSide`,
 `DockZoneSide`, `DockState`, `WorkspaceInfo`, `WorkspaceScope`, `WorkflowInfo`, `ChromeSettings`, `Branding`, `Rect`,
-`AppRegistration`, `AppRoute`, `AppHandle`, `AppRouter`, `AppLocation`, `RouteContext`, `Job`,
+`AppRegistration`, `AppRoute`, `AppHandle`, `AppRouter`, `AppLocation`, `AppContext`, `RouteContext`, `Job`,
 `JobStatus`, `JobStartOptions`, `JobUpdate`, `JobHandle`, `ChannelImage`, `ChannelInput`,
 `TaskbarWidget`, `ThemePack`, `ThemeSplash`, `ThemeMode`, `ZenStore`, `ZenStorage`,
 `ZenBackground`, `ZenBackgroundEffect`, `ZenBackgrounds`, `BackgroundContext`, `BackgroundFit`,

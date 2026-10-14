@@ -1,23 +1,20 @@
 # Apps and routing
 
 An app is a full-screen surface that covers the graph, with its own routes ("pages"). Use one when
-a panel is too small: a dataset browser, a settings area, a gallery. The graph keeps running
-underneath, and the taskbar and floating panels stay on top.
+a panel is too small: a dataset browser, a gallery, a chat. The graph keeps running underneath,
+and the taskbar and floating panels stay on top.
+
+Open apps run like windows. Each has a chip on the taskbar, one shows at a time (or none, and the
+graph shows), and minimizing an app keeps it mounted, so it comes back exactly as it was left.
+Closing it unmounts it and takes it off the taskbar.
 
 ## Minimal example
 
-```ts
-import { createApp, type Component } from 'vue'
-import { registerZenPlugin, type RouteContext } from '@nynxz/zenkit-client'
-import List from '@/List.vue'
-import Item from '@/Item.vue'
+Most apps mount one component for as long as they run and follow their routes from it:
 
-// Mount a Vue component as a route, passing the RouteContext as its `ctx` prop.
-const route = (component: Component) => (el: HTMLElement, ctx: RouteContext) => {
-  const app = createApp(component, { ctx })
-  app.mount(el)
-  return () => app.unmount()
-}
+```ts
+import { mountVueApp, registerZenPlugin } from '@nynxz/zenkit-client'
+import Datasets from '@/Datasets.vue'
 
 registerZenPlugin({
   id: 'zendatasets',
@@ -28,19 +25,59 @@ registerZenPlugin({
       title: 'Datasets',
       icon: 'mdi mdi-database',
       routes: [
-        { path: '', title: 'All datasets', render: route(List) },
-        { path: 'item/:id', title: (p) => `Dataset ${p.id}`, render: route(Item) },
+        { path: '', title: 'All datasets' },
+        { path: 'item/:id', title: (p) => `Dataset ${p.id}` },
       ],
+      mount: mountVueApp(Datasets),
     },
   ],
 })
 ```
 
-Inside `Item.vue`, `ctx.params.id` is the id and `ctx.router.go('')` goes back to the list.
+```vue
+<!-- Datasets.vue -->
+<script setup lang="ts">
+import { useAppLocation, type AppContext } from '@nynxz/zenkit-client'
 
-> Note: `mountVue` works at runtime for routes, but it is typed for panels
-> (`ctx?: PanelContext`), so a strict TypeScript build rejects it as a route `render`. Use a small
-> helper like `route` above.
+const props = defineProps<{ ctx: AppContext }>()
+const loc = useAppLocation(props.ctx.router)
+</script>
+
+<template>
+  <DatasetList v-show="loc.route === ''" @open="(id) => ctx.router.go(`item/${id}`)" />
+  <DatasetItem v-if="loc.route === 'item/:id'" :id="loc.params.id" />
+</template>
+```
+
+The list stays mounted (`v-show`) while an item is open, so going back finds it scrolled where it
+was. ZenKit's back and forward step through the app's routes.
+
+A node pack (nodekit) does the same with one call; see [Node packs](#node-packs).
+
+### Rendering per route
+
+An app can instead render each route itself, leaving `mount` out and giving every route a
+`render`. The surface is torn down and rendered again on every route change, which suits apps
+whose pages share nothing:
+
+```ts
+import { createApp, type Component } from 'vue'
+import type { RouteContext } from '@nynxz/zenkit-client'
+
+// Mount a Vue component as a route, passing the RouteContext as its `ctx` prop.
+const route = (component: Component) => (el: HTMLElement, ctx: RouteContext) => {
+  const app = createApp(component, { ctx })
+  app.mount(el)
+  return () => app.unmount()
+}
+
+routes: [
+  { path: '', title: 'All datasets', render: route(List) },
+  { path: 'item/:id', title: (p) => `Dataset ${p.id}`, render: route(Item) },
+]
+```
+
+Inside `Item.vue`, `ctx.params.id` is the id and `ctx.router.go('')` goes back to the list.
 
 ## Routing keys
 
@@ -49,23 +86,25 @@ Every app has a **routing key** `<namespace>/<id>`. `registerZenPlugin` sets the
 `zendatasets/datasets`, and its item route is the full path `zendatasets/datasets/item/42`.
 An app registered with no namespace and no plugin uses its bare `id` as the key.
 
-`apps.open` accepts either the key or the bare app id when the id is unique.
+`apps.open`, `apps.close` and `apps.restore` accept either the key or the bare app id when the id
+is unique.
 
 ## `ZenAppDef` / `AppRegistration`
 
 `ZenAppDef` is `AppRegistration` without `plugin`, `namespace`, `logo` and `version`, which
 `registerZenPlugin` fills in.
 
-| Field       | Type         | Default  | Meaning                                                  |
-| ----------- | ------------ | -------- | -------------------------------------------------------- |
-| `id`        | `string`     | required | Kebab id, unique within the namespace.                   |
-| `title`     | `string`     | required | Start menu, taskbar chip, and chrome title fallback.     |
-| `icon`      | `string`     |          | MDI class or image URL.                                  |
-| `routes`    | `AppRoute[]` | required | The pages.                                               |
-| `home`      | `string`     | `''`     | Route opened when none is given.                         |
-| `chrome`    | `boolean`    | `true`   | ZenKit's bar: back to graph, back, forward, icon, title. |
-| `persist`   | `boolean`    | `true`   | Reopen this app at its route after a reload.             |
-| `spawnOnly` | `boolean`    | `false`  | Hide from the Start menu.                                |
+| Field            | Type         | Default  | Meaning                                                                                                  |
+| ---------------- | ------------ | -------- | -------------------------------------------------------------------------------------------------------- |
+| `id`             | `string`     | required | Kebab id, unique within the namespace.                                                                   |
+| `title`          | `string`     | required | Start menu, taskbar chip, and chrome title fallback.                                                     |
+| `icon`           | `string`     |          | MDI class or image URL.                                                                                  |
+| `routes`         | `AppRoute[]` | required | The pages.                                                                                               |
+| `mount(el, ctx)` | function     |          | Mount the app once, for as long as it runs; return cleanup (run on close). Routes then need no `render`. |
+| `home`           | `string`     | `''`     | Route opened when none is given.                                                                         |
+| `chrome`         | `boolean`    | `true`   | ZenKit's bar: back, forward, icon, title; minimize and close on the right.                               |
+| `persist`        | `boolean`    | `true`   | Bring the app back (running, at its route) after a reload.                                               |
+| `spawnOnly`      | `boolean`    | `false`  | Hide from the Start menu.                                                                                |
 
 ## `AppRoute`
 
@@ -73,12 +112,31 @@ An app registered with no namespace and no plugin uses its bare `id` as the key.
 | ----------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | `path`            | Pattern relative to the app: `''`, `'settings'`, `'item/:id'`. Segment counts must match exactly; `:name` segments capture into `params` (URI-decoded). |
 | `title`           | String, or `(params) => string`. Shown in the chrome bar.                                                                                               |
-| `render(el, ctx)` | Fill the surface; return cleanup. Runs again on every route change, including a query change.                                                           |
+| `render(el, ctx)` | Only without `mount`. Fill the surface; return cleanup. Runs again on every route change of this app, including a query change.                         |
 
 An unknown path falls back to the `home` route; if that doesn't match either, the app shows a
 "route not found" notice.
 
+## `AppContext`
+
+What `mount` receives. It lasts as long as the app runs.
+
+| Member           | Meaning                                                                      |
+| ---------------- | ---------------------------------------------------------------------------- |
+| `app`            | The bare app id.                                                             |
+| `key`            | The routing key.                                                             |
+| `router`         | `AppRouter` scoped to this app. Follow routes with `useAppLocation(router)`. |
+| `state`          | Per-app persisted blob (the same one routes see).                            |
+| `setState(blob)` | Save it (`localStorage`, key `zenkit.appstate.v1`).                          |
+
+`useAppLocation(router)` (in `@nynxz/zenkit-client`, and re-exported by nodekit) returns a
+readonly ref of the app's `AppLocation`, updated on every route change, while minimized too.
+`mountVueApp(component, props?)` is a `mount` that mounts a Vue component with the context as its
+`ctx` prop.
+
 ## `RouteContext`
+
+What a route's `render` receives.
 
 | Member           | Meaning                                                         |
 | ---------------- | --------------------------------------------------------------- |
@@ -94,12 +152,15 @@ An unknown path falls back to the `home` route; if that doesn't match either, th
 
 ## `AppRouter`
 
-| Member                           | Meaning                                                                                      |
-| -------------------------------- | -------------------------------------------------------------------------------------------- |
-| `go(path, { query?, replace? })` | Relative to the app (`'item/42'`, `''` for home). A leading `/` makes it a full global path. |
-| `back()`, `forward()`            | Step through history. The graph is the root entry.                                           |
-| `location()`                     | Current `AppLocation`.                                                                       |
-| `on(cb)`                         | Called on location changes **within this app**. Returns unsubscribe.                         |
+| Member                           | Meaning                                                                                                |
+| -------------------------------- | ------------------------------------------------------------------------------------------------------ |
+| `go(path, { query?, replace? })` | Relative to the app (`'item/42'`, `''` for home). A leading `/` makes it a full global path.           |
+| `back()`, `forward()`            | Step through **this app's** history. It never leaves the app: minimize or close it to reach the graph. |
+| `location()`                     | This app's `AppLocation`: where it is, or where it was left while minimized.                           |
+| `on(cb)`                         | Called on location changes **within this app**. Returns unsubscribe.                                   |
+
+`AppLocation` is `{ app, path, route, params, query }`: `app` is the routing key (`null` for the
+graph) and `route` the pattern `path` matched.
 
 ## Global navigation
 
@@ -111,34 +172,80 @@ import { whenZen } from '@nynxz/zenkit-client'
 ;(await whenZen())?.apps.navigate('zendatasets/datasets/item/42')
 ```
 
-| `window.ZenKit.apps`                   | Meaning                                                                                                                                   |
-| -------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------- |
-| `register(reg)`                        | Register; a key that exists is replaced. Returns an unregister that removes only this registration. Prefer `registerZenPlugin({ apps })`. |
-| `registered()`                         | All registrations.                                                                                                                        |
-| `open(idOrKey, { path?, query? })`     | Launch; returns `AppHandle { id, router, close }` (`id` is the routing key).                                                              |
-| `navigate(path, { query?, replace? })` | Full path, e.g. `'zendatasets/datasets/item/42?tab=files'`. `''` or `'/'` is the graph.                                                   |
-| `close()`                              | Back to the graph.                                                                                                                        |
-| `restore()`                            | Re-enter the app last closed, at its route. `false` if none.                                                                              |
-| `minimized()`                          | The closed-but-remembered `AppLocation`, or `null`.                                                                                       |
-| `current()`                            | Active routing key, or `null` on the graph.                                                                                               |
-| `location()`                           | `{ app, path, params, query }`; `app` is the routing key or `null`.                                                                       |
-| `back()`, `forward()`                  | Global history.                                                                                                                           |
-| `on(cb)`                               | Every location change. Also on the bus as `app:change`.                                                                                   |
+| `window.ZenKit.apps`                   | Meaning                                                                                                                                          |
+| -------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------ |
+| `register(reg)`                        | Register; a key that exists is replaced. Returns an unregister that removes only this registration. Prefer `registerZenPlugin({ apps })`.        |
+| `registered()`                         | All registrations.                                                                                                                               |
+| `open(idOrKey, { path?, query? })`     | Show an app; returns `AppHandle { id, router, close }` (`id` is the routing key). A running app comes back where it was unless a route is given. |
+| `navigate(path, { query?, replace? })` | Full path, e.g. `'zendatasets/datasets/item/42?tab=files'`. `''` or `'/'` is the graph (the active app is minimized).                            |
+| `minimize()`                           | Back to the graph; the active app keeps running.                                                                                                 |
+| `close(idOrKey?)`                      | Stop an app (the active one by default): it unmounts and leaves the taskbar.                                                                     |
+| `restore(idOrKey?)`                    | Show a running app where it was left (the one last minimized by default). `false` if there isn't one.                                            |
+| `running()`                            | Every running app's `AppLocation`, in taskbar order.                                                                                             |
+| `minimized()`                          | The running app last minimized, or `null`.                                                                                                       |
+| `current()`                            | Active routing key, or `null` on the graph.                                                                                                      |
+| `location()`                           | The active `AppLocation`.                                                                                                                        |
+| `back()`, `forward()`                  | The active app's history.                                                                                                                        |
+| `on(cb)`                               | Every location change. Also on the bus as `app:change`.                                                                                          |
 
-## Minimize and restore
+## Running apps
 
-Closing an app (`close()`, the chrome's home button, or the taskbar chip) drops to the graph but
-keeps the app's chip on the taskbar. Clicking the chip calls `restore()` and returns to the same
-route. Entering any app clears the remembered one.
+Opening an app adds a chip to the taskbar. Clicking the active app's chip, the chrome's minimize
+button, or `minimize()` drops to the graph with the app still mounted: a stream it is reading or a
+job it is watching carries on. Clicking a minimized chip shows it again where it was. The chip's
+✕ (or a middle-click), the chrome's close button, or `close()` stops it.
 
-Apps and workspaces both cover the graph, so opening an app leaves the active workspace and
-switching to a workspace closes the app.
+An app's surface mounts the first time it is shown, and stays mounted until it closes. Keep what
+a minimized app does in the background cheap; anything heavy should pause while
+`apps.current()` isn't its key.
+
+Apps and workspaces both cover the graph, so showing an app full screen leaves the active
+workspace, and switching to a workspace minimizes it. While an app is full screen the graph stops
+drawing, and a panel dragged to a screen edge floats or snaps instead of docking under it.
+
+## Apps in workspaces
+
+An app can also sit in a workspace tile, beside panels: the chrome's tile button (or
+`tileApp(key)` in core) moves it into the active workspace (else the last, else a new one). It
+lays out, resizes and saves with the workspace like a tiled panel; its tile id is `app:<key>`.
+
+- Its routes move it within the tile: `router.go` never takes a tiled app full screen.
+- Opening or restoring it (its taskbar chip, the Start menu, `apps.open`) shows its workspace.
+- The tile's chrome has back, forward and the title, then full screen (out of the workspace,
+  `untileApp`) and close.
+- It stays mounted while its workspace is off screen, as a minimized app does.
+
+## Node packs
+
+nodekit's `registerZenApp(entry, Component)` registers a mounted app for a node pack, like
+`registerZenPanel`: it waits for ZenKit, mounts `Component` once with the `ctx` prop, and
+resolves to `null` without ZenKit, so the pack can offer another way in.
+
+```ts
+import { registerZenApp } from '@nynxz/zenkit-nodekit'
+
+void registerZenApp(
+  {
+    id: 'browser',
+    title: 'CivitAI',
+    icon: 'mdi mdi-palette-swatch-outline',
+    plugin: 'ZenCivit',
+    namespace: 'zencivit',
+    routes: [{ path: '' }, { path: 'model/:id', title: 'Model' }],
+  },
+  CivitBrowser,
+)
+```
+
+`routes` defaults to a single index route. `useAppLocation` and the `AppContext` type are
+re-exported from nodekit too.
 
 ## Reload and late registration
 
-The active location is saved to `localStorage` (`zenkit.apps.v1`). Plugins register apps
-asynchronously, so a saved or navigated-to path whose app isn't registered yet is held, and
-resolved the moment that app registers. Set `persist: false` to opt an app out.
+The active location and the running apps are saved to `localStorage` (`zenkit.apps.v1`). Plugins
+register apps asynchronously, so a saved or navigated-to path whose app isn't registered yet is
+held, and resolved the moment that app registers; running apps come back as chips, mounting when
+first shown. Set `persist: false` to opt an app out.
 
 ## URL hash sync
 

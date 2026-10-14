@@ -1,57 +1,78 @@
 <script setup lang="ts">
-// The full-screen app surface. ZenHost mounts this whenever an app is active
-// (appStore.state.active.app != null); it covers the graph (the "desktop") while the
-// taskbar + floating panels stay above. The active route's render() fills the body —
-// the same render(container, ctx) => cleanup contract panels use — re-running on every
-// route change. The body is shaped like a docked/floating panel's body (a sized flex
-// child) so routes built to fill their container render identically here.
+// One app's full-screen surface. ZenHost keeps one per running app that has been shown, and
+// shows the active one: a minimized app stays mounted (its state, a stream it is reading) until
+// it is closed. It covers the graph (the "desktop") while the taskbar + floating panels stay
+// above. An app with `mount` is mounted once; otherwise the matched route's render() fills the
+// body and re-runs when this app's route changes — the same render(container, ctx) => cleanup
+// contract panels use. The body is shaped like a docked/floating panel's body (a sized flex
+// child) so content built to fill its container renders identically here.
 import { computed, inject, onBeforeUnmount, onMounted, ref, watch } from 'vue'
 import { ZenIcon, ZenIconButton } from '@nynxz/zenkit-ui'
 import { APP_STORE_KEY, matchRoute, type AppStore } from '../appStore'
 import { STORE_KEY, type PanelStore } from '../panelStore'
 import { TASKBAR_H, taskbarFootprint } from '../tiling'
-import type { RouteContext } from '../types'
+import { appTileId, tileApp, tileRectOf, untile, untileApp } from '../workspaces'
+import type { AppContext, AppRegistration, RouteContext } from '../types'
 
+const props = defineProps<{ appKey: string }>()
 const store = inject(APP_STORE_KEY) as AppStore
 const panels = inject(STORE_KEY) as PanelStore
 
 // Reserve the permanent taskbar strip so app content isn't hidden behind it (the taskbar
 // floats above us at a much higher z-index). The taskbar docks top or bottom; when top it
 // sits just below ComfyUI's menu (topbarH), so reserve down to its bottom edge.
-const surfaceStyle = computed(() =>
-  panels.state.taskbarPos === 'top'
-    ? { top: panels.state.topbarH + TASKBAR_H + 'px', bottom: '0' }
-    : { top: '0', bottom: taskbarFootprint(panels) + 'px' },
+// Tiled in a workspace, the app fills its tile's rect (shown while that workspace is) instead.
+const tile = computed(() => tileRectOf(appTileId(props.appKey)))
+const surfaceStyle = computed(() => {
+  const t = tile.value
+  if (t && t !== 'hidden')
+    return { left: t.x + 'px', top: t.y + 'px', width: t.w + 'px', height: t.h + 'px', zIndex: 3 }
+  return panels.state.taskbarPos === 'top'
+    ? { left: '0', right: '0', top: panels.state.topbarH + TASKBAR_H + 'px', bottom: '0' }
+    : { left: '0', right: '0', top: '0', bottom: taskbarFootprint(panels) + 'px' }
+})
+const tiled = computed(() => !!tile.value)
+const visible = computed(() =>
+  tile.value ? tile.value !== 'hidden' : store.state.active.app === props.appKey,
 )
+const router = store.makeRouter(props.appKey)
+function closeApp() {
+  if (tiled.value) untile(appTileId(props.appKey))
+  store.close(props.appKey)
+}
 
-const active = computed(() => store.state.active)
-// active.app is the routing key ('<namespace>/<id>'); resolve the registration by key.
-const reg = computed(
-  () => store.state.registry.find((r) => store.keyOf(r) === active.value.app) || null,
+// This app's location: the active one while it shows, else where it was left.
+const loc = computed(() =>
+  store.state.active.app === props.appKey
+    ? store.state.active
+    : (store.runningOf(props.appKey) ?? store.state.active),
 )
+const reg = computed(() => store.regOf(props.appKey))
 const match = computed(() => {
   const r = reg.value
   if (!r) return null
-  return matchRoute(r.routes, active.value.path) ?? matchRoute(r.routes, r.home ?? '')
+  return matchRoute(r.routes, loc.value.path) ?? matchRoute(r.routes, r.home ?? '')
 })
 const showChrome = computed(() => reg.value?.chrome !== false)
 const title = computed(() => {
   const m = match.value
   const t = m?.route.title
   if (typeof t === 'function') return t(m!.params)
-  return (t as string | undefined) ?? reg.value?.title ?? active.value.app ?? ''
+  return (t as string | undefined) ?? reg.value?.title ?? props.appKey
 })
+// With URL sync the browser owns history, so its buttons can't know the ends.
+const canBack = computed(() => store.state.urlSync || store.canStep(props.appKey, -1))
+const canForward = computed(() => store.state.urlSync || store.canStep(props.appKey, 1))
 
-// Re-key on app + path + query (a route change) AND on the registration appearing
-// (restore navigates to an app before its plugin registers — re-mount once it lands).
-const locKey = computed(
-  () => `${active.value.app}|${active.value.path}|${JSON.stringify(active.value.query)}`,
-)
+// Per-route apps re-render on a route change (app + path + query) and when the registration
+// appears or is replaced (restore can show an app before its plugin registers).
+const locKey = computed(() => `${loc.value.path}|${JSON.stringify(loc.value.query)}`)
 
 const bodyRef = ref<HTMLElement | null>(null)
 let cleanup: (() => void) | null = null
+let mountedReg: AppRegistration | null = null
 
-function mountRoute() {
+function teardown() {
   if (cleanup) {
     try {
       cleanup()
@@ -60,26 +81,59 @@ function mountRoute() {
     }
     cleanup = null
   }
+  mountedReg = null
+  bodyRef.value?.replaceChildren()
+}
+
+function fail(what: string, e: unknown) {
+  console.error(`[ZenKit] app ${what} failed`, props.appKey, e)
+  if (bodyRef.value)
+    bodyRef.value.innerHTML = `<div class="zen-app-msg">This screen failed to load.</div>`
+}
+
+function mountApp(r: AppRegistration) {
+  if (mountedReg === r) return
+  teardown()
   const el = bodyRef.value
   if (!el) return
-  el.replaceChildren()
-  const r = reg.value
-  if (!r) return // app not registered yet — show an empty surface until it arrives
+  mountedReg = r
+  const key = props.appKey
+  const ctx: AppContext = {
+    app: r.id,
+    key,
+    router: store.makeRouter(key),
+    get state() {
+      return store.getState(key)
+    },
+    setState: (s) => store.setState(key, s),
+  }
+  try {
+    const ret = r.mount!(el, ctx)
+    if (typeof ret === 'function') cleanup = ret
+  } catch (e) {
+    fail('mount', e)
+  }
+}
+
+function mountRoute(r: AppRegistration) {
+  teardown()
+  const el = bodyRef.value
+  if (!el) return
   const m = match.value
-  if (!m) {
+  if (!m?.route.render) {
     // The path comes from the URL, so it is text, never HTML.
     const msg = document.createElement('div')
     msg.className = 'zen-app-msg'
-    msg.textContent = `Route “${active.value.path}” not found in ${r.title}.`
+    msg.textContent = `Route “${loc.value.path}” not found in ${r.title}.`
     el.replaceChildren(msg)
     return
   }
-  const key = active.value.app as string // routing key ('<namespace>/<id>')
+  const key = props.appKey
   const ctx: RouteContext = {
     app: r.id, // the app's own id (route code sees the bare id, not the namespaced key)
     route: m.route.path,
     params: m.params,
-    query: active.value.query,
+    query: loc.value.query,
     router: store.makeRouter(key),
     // Live, like PanelContext.state: a route that sets state and reads it back sees the update.
     get state() {
@@ -91,34 +145,63 @@ function mountRoute() {
     const ret = m.route.render(el, ctx)
     if (typeof ret === 'function') cleanup = ret
   } catch (e) {
-    console.error('[ZenKit] app route render failed', key, m.route.path, e)
-    el.innerHTML = `<div class="zen-app-msg">This screen failed to load.</div>`
+    fail('route render', e)
   }
 }
 
-onMounted(mountRoute)
-watch([locKey, reg], () => mountRoute())
-onBeforeUnmount(() => {
-  if (cleanup) {
-    try {
-      cleanup()
-    } catch {
-      /* ignore */
-    }
-    cleanup = null
-  }
+function sync() {
+  const r = reg.value
+  if (!r) return teardown() // not registered yet — an empty surface until it arrives
+  if (r.mount) mountApp(r)
+  else mountRoute(r)
+}
+
+onMounted(sync)
+watch(reg, sync)
+watch(locKey, () => {
+  if (reg.value && !reg.value.mount) sync()
 })
+onBeforeUnmount(teardown)
 </script>
 
 <template>
-  <div class="zen-app" :style="surfaceStyle">
+  <div v-show="visible" class="zen-app" :class="{ tiled }" :style="surfaceStyle">
     <div v-if="showChrome" class="zen-app-bar">
-      <ZenIconButton icon="mdi mdi-home-outline" title="Back to graph" @click="store.close()" />
-      <ZenIconButton icon="mdi mdi-arrow-left" title="Back" @click="store.back()" />
-      <ZenIconButton icon="mdi mdi-arrow-right" title="Forward" @click="store.forward()" />
+      <ZenIconButton
+        icon="mdi mdi-arrow-left"
+        title="Back"
+        :disabled="!canBack"
+        @click="router.back()"
+      />
+      <ZenIconButton
+        icon="mdi mdi-arrow-right"
+        title="Forward"
+        :disabled="!canForward"
+        @click="router.forward()"
+      />
       <span class="zen-app-sep" />
       <ZenIcon v-if="reg?.icon" :icon="reg.icon" class="zen-app-icon" />
       <span class="zen-app-title">{{ title }}</span>
+      <span class="zen-app-grow" />
+      <ZenIconButton
+        v-if="tiled"
+        icon="mdi mdi-arrow-expand"
+        title="Full screen (take it out of the workspace)"
+        @click="untileApp(appKey)"
+      />
+      <template v-else>
+        <ZenIconButton
+          icon="mdi mdi-view-split-vertical"
+          title="Tile into a workspace, beside your panels"
+          @click="tileApp(appKey)"
+        />
+        <ZenIconButton
+          icon="mdi mdi-window-minimize"
+          title="Minimize (keeps running on the taskbar)"
+          @click="store.minimize()"
+        />
+      </template>
+      <ZenIconButton icon="mdi mdi-close" title="Close" @click="closeApp" />
     </div>
     <div ref="bodyRef" class="zen-app-body" />
   </div>
@@ -131,9 +214,7 @@ onBeforeUnmount(() => {
    so those stay usable over an open app. */
 .zen-app {
   position: fixed;
-  left: 0;
-  right: 0;
-  /* top/bottom set inline (surfaceStyle) to reserve the taskbar strip */
+  /* placed inline (surfaceStyle): full width above the taskbar strip, or its tile's rect */
   z-index: 10;
   display: flex;
   flex-direction: column;
@@ -157,6 +238,9 @@ onBeforeUnmount(() => {
   margin: 2px 6px;
   background: var(--zen-border, #3a3a44);
 }
+.zen-app-grow {
+  flex: 1;
+}
 .zen-app-icon {
   font-size: 16px;
   color: var(--zen-accent, #3b82f6);
@@ -168,6 +252,11 @@ onBeforeUnmount(() => {
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
+}
+/* In a workspace tile it reads like a tiled panel: framed, with the theme's surface radius. */
+.zen-app.tiled {
+  border: 1px solid var(--zen-surface-border, var(--zen-border, #3a3a44));
+  border-radius: var(--zen-radius-surface, var(--zen-radius, 8px));
 }
 /* The route mount: a sized flex child (like ZenPanel's .body) so routes that fill their
    container don't collapse to zero height. */
