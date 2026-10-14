@@ -1141,6 +1141,10 @@ function formatTime(t: number): string {
 }
 
 // Drags take pointer capture so they keep tracking outside the strip and never become a node drag.
+/** How close to the view's right edge (px) a drag past the end starts scrolling, and its top speed
+ *  in px a frame. */
+const EDGE = 48
+const EDGE_SPEED = 22
 function drag(
   e: PointerEvent,
   move: (t: number, ev: PointerEvent) => void,
@@ -1151,11 +1155,30 @@ function drag(
   e.stopPropagation()
   const el = e.currentTarget as HTMLElement
   el.setPointerCapture(e.pointerId)
-  const onMove = (ev: PointerEvent) => move(timeAt(ev.clientX, beyond), ev)
+  let last: PointerEvent | null = null
+  let frame = 0
+  // A drag allowed past the end scrolls the view on while the pointer is near or past its right
+  // edge, so an end can be pulled out further than the view (or the window) has room for.
+  const edgeScroll = () => {
+    frame = 0
+    const view = scroller.value
+    if (!last || !view) return
+    const over = last.clientX - (view.getBoundingClientRect().right - EDGE)
+    if (over <= 0) return
+    view.scrollLeft += Math.min(EDGE_SPEED, over * 0.35)
+    move(timeAt(last.clientX, beyond), last)
+    frame = requestAnimationFrame(edgeScroll)
+  }
+  const onMove = (ev: PointerEvent) => {
+    last = ev
+    move(timeAt(ev.clientX, beyond), ev)
+    if (beyond && !frame) frame = requestAnimationFrame(edgeScroll)
+  }
   const stop = () => {
     el.removeEventListener('pointermove', onMove)
     el.removeEventListener('pointerup', stop)
     el.removeEventListener('pointercancel', stop)
+    cancelAnimationFrame(frame)
     snapLine.value = null
     end?.()
   }
