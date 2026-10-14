@@ -30,9 +30,12 @@ function listen(): void {
   mountOnce(LoraPeek)
 }
 
-export function hoverStart(name: string, el: HTMLElement, shift = false): void {
+/** `shift`: whether Shift is down, from the event that started the hover. Left out, the key
+ *  listener's state stands, so holding Shift while moving over one thumb after another keeps
+ *  peeking. */
+export function hoverStart(name: string, el: HTMLElement, shift?: boolean): void {
   listen()
-  shiftHeld.value = shift
+  if (shift !== undefined) shiftHeld.value = shift
   peekTarget.value = name ? { name, el } : null
 }
 

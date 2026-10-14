@@ -16,8 +16,11 @@ export interface VirtualGridOptions {
   padding?: number
   /** Row height to assume before one has been measured. */
   estimate?: (columnWidth: number) => number
-  /** Extra rows rendered above and below what is visible. */
+  /** Extra rows rendered above and below what is visible. The rendered slice also moves in steps
+   *  of this many rows, so scrolling re-renders once per `overscan` rows rather than every row. */
   overscan?: number
+  /** Every row is the same height: measure one once instead of after every scroll step. */
+  fixedRows?: boolean
 }
 
 export function useVirtualGrid(
@@ -27,7 +30,7 @@ export function useVirtualGrid(
 ) {
   const gap = opts.gap ?? 10
   const padding = opts.padding ?? 12
-  const overscan = opts.overscan ?? 2
+  const overscan = Math.max(1, opts.overscan ?? 2)
   const width = ref(0)
   const height = ref(0)
   const scrollTop = ref(0)
@@ -44,12 +47,14 @@ export function useVirtualGrid(
   )
   const step = computed(() => rowHeight.value + gap)
   const rows = computed(() => Math.ceil(count() / columns.value))
-  const firstRow = computed(() =>
-    Math.max(0, Math.floor((scrollTop.value - padding) / step.value) - overscan),
-  )
-  const lastRow = computed(() =>
-    Math.min(rows.value, Math.ceil((scrollTop.value + height.value) / step.value) + overscan),
-  )
+  const firstRow = computed(() => {
+    const visible = Math.max(0, Math.floor((scrollTop.value - padding) / step.value))
+    return Math.max(0, (Math.floor(visible / overscan) - 1) * overscan)
+  })
+  const lastRow = computed(() => {
+    const visible = Math.ceil((scrollTop.value + height.value) / step.value)
+    return Math.min(rows.value, (Math.ceil(visible / overscan) + 1) * overscan)
+  })
   const start = computed(() => firstRow.value * columns.value)
   const end = computed(() => Math.min(count(), lastRow.value * columns.value))
 
@@ -75,6 +80,7 @@ export function useVirtualGrid(
    *  grows until the column width changes: measuring whichever card came first flipped between
    *  shorter and taller cards as you scrolled, moving every row each time. */
   function measure(cardSelector: string) {
+    if (opts.fixedRows && measured.value) return
     let tallest = 0
     scroller.value?.querySelectorAll<HTMLElement>(cardSelector).forEach((card) => {
       tallest = Math.max(tallest, layoutHeight(card))

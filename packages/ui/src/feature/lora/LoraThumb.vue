@@ -14,7 +14,7 @@
     v-else-if="showImage"
     class="lt"
     :class="{ sm }"
-    :src="lib.preview(name)"
+    :src="lib.preview(name, sm ? 18 : 40)"
     loading="lazy"
     v-on="peek"
     @error="onError"
@@ -35,7 +35,7 @@ const props = withDefaults(
     sm?: boolean
     /** Show the "not on disk" state. Off in the browser, where every name came FROM the disk. */
     checkMissing?: boolean
-    /** Trust `previewable` strictly. The default is optimistic — see lib.hasThumb. */
+    /** Never load the listing for this thumb; show it only once something else has. */
     strict?: boolean
   }>(),
   { sm: false, checkMissing: false, strict: false },

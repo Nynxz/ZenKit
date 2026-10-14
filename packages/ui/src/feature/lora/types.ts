@@ -58,8 +58,9 @@ export interface LoraInfo {
 export interface LoraSource {
   /** Every LoRA on disk. `force` bypasses the pack's own cache. */
   list(force?: boolean): Promise<LoraItem[]>
-  /** A same-origin URL for a LoRA's preview as a still image. */
-  previewUrl(name: string): string
+  /** A same-origin URL for a LoRA's preview as a still image. `size` asks for a thumbnail about
+   *  that many pixels on its longest side, where the host can make one; the full image otherwise. */
+  previewUrl(name: string, size?: number): string
   /** The preview as-is (a video for a video preview). Defaults to `previewUrl`. */
   mediaUrl?(name: string): string
   /** Details for the info panel; null when unavailable. */

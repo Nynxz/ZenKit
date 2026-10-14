@@ -11,7 +11,7 @@
         loop
         playsinline
       />
-      <img v-else :src="lib.preview(target.name)" />
+      <img v-else :src="lib.preview(target.name, 360)" />
     </div>
     <div class="lpk-body">
       <div class="lpk-title">{{ info?.title || lib.short(target.name) }}</div>

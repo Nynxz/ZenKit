@@ -137,8 +137,10 @@ export function hasPreview(name: unknown): boolean {
   return previewable.value.has(String(name))
 }
 
-export function preview(name: unknown): string {
-  return required().previewUrl(String(name))
+/** The preview as a still; `size` (CSS px of the box it fills) asks for a thumbnail that sharp. */
+export function preview(name: unknown, size?: number): string {
+  const px = size && Math.ceil(size * (globalThis.devicePixelRatio || 1))
+  return required().previewUrl(String(name), px || undefined)
 }
 
 const kinds = computed(
@@ -190,16 +192,18 @@ export function isMissing(name: unknown): boolean {
 }
 
 /**
- * Whether to try a thumbnail for a SELECTED name.
- *
- * Optimistic before the listing loads, so a saved LoRA's thumb appears on mount instead of
- * flashing a placeholder; `onThumbError` demotes it if the request 404s. Once the listing is in,
- * `previewable` is authoritative.
+ * Whether to show a thumbnail for a SELECTED name: only one the listing says has a preview, so a
+ * LoRA without one never asks for it (each such request was a 404 in the console). Asking loads
+ * the listing, once, shared with every other caller; the thumb shows the placeholder until then.
  */
 export function hasThumb(name: unknown): boolean {
   const n = String(name)
   if (!n || thumbFailed.value.has(n)) return false
-  return listLoaded.value ? previewable.value.has(n) : true
+  if (!listLoaded.value) {
+    if (source) void ensure().catch(() => {})
+    return false
+  }
+  return previewable.value.has(n)
 }
 
 /** A selected-row thumbnail that failed to load — stop offering it. */

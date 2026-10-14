@@ -90,12 +90,12 @@
             >
               <span
                 class="lb-rthumb"
-                @mouseenter="hoverStart(it.name, $event.currentTarget as HTMLElement)"
+                @mouseenter="hoverStart(it.name, $event.currentTarget as HTMLElement, $event.shiftKey)"
                 @mouseleave="hoverEnd($event.currentTarget as HTMLElement)"
               >
                 <img
                   v-if="lib.hasPreview(it.name)"
-                  :src="lib.preview(it.name)"
+                  :src="lib.preview(it.name, 26)"
                   loading="lazy"
                   decoding="async"
                   alt=""
@@ -164,7 +164,7 @@
               />
               <img
                 v-else-if="lib.hasPreview(it.name)"
-                :src="lib.preview(it.name)"
+                :src="lib.preview(it.name, (CARD[size] ?? 148) * 1.4)"
                 loading="lazy"
                 decoding="async"
                 alt=""
@@ -395,6 +395,8 @@ const rowsGrid = useVirtualGrid(listEl, () => visible.value.length, {
   gap: 0,
   padding: 0,
   estimate: () => 34,
+  overscan: 8,
+  fixedRows: true,
 })
 const shownRows = computed(() => visible.value.slice(rowsGrid.start.value, rowsGrid.end.value))
 watch(shownRows, () => void nextTick(() => rowsGrid.measure('.lb-row')))
@@ -408,8 +410,9 @@ function bytes(n?: number | null) {
   if (!n) return '—'
   return n >= 1024 ** 3 ? `${(n / 1024 ** 3).toFixed(1)} GB` : `${(n / 1024 ** 2).toFixed(0)} MB`
 }
+const DATE = new Intl.DateTimeFormat(undefined, { dateStyle: 'medium' })
 function when(t?: number | null) {
-  return t ? new Date(t * 1000).toLocaleDateString(undefined, { dateStyle: 'medium' }) : '—'
+  return t ? DATE.format(t * 1000) : '—'
 }
 
 // --- keyboard: arrows move through the grid, Enter picks -----------------------------------------
