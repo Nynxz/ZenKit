@@ -92,6 +92,7 @@ export default defineConfig(
       'workspace-aliases.ts',
       'tests/**/*.mjs',
       'internal/**/*.mjs',
+      'scripts/**/*.mjs',
     ],
     languageOptions: { globals: { ...globals.node } },
   },

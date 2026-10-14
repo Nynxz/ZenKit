@@ -2,6 +2,9 @@ name: publish-npm
 
 # The three published packages. Manual: a version bump is a decision.
 on:
+  # A v* tag (pnpm release) publishes; a manual run is for a dry run or a retry.
+  push:
+    tags: ['v*']
   workflow_dispatch:
     inputs:
       dry-run:
@@ -28,6 +31,14 @@ jobs:
 
       # npm >= 11.5.1 for OIDC. setup-node ships whatever the Node line bundles, so pin it.
       - run: npm install -g npm@latest
+
+      - name: The tag names the version being published
+        if: startsWith(github.ref, 'refs/tags/v')
+        run: |
+          for p in ui nodekit client; do
+            have=$(node -p "require('./packages/$p/package.json').version")
+            test "${GITHUB_REF_NAME#v}" = "$have" || { echo "tag $GITHUB_REF_NAME, but $p is $have"; exit 1; }
+          done
 
       - run: pnpm install --frozen-lockfile
       - run: pnpm check
