@@ -2,7 +2,7 @@
   "name": "@nynxz/zenkit-client",
   "version": "0.3.0",
   "type": "module",
-  "description": "Typed consumer SDK \u2014 graceful degradation when ZenKit is absent.",
+  "description": "Typed consumer SDK — graceful degradation when ZenKit is absent.",
   "exports": {
     ".": {
       "types": "./dist/index.d.ts",
@@ -18,6 +18,11 @@
     "access": "public"
   },
   "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/Nynxz/ZenKit.git",
+    "directory": "packages/client"
+  },
   "files": [
     "dist"
   ],

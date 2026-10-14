@@ -34,6 +34,11 @@
     "vite": "^6.4.3"
   },
   "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/Nynxz/ZenKit.git",
+    "directory": "packages/nodekit"
+  },
   "files": [
     "dist",
     "python",
