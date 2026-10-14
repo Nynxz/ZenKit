@@ -485,11 +485,11 @@ if routes is not None:
         ...
 ```
 
-| Check        | Rule                                                                                                                                                                                                        |
-| ------------ | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| Host         | While ComfyUI listens only on loopback (the default), the `Host` must be `localhost`, `127.0.0.1` or `[::1]`. `--listen <addr>` also allows that address; a wildcard `--listen` (`0.0.0.0`, `::`) skips it. |
-| Origin       | When present, its host and port must equal the `Host` header's.                                                                                                                                             |
-| Content type | A non-GET request with a body must send `application/json` (a cross-site form can't without a CORS preflight). Send `headers: { 'Content-Type': 'application/json' }` from the frontend.                    |
+| Check        | Rule                                                                                                                                                                                                                                                                                                                                                                                        |
+| ------------ | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Host         | While ComfyUI listens only on loopback (the default), the `Host` must be `localhost`, `127.0.0.1` or `[::1]`. `--listen <addr>` also allows that address and this machine's own name; a wildcard `--listen` (`0.0.0.0`, `::`) skips it. Behind a reverse proxy, list the names it serves ComfyUI under in `ZENKIT_ALLOWED_HOSTS` (comma-separated); the proxy must pass the `Host` through. |
+| Origin       | When present, its host and port must equal the `Host` header's.                                                                                                                                                                                                                                                                                                                             |
+| Content type | A non-GET request with a body must send `application/json` (a cross-site form can't without a CORS preflight). Send `headers: { 'Content-Type': 'application/json' }` from the frontend.                                                                                                                                                                                                    |
 
 A refused request gets `403 {"error": "forbidden: …"}` and one warning in the log per path. The
 media routes run the same check, so a rebound page can't list or probe ComfyUI's folders either.
