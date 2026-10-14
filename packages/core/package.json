@@ -1,6 +1,6 @@
 {
   "name": "@nynxz/zenkit-core",
-  "version": "0.3.0",
+  "version": "0.3.1",
   "private": true,
   "type": "module",
   "description": "The ZenKit runtime \u2014 implements the window.ZenKit contract.",
