@@ -547,7 +547,8 @@ const props = withDefaults(
   defineProps<{
     duration: number
     /** Empty room after the end, in seconds, to drag a clip's end out into (making the timeline
-     *  longer). Part of the fitted width; nothing is drawn there. */
+     *  longer). Shown when zoomed in or while an end is dragged; fitted, the timeline's end sits
+     *  at the right edge. Nothing is drawn there. */
     tail?: number
     tracks: TimelineTrack[]
     selected?: string | string[] | null
@@ -703,12 +704,16 @@ onBeforeUnmount(() => ro?.disconnect())
 const PAD = 14
 /** The seconds the width is laid out for: the timeline, and the room after it. */
 const span = computed(() => props.duration + Math.max(0, props.tail ?? 0))
-const fit = computed(() => Math.max(4, (viewWidth.value - PAD * 2) / Math.max(span.value, 0.1)))
+/** Fitted, the timeline itself fills the width; the room after it waits for a zoom or a drag. */
+const fit = computed(() => Math.max(4, (viewWidth.value - PAD * 2) / Math.max(props.duration, 0.1)))
 /** The scale held while a clip's end is dragged: the timeline grows under the drag, and a fitted
  *  scale shrinking with it would move the pointer's time on, growing it faster and faster. */
 const heldScale = ref<number | null>(null)
 const pps = computed(() => heldScale.value ?? Math.max(zoom.value, fit.value))
-const contentWidth = computed(() => Math.max(viewWidth.value, span.value * pps.value + PAD * 2))
+const fitted = computed(() => heldScale.value === null && pps.value <= fit.value + 0.01)
+const contentWidth = computed(() =>
+  Math.max(viewWidth.value, (fitted.value ? props.duration : span.value) * pps.value + PAD * 2),
+)
 
 /** Scrolling re-renders nothing: the overlay scrollbar's thumb is moved directly, and the span the
  *  filmstrips draw (`scrollX`, what's in view and a screen either side) only moves when the view
