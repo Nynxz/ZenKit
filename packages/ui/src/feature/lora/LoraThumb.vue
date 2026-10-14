@@ -83,7 +83,7 @@ function onError(e: Event) {
   box-sizing: border-box;
   width: 40px;
   height: 40px;
-  object-fit: contain;
+  object-fit: cover;
   border-radius: var(--zen-radius, 7px);
   background: var(--zen-input, #1b1b20);
   border: 1px solid var(--zen-border, #34343c);
