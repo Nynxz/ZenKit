@@ -1,6 +1,6 @@
 {
   "name": "@nynxz/zenkit-theme",
-  "version": "0.3.1",
+  "version": "0.3.2",
   "private": true,
   "type": "module",
   "description": "ZenKit token system \u2014 semantic token packs and the applier.",
