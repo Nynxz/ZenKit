@@ -265,13 +265,14 @@ const BASE_CSS = `:root{
   --zen-text: var(--input-text, #e5e5ea);
   --zen-muted: var(--descrip-text, #9aa0aa);
   --zen-border: var(--border-color, #3a3a44);
-  /* Controls (buttons, selects) and fields (text/number inputs) as ComfyUI draws its own:
-     borderless on the secondary background, lifting a step on hover. */
+  /* Controls (buttons, selects) and fields (text/number inputs) on ComfyUI's secondary
+     background, lifting a step on hover, with a faint edge of ComfyUI's border colour: on a
+     classic node the fill alone is too close to the node's own grey to see. */
   --zen-control-bg: var(--secondary-background, var(--zen-surface));
   --zen-field-bg: var(--secondary-background, var(--zen-input));
-  --zen-control-border: transparent;
+  --zen-control-border: color-mix(in srgb, var(--zen-border) 75%, transparent);
   --zen-control-hover-bg: var(--secondary-background-hover, var(--zen-control-bg));
-  --zen-control-hover-border: transparent;
+  --zen-control-hover-border: color-mix(in srgb, var(--zen-text) 28%, transparent);
   /* Icon buttons sitting on chrome, like ComfyUI's sidebar icons: no fill until hovered. */
   --zen-ghost-bg: transparent;
   --zen-ghost-hover-text: var(--zen-text);
