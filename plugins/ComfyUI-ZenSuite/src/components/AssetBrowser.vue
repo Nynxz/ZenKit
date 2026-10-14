@@ -16,7 +16,31 @@
       />
       <div class="search">
         <i class="mdi mdi-magnify"></i>
-        <input v-model="filter" placeholder="filter…" spellcheck="false" />
+        <input
+          v-model="filter"
+          :placeholder="
+            byMeaning
+              ? 'describe it, or sampler:euler seed:42'
+              : 'search prompts, names · sampler:euler seed:42'
+          "
+          title="Words match the prompt, file name, model and loras. Filters: sampler: scheduler: model: lora: seed: steps: cfg: neg: kind: ext: workflow:yes|no — a leading - excludes."
+          spellcheck="false"
+        />
+        <button
+          v-if="visual?.model"
+          type="button"
+          class="vis mdi"
+          :class="[
+            searching && byMeaning ? 'mdi-loading mdi-spin' : 'mdi-eye-outline',
+            { on: byMeaning },
+          ]"
+          :title="
+            byMeaning
+              ? 'Ranking by what images show — click to match words only'
+              : 'Rank by what images show (loads the embedding model)'
+          "
+          @click="byMeaning = !byMeaning"
+        />
       </div>
       <span class="fbtn">
         <ZenIconButton
@@ -39,6 +63,19 @@
         :disabled="loading"
         @click="load()"
       />
+      <button
+        v-if="weaker"
+        type="button"
+        class="more"
+        :title="
+          showWeaker
+            ? 'Show only the close matches'
+            : 'Show every file, the weaker matches ranked below the close ones'
+        "
+        @click="showWeaker = !showWeaker"
+      >
+        {{ showWeaker ? 'close matches only' : `+${weaker.toLocaleString()} more` }}
+      </button>
       <span class="count">{{ filtered.length }}</span>
     </div>
 
@@ -161,6 +198,23 @@
           :step="20"
           @update:model-value="(v) => setCardW(v as number)"
         />
+        <div class="vm-h">Visual search</div>
+        <ZenSelect
+          :model-value="visual?.model ?? ''"
+          :options="visualOptions"
+          :disabled="!visual?.models.length"
+          @update:model-value="(v) => pickVisual(v as string)"
+        />
+        <p class="vm-note">{{ visualLine }}</p>
+        <ZenButton
+          v-if="visual?.model && (visual.pending || visualIndexing)"
+          sm
+          :icon="visualIndexing ? 'mdi mdi-loading mdi-spin' : 'mdi mdi-database-arrow-up-outline'"
+          :disabled="visualIndexing"
+          @click="startIndex"
+        >
+          {{ visualIndexing ? 'Indexing…' : `Index ${visual.pending.toLocaleString()} files` }}
+        </ZenButton>
       </div>
     </ZenPopover>
 
@@ -196,6 +250,7 @@ import {
   ZenPopover,
   ZenMenuItem,
   ZenEmpty,
+  ZenButton,
   ZenCheckbox,
   ZenFolderTree,
   ZenPeek,
@@ -206,11 +261,16 @@ import { app } from '@comfy/app'
 import {
   listAssets,
   listRoots,
+  indexVisual,
+  searchAssets,
+  setVisualModel,
+  visualStatus,
   thumbUrl,
   viewUrl,
   type AssetItem,
   type AssetRoot,
   type RootInfo,
+  type VisualStatus,
 } from '../lib/api'
 import { watchOutputs, type LiveOutput } from '../lib/liveAssets'
 
@@ -243,6 +303,7 @@ const SORTS = [
   { key: 'mtime', label: 'date' },
   { key: 'name', label: 'name' },
   { key: 'size', label: 'size' },
+  { key: 'match', label: 'match' },
 ] as const
 type SortKey = (typeof SORTS)[number]['key']
 
@@ -262,7 +323,13 @@ const rootOptions = computed(() =>
   })),
 )
 // View-menu controls, built from real ZenKit components (ZenToggleGroup / ZenSlider).
-const sortTg = SORTS.map((s) => ({ value: s.key, label: s.label }))
+// 'match' (best first) only means something while visual search ranks a search.
+const sortTg = computed(() =>
+  SORTS.filter((s) => s.key !== 'match' || ranked.value).map((s) => ({
+    value: s.key,
+    label: s.label,
+  })),
+)
 const orderTg = [
   { value: 'asc', label: 'asc', icon: 'mdi mdi-arrow-up' },
   { value: 'desc', label: 'desc', icon: 'mdi mdi-arrow-down' },
@@ -315,6 +382,7 @@ onBeforeUnmount(() => {
   stopOutputs?.()
   if (reconcileTimer) clearTimeout(reconcileTimer)
   ro?.disconnect()
+  clearTimeout(visualTimer)
 })
 
 // --- type filter and folders -----------------------------------------------
@@ -391,13 +459,30 @@ const folderTree = computed<FolderTreeEntry[]>(() => {
   return [...n].sort((a, b) => a[0].localeCompare(b[0])).map(([path, count]) => ({ path, count }))
 })
 
+/** In the folder and of the picked types: what the search narrows. */
+const typedInFolder = computed(() =>
+  types.value.length ? foldered.value.filter((i) => types.value.includes(i.kind)) : foldered.value,
+)
+/** Ranked results past the close matches, hidden until asked for. */
+const weaker = computed(() => {
+  const hit = matches.value
+  if (!hit || !ranked.value || !filter.value.trim()) return 0
+  return typedInFolder.value.filter((i) => (hit.get(i.rel) ?? -1) >= closeCount.value).length
+})
 const filtered = computed(() => {
   const f = filter.value.trim().toLowerCase()
-  const shown = types.value.length
-    ? foldered.value.filter((i) => types.value.includes(i.kind))
-    : foldered.value
-  const list = f ? shown.filter((i) => i.rel.toLowerCase().includes(f)) : shown.slice()
+  const shown = typedInFolder.value
+  // The server's matches once they arrive; the name alone while they are on their way.
+  const hit = matches.value
+  const limit = ranked.value && !showWeaker.value ? closeCount.value : Infinity
+  const list = !f
+    ? shown.slice()
+    : hit
+      ? shown.filter((i) => (hit.get(i.rel) ?? Infinity) < limit)
+      : shown.filter((i) => i.rel.toLowerCase().includes(f))
   const dir = asc.value ? 1 : -1
+  if (sortKey.value === 'match' && hit && ranked.value)
+    return list.sort((a, b) => hit.get(a.rel)! - hit.get(b.rel)!)
   list.sort((a, b) => {
     if (sortKey.value === 'name') return a.name.localeCompare(b.name) * dir
     if (sortKey.value === 'size') return (a.size - b.size) * dir
@@ -445,6 +530,64 @@ const lbItems = computed<ViewerItem[]>(() =>
   })),
 )
 
+// The search runs on the server, over the metadata index (prompts, samplers, models…).
+/** rel -> its place in the server's order. */
+const matches = ref<Map<string, number> | null>(null)
+const ranked = ref(false)
+const closeCount = ref(0)
+const showWeaker = ref(false)
+/** The sort to go back to when a ranked search ends. */
+let sortBeforeMatch: SortKey | null = null
+function setRanked(on: boolean) {
+  ranked.value = on
+  if (on && sortKey.value !== 'match' && sortBeforeMatch === null) {
+    sortBeforeMatch = sortKey.value
+    sortKey.value = 'match'
+  } else if (!on) {
+    if (sortKey.value === 'match') sortKey.value = sortBeforeMatch ?? 'mtime'
+    sortBeforeMatch = null
+  }
+}
+/** Rank searches by what images show: off until clicked, as it loads the embedding model. */
+const byMeaning = ref(false)
+const searching = ref(false)
+let searchTimer: ReturnType<typeof setTimeout> | undefined
+let searchSeq = 0
+function runSearch() {
+  clearTimeout(searchTimer)
+  const q = filter.value.trim()
+  const seq = ++searchSeq
+  if (!q) {
+    matches.value = null
+    setRanked(false)
+    return
+  }
+  searchTimer = setTimeout(async () => {
+    searching.value = true
+    try {
+      const r = await searchAssets(root.value, q, byMeaning.value)
+      if (seq !== searchSeq) return
+      matches.value = new Map(r.rels.map((rel, i) => [rel, i]))
+      closeCount.value = r.close
+      setRanked(r.visual === 'ranked')
+      visualBusy.value = r.visual === 'busy'
+    } catch {
+      if (seq === searchSeq) matches.value = null
+    } finally {
+      if (seq === searchSeq) searching.value = false
+    }
+  }, 250)
+}
+// Keep the last matches while the next search runs, so typing doesn't flicker the grid.
+watch(root, () => (matches.value = null))
+watch([filter, root, byMeaning], runSearch)
+watch([filter, root], () => (showWeaker.value = false))
+// New files (a finished run, a rescan) may match too.
+watch(
+  () => items.value.length,
+  () => filter.value.trim() && runSearch(),
+)
+
 watch([filter, sortKey, asc, types, folder], () => {
   if (scrollEl.value) scrollEl.value.scrollTop = 0
   scrollTop.value = 0
@@ -452,6 +595,62 @@ watch([filter, sortKey, asc, types, folder], () => {
 
 function pickSort(k: SortKey) {
   sortKey.value = k
+  sortBeforeMatch = null // picked by hand: keep it after the search
+}
+
+// --- visual search: the embedding model and how far its index has got ---
+const visual = ref<VisualStatus | null>(null)
+const visualBusy = ref(false)
+const visualIndexing = computed(() =>
+  ['loading', 'indexing', 'paused'].includes(visual.value?.state ?? ''),
+)
+const visualOptions = computed(() => [
+  { value: '', label: 'Off' },
+  ...(visual.value?.models ?? []).map((m) => ({
+    value: m,
+    label: m.replace(/\.(safetensors|sft)$/, ''),
+  })),
+])
+const visualLine = computed(() => {
+  const v = visual.value
+  if (!v) return ''
+  if (!v.models.length)
+    return 'Put a Qwen3-VL-Embedding model in models/embedders to search by what images show.'
+  if (!v.model) return 'Off: searches match words only.'
+  const count = `${v.done.toLocaleString()} of ${v.total.toLocaleString()}`
+  if (v.state === 'error') return `Indexing failed: ${v.error}`
+  if (v.state === 'loading') return 'Starting…'
+  if (v.state === 'paused') return `Indexed ${count} · paused while a workflow runs`
+  if (v.state === 'indexing') return `Indexing ${count}…`
+  if (visualBusy.value) return 'Ranking pauses while a workflow runs.'
+  const indexed = `${v.done.toLocaleString()} indexed`
+  return v.pending
+    ? `${indexed}, ${v.pending.toLocaleString()} not yet. The eye in the search box ranks by what images show.`
+    : `${indexed}. The eye in the search box ranks by what images show.`
+})
+let visualTimer: ReturnType<typeof setTimeout> | undefined
+async function refreshVisual() {
+  clearTimeout(visualTimer)
+  try {
+    visual.value = await visualStatus()
+  } catch {
+    return
+  }
+  // Follow the index while it builds, or while the menu shows it.
+  if (visualIndexing.value || viewOpen.value) visualTimer = setTimeout(refreshVisual, 2000)
+}
+async function pickVisual(model: string) {
+  visual.value = await setVisualModel(model || null)
+  if (!model) byMeaning.value = false
+  else if (byMeaning.value && filter.value.trim()) runSearch()
+}
+async function startIndex() {
+  try {
+    visual.value = await indexVisual()
+  } catch {
+    return
+  }
+  void refreshVisual()
 }
 
 // View menu — controlled ZenPopover anchored to the ⚙ button (its own element from the click).
@@ -461,6 +660,7 @@ function openView(e: MouseEvent) {
   viewAnchor.value = e.currentTarget as HTMLElement
   viewOpen.value = !viewOpen.value
 }
+watch(viewOpen, (open) => open && refreshVisual())
 function setRoot(r: AssetRoot) {
   if (root.value === r) return
   root.value = r
@@ -734,6 +934,7 @@ onMounted(async () => {
   }
   load()
   measure()
+  void refreshVisual()
   stopOutputs = watchOutputs(onLiveOutputs)
   if (typeof ResizeObserver !== 'undefined' && scrollEl.value) {
     ro = new ResizeObserver(() => remeasure())
@@ -797,6 +998,21 @@ function openSelectedThenClose() {
 .grow {
   flex: 1;
 }
+.more {
+  flex: 0 0 auto;
+  padding: 2px 8px;
+  border: 1px solid var(--zen-control-border, var(--zen-border));
+  border-radius: 999px;
+  background: none;
+  color: var(--zen-muted, #9aa0aa);
+  font: inherit;
+  font-size: 11px;
+  cursor: pointer;
+}
+.more:hover {
+  color: var(--zen-text);
+  border-color: var(--zen-accent);
+}
 .count {
   flex: 0 0 auto;
   font-size: 11px;
@@ -820,6 +1036,25 @@ function openSelectedThenClose() {
   letter-spacing: 0.4px;
   color: var(--zen-muted, #9aa0aa);
   margin-top: 3px;
+}
+.vm-note {
+  max-width: 220px;
+  margin: 0;
+  color: var(--zen-muted, #9aa0aa);
+  font-size: 11px;
+  line-height: 1.4;
+}
+.search .vis {
+  padding: 0;
+  border: none;
+  background: none;
+  color: var(--zen-muted, #9aa0aa);
+  font-size: 14px;
+  cursor: pointer;
+}
+.search .vis:hover,
+.search .vis.on {
+  color: var(--zen-accent);
 }
 .vm-h:first-child {
   margin-top: 0;
