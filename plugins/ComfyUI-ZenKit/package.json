@@ -1,6 +1,6 @@
 {
   "name": "comfyui-zenkit",
-  "version": "0.2.0",
+  "version": "0.3.0",
   "private": true,
   "type": "module",
   "description": "ComfyUI plugin that serves the ZenKit runtime (window.ZenKit, taskbar) and its built-in panels.",

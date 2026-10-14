@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "comfyui-zeninspector"
-version = "0.2.0"
+version = "0.3.0"
 description = "Zen Inspector — install-wide ComfyUI debug panel: every nodepack and frontend extension, what each actually registered, and where the sources disagree. Requires ComfyUI-ZenKit."
 license = { text = "MIT" }
 
