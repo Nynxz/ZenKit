@@ -10,7 +10,11 @@ Tokens are random and minted here, and both answers must come from the turn's ow
 Events go to that browser over ComfyUI's own websocket as the `zenagent` message (never
 broadcast: a turn without a client_id sends nothing):
   {type: "turn_start" | "text" | "thinking" | "tool" | "approval_request" | "tool_request" |
-   "notice" | "turn_end", thread_id, turn_id, ...}
+   "notice" | "usage" | "turn_end", thread_id, turn_id, ...}
+
+`usage` follows every model call: the chat's running token totals, what the last request filled
+(`last`) of the context the model was loaded with (`context`, when the endpoint says), and an
+estimate of the fixed `parts` each request carries (system prompt, tools, plugin tools).
 """
 
 from __future__ import annotations
@@ -29,7 +33,14 @@ import aiohttp
 
 from . import config as agent_config
 from . import store
-from .llm import UpstreamError, resolve_model, stream_chat, supports_vision
+from .llm import (
+    UpstreamError,
+    estimate_tokens,
+    loaded_context,
+    resolve_model,
+    stream_chat,
+    supports_vision,
+)
 from .tools import CAPABILITY_TIMEOUT, TOOL_TIMEOUTS, TOOLS, needs_approval, run_count
 
 try:
@@ -155,7 +166,7 @@ async def call_tool(turn: Turn, emit, call_id: str, name: str, args: dict, timeo
 
 
 async def ask_approval(turn: Turn, emit, call_id: str, name: str, args: dict) -> str:
-    """The user's decision on a call: approve, deny or allow_turn. Time spent waiting doesn't
+    """The user's decision on a call: approve, deny, allow_turn or allow_always. Time spent waiting doesn't
     count against the turn's clock."""
     started = time.monotonic()
     try:
@@ -164,6 +175,15 @@ async def ask_approval(turn: Turn, emit, call_id: str, name: str, args: dict) ->
         return "timeout"
     finally:
         turn.deadline += time.monotonic() - started
+
+
+def _always_allow(name: str) -> None:
+    """Remember the user's "Always allow" for a tool, so later turns run it without asking."""
+    data = agent_config.read_file()
+    try:
+        agent_config.write_file(agent_config.apply_settings(data, {"always_allow": [*data.get("always_allow", []), name]}))
+    except (OSError, agent_config.SettingsError) as e:
+        log.warning("couldn't save always-allow for %s: %s", name, e)
 
 
 def _clean_result(name: str, raw: object) -> dict:
@@ -243,6 +263,16 @@ NO_VISION = (
 )
 
 
+def too_big(tokens: int, context: int, model: str) -> str:
+    """Why a request that doesn't fit the model's context gets no useful reply, and what to do."""
+    suggest = max(16384, 1 << (int(tokens * 1.5) - 1).bit_length())
+    return (
+        f"This request is about {tokens:,} tokens, but {model} is loaded with a {context:,}-token "
+        "context, so it can't see all of it. In LM Studio, load the model with a context length of "
+        f"{suggest:,} or more, or turn off plugin tools in Model settings."
+    )
+
+
 def _system_prompt(max_runs: int, workflow_summary: str | None) -> str:
     system = SYSTEM_PROMPT.replace("{max_runs}", str(max_runs))
     if workflow_summary:
@@ -275,7 +305,7 @@ async def run_turn(
     turn.deadline = time.monotonic() + TURN_SECONDS
     try:
         settings = agent_config.load()
-        model = await resolve_model(settings)
+        model = thread.get("model") or await resolve_model(settings)
         if model is None:
             raise UpstreamError(
                 f"No model reachable at {settings.base_url}. Start LM Studio's server (or Ollama), "
@@ -290,13 +320,27 @@ async def run_turn(
             return min(limit, turn.remaining())
 
         system = _system_prompt(settings.max_runs, workflow_summary)
+        context = await loaded_context(settings, model)
+        # What each request carries before the conversation, for the chat's context meter.
+        parts = {
+            "system": estimate_tokens(system),
+            "tools": estimate_tokens(TOOLS),
+            "plugins": estimate_tokens(extra_tools) if extra_tools else 0,
+        }
+        if context:
+            need = estimate_tokens(system, tools, for_model(thread["messages"], current, [], False))
+            if need > context:
+                emit("notice", text=too_big(need, context, model))
         edited, nudged, asked = False, False, False
         failures: dict[str, int] = {}
         stuck = False
         for _ in range(settings.max_steps):
             text, reasoning = Batcher(lambda d: emit("text", delta=d)), Batcher(lambda d: emit("thinking", delta=d))
 
+            finish = None
+
             async def step(text=text, reasoning=reasoning):
+                nonlocal finish
                 reply, calls, used = "", [], None
                 async for kind, value in stream_chat(settings, model, [{"role": "system", "content": system}, *for_model(thread["messages"], current, images, vision)], tools):
                     if kind == "text":
@@ -306,6 +350,8 @@ async def run_turn(
                         reasoning.push(value)
                     elif kind == "tool_calls":
                         calls = value
+                    elif kind == "finish":
+                        finish = value
                     else:
                         used = value
                 return reply, calls, used
@@ -315,6 +361,13 @@ async def run_turn(
             reply, calls, usage = await asyncio.wait_for(step(), turn.remaining())
             reasoning.flush()
             text.flush()
+            if usage:
+                # Totals for the chat, and what the last request filled of the context.
+                meter = thread.setdefault("usage", {"input": 0, "output": 0})
+                meter["input"] += usage.get("input_tokens") or 0
+                meter["output"] += usage.get("output_tokens") or 0
+                meter.update(last=usage.get("input_tokens"), context=context, parts=parts, model=model)
+                emit("usage", **meter)
             message: dict = {"role": "assistant", "content": reply or None}
             if calls:
                 seen_ids = {c.get("id") for m in thread["messages"] for c in m.get("tool_calls") or []}
@@ -328,6 +381,21 @@ async def run_turn(
                     for c in calls
                 ]
             if not calls and not reply:
+                if finish == "length":
+                    # Asking again would spend the same budget the same way (a reasoning model
+                    # thinking until it runs out), so say what to change instead.
+                    emit(
+                        "notice",
+                        text=f"The model used all {settings.max_tokens} tokens it may write before it "
+                        "wrote a reply, likely on thinking. Raise Max tokens in Model settings.",
+                    )
+                    break
+                # The endpoint's own count of what it was sent: past the context, asking again
+                # overflows the same way.
+                sent = (usage or {}).get("input_tokens")
+                if context and isinstance(sent, int) and sent >= context * 0.9:
+                    emit("notice", text=too_big(sent, context, model))
+                    break
                 if asked:
                     emit("notice", text="The model finished without a written reply.")
                     break
@@ -366,9 +434,16 @@ async def run_turn(
                     }
                 else:
                     result = None
-                    if settings.ask_before_actions and name not in turn.allowed and needs_approval(name, extra_names, extra_writes):
+                    if (
+                        settings.ask_before_actions
+                        and name not in turn.allowed
+                        and name not in settings.always_allow
+                        and needs_approval(name, extra_names, extra_writes)
+                    ):
                         decision = await ask_approval(turn, emit, call["id"], name, args)
-                        if decision == "allow_turn":
+                        if decision == "allow_always":
+                            _always_allow(name)
+                        if decision in ("allow_turn", "allow_always"):
                             turn.allowed.add(name)
                         elif decision != "approve":
                             declined = True

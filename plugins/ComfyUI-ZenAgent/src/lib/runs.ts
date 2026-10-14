@@ -23,6 +23,8 @@ export interface Run {
   /** Progress of the node currently sampling, when it reports any. */
   progress: { value: number; max: number } | null
   node: string | null
+  /** The sampler's latest preview while it runs (an object URL), dropped when the run ends. */
+  preview: string | null
   outputs: RunOutput[]
   error: string | null
   startedAt: number
@@ -92,9 +94,15 @@ function finish(run: Run, status: Run['status'], error: string | null = null): v
   run.error = error
   run.progress = null
   run.node = null
+  setPreview(run, null)
   run.finishedAt = Date.now()
   finished.get(run.promptId)?.(run)
   finished.delete(run.promptId)
+}
+
+function setPreview(run: Run, url: string | null): void {
+  if (run.preview) URL.revokeObjectURL(run.preview)
+  run.preview = url
 }
 
 on('execution_start', (run) => (run.status = 'running'))
@@ -124,6 +132,12 @@ function addOutputs(run: Run, node: string, output: NodeOutput): void {
 }
 
 on('executed', (run, d) => addOutputs(run, d.node ?? '', d.output))
+// Live previews arrive as binary messages; the frontend hands them on with the prompt id.
+api.addEventListener('b_preview_with_metadata', (e: Event) => {
+  const { blob, jobId } = (e as CustomEvent<{ blob?: Blob; jobId?: string }>).detail ?? {}
+  const run = jobId ? runs[jobId] : undefined
+  if (run && blob && run.finishedAt === null) setPreview(run, URL.createObjectURL(blob))
+})
 on('execution_success', (run) => finish(run, 'done'))
 on('execution_error', (run, d) =>
   finish(
@@ -155,6 +169,16 @@ function applyOverrides(output: ApiPrompt, overrides: Override[]): void {
   }
 }
 
+/** The live preview a run asks for: ComfyUI's own setting when it names one, otherwise TAESD, so
+ *  the chat shows the image decoding even on a server started without previews. A model family
+ *  without its TAESD decoder in models/vae_approx falls back to ComfyUI's rough colour preview. */
+function previewMethod(): string {
+  const setting = (
+    app as { extensionManager?: { setting?: { get(id: string): unknown } } }
+  ).extensionManager?.setting?.get('Comfy.Execution.PreviewMethod')
+  return typeof setting === 'string' && setting !== 'default' ? setting : 'taesd'
+}
+
 /** Queue the current workflow (with any per-run overrides); returns its prompt id once queued. */
 export async function queueRun(
   onQueued: (promptId: string) => void,
@@ -165,8 +189,14 @@ export async function queueRun(
   ).graphToPrompt()
   applyOverrides(prompt.output, overrides)
   const res = await (
-    api as { queuePrompt(n: number, p: unknown): Promise<{ prompt_id?: string; error?: unknown }> }
-  ).queuePrompt(0, prompt)
+    api as {
+      queuePrompt(
+        n: number,
+        p: unknown,
+        o?: { previewMethod?: string },
+      ): Promise<{ prompt_id?: string; error?: unknown }>
+    }
+  ).queuePrompt(0, prompt, { previewMethod: previewMethod() })
   if (!res.prompt_id)
     throw new Error(`The workflow was not queued: ${JSON.stringify(res.error ?? res)}`)
   const run: Run = {
@@ -174,6 +204,7 @@ export async function queueRun(
     status: 'queued',
     progress: null,
     node: null,
+    preview: null,
     outputs: [],
     error: null,
     startedAt: Date.now(),
@@ -216,6 +247,7 @@ export async function restoreRun(promptId: string): Promise<Run | null> {
     status: entry.status?.status_str === 'error' ? 'error' : 'done',
     progress: null,
     node: null,
+    preview: null,
     outputs: [],
     error: null,
     startedAt: times.length ? Math.min(...times) : Date.now(),

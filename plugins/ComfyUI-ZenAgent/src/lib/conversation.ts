@@ -8,6 +8,7 @@ import type {
   ThreadSummary,
   ToolResult,
   ToolStatus,
+  Usage,
 } from './api'
 import { agentApi, onAgentEvent } from './api'
 import { capabilityTools } from './capabilityTools'
@@ -96,6 +97,16 @@ function promptIdsOf(item: Extract<Item, { kind: 'tool' }>): string[] {
 function createConversation() {
   const threadId = ref<string | null>(null)
   const title = ref('New chat')
+  /** The model this chat uses; null for the settings' (or what's loaded). */
+  const model = ref<string | null>(null)
+  /** This chat's token use, as the last model call reported it. */
+  const usage = ref<Usage | null>(null)
+  /** Messages written while a reply runs, sent in order as each reply finishes. */
+  const queue = ref<{ id: number; text: string; attachments: Attachment[] }[]>([])
+  let queued = 0
+  /** Offer the installed plugins' capabilities as tools. They cost a lot of context. */
+  const pluginTools = ref(readFlag(PLUGIN_TOOLS_KEY, true))
+  watch(pluginTools, (on) => writeFlag(PLUGIN_TOOLS_KEY, on))
   const items = ref<Item[]>([])
   const turnId = ref<string | null>(null)
   const threads = ref<ThreadSummary[]>([])
@@ -158,6 +169,9 @@ function createConversation() {
       }
       if (existing) Object.assign(existing, next)
       else items.value.push(next)
+    } else if (event.type === 'usage') {
+      const { type: _type, thread_id: _thread, turn_id: _turn, ...rest } = event
+      usage.value = rest
     } else if (event.type === 'notice') {
       items.value.push({ kind: 'notice', text: event.text })
     } else if (event.type === 'approval_request') {
@@ -197,6 +211,9 @@ function createConversation() {
       endTurn()
       if (event.error) items.value.push({ kind: 'error', text: event.error })
       void refreshThreads()
+      // The next queued message goes once a reply finishes cleanly; after a failure or a stop
+      // the queue waits for the user.
+      if (event.status === 'done') void sendNext()
     }
   }
   onAgentEvent(onEvent)
@@ -205,11 +222,32 @@ function createConversation() {
     threads.value = await agentApi.threads().catch(() => threads.value)
   }
 
+  /** Send `text` now, or queue it (with what is attached) while a reply runs. */
   async function send(text: string): Promise<void> {
     const content = text.trim()
-    if ((!content && !attachments.value.length) || busy.value) return
+    if (!content && !attachments.value.length) return
     const attached = attachments.value
     attachments.value = []
+    if (busy.value) {
+      queue.value = [...queue.value, { id: ++queued, text: content, attachments: attached }]
+      return
+    }
+    await start(content, attached)
+  }
+
+  /** Send the oldest queued message. */
+  async function sendNext(): Promise<void> {
+    const [next, ...rest] = queue.value
+    if (!next || busy.value) return
+    queue.value = rest
+    await start(next.text, next.attachments)
+  }
+
+  function unqueue(id: number): void {
+    queue.value = queue.value.filter((q) => q.id !== id)
+  }
+
+  async function start(content: string, attached: Attachment[]): Promise<void> {
     items.value.push({ kind: 'user', text: content, attachments: attached })
     turnId.value = crypto.randomUUID()
     turnAbort = new AbortController()
@@ -230,7 +268,8 @@ function createConversation() {
           images: images.filter((i) => i !== null),
         },
         workflow,
-        capabilityTools(),
+        pluginTools.value ? capabilityTools() : [],
+        model.value,
       )
       if (!threadId.value)
         title.value = (content || attached[0]?.label || 'Attached media').slice(0, 80)
@@ -304,6 +343,9 @@ function createConversation() {
     const thread = await agentApi.thread(id)
     threadId.value = thread.id
     title.value = thread.title
+    model.value = thread.model ?? null
+    usage.value = thread.usage ?? null
+    queue.value = []
     items.value = itemsFrom(thread.messages)
     turnId.value = null
   }
@@ -311,6 +353,9 @@ function createConversation() {
   function newChat(): void {
     threadId.value = null
     title.value = 'New chat'
+    model.value = null
+    usage.value = null
+    queue.value = []
     items.value = []
     turnId.value = null
   }
@@ -336,6 +381,12 @@ function createConversation() {
   return {
     threadId,
     title,
+    model,
+    pluginTools,
+    usage,
+    queue,
+    sendNext,
+    unqueue,
     draft,
     attachments,
     attach,
@@ -355,6 +406,24 @@ function createConversation() {
 }
 
 const THREAD_KEY = 'zenagent.thread'
+const PLUGIN_TOOLS_KEY = 'zenagent.pluginTools'
+
+function readFlag(key: string, fallback: boolean): boolean {
+  try {
+    const raw = localStorage.getItem(key)
+    return raw === null ? fallback : raw === '1'
+  } catch {
+    return fallback
+  }
+}
+
+function writeFlag(key: string, on: boolean): void {
+  try {
+    localStorage.setItem(key, on ? '1' : '0')
+  } catch {
+    // storage unavailable; the choice lasts for this page
+  }
+}
 
 function savedThread(): string | null {
   try {

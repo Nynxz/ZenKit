@@ -3,7 +3,14 @@ import { app } from '@comfy/app'
 import { version } from '../package.json'
 // The family tile from docs/assets/render/brand.mjs; the build inlines it as a data URI.
 import logo from './logo.svg'
-import { mountVue, registerZenPlugin, type ZenPanelDef } from '@nynxz/zenkit-client'
+import {
+  mountVue,
+  mountVueApp,
+  registerZenPlugin,
+  type ZenAppDef,
+  type ZenPanelDef,
+} from '@nynxz/zenkit-client'
+import AgentChat from '@/components/AgentChat.vue'
 import AgentPanel from '@/components/AgentPanel.vue'
 
 // Zen Agent — chat with a local model that can read, edit and run the workflow on the canvas.
@@ -20,6 +27,18 @@ const AGENT: ZenPanelDef = {
   render: mountVue(AgentPanel),
 }
 
+// The same agent as a full-screen chat: saved chats, a model per chat, a reading column.
+const CHAT: ZenAppDef = {
+  id: 'chat',
+  title: 'Chat',
+  icon: 'mdi mdi-chat-processing-outline',
+  routes: [
+    { path: '', title: 'New chat' },
+    { path: 'c/:id', title: 'Chat' },
+  ],
+  mount: mountVueApp(AgentChat),
+}
+
 app.registerExtension({
   name: 'nynxz.zenagent',
   setup() {
@@ -30,6 +49,7 @@ app.registerExtension({
       logo,
       description: 'Chat with a local model that can read, edit and run your workflow.',
       panels: [AGENT],
+      apps: [CHAT],
     })
   },
 } as never)

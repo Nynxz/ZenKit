@@ -90,6 +90,16 @@ onMounted(() => {
       >
         Allow for this reply
       </ZenButton>
+      <ZenButton
+        variant="ghost"
+        size="sm"
+        :disabled="sending"
+        :title="`Approve this, and never ask before ${tool} again (undo in Settings)`"
+        :aria-label="`Always allow ${tool}`"
+        @click="answer('allow_always')"
+      >
+        Always allow
+      </ZenButton>
     </div>
     <details class="za-approval-args">
       <summary>{{ step.name }} arguments</summary>
@@ -105,7 +115,6 @@ onMounted(() => {
   border: 1px solid color-mix(in srgb, var(--zen-accent) 55%, transparent);
   border-radius: calc(var(--zen-radius) + 2px);
   background: color-mix(in srgb, var(--zen-accent) 9%, var(--zen-surface));
-  box-shadow: 0 0 0 3px color-mix(in srgb, var(--zen-accent) 12%, transparent);
   animation: za-approval-in 0.22s ease both;
 }
 .za-approval:focus-visible {

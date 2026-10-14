@@ -35,6 +35,7 @@ class LlmConfig:
     vision: str = "auto"  # whether the model is sent images: auto (ask LM Studio), on, off
     max_runs: int = 4  # workflow runs one turn may queue
     ask_before_actions: bool = True  # the panel asks before every tool that changes something
+    always_allow: tuple[str, ...] = ()  # tools the user approved for good ("Always allow")
 
 
 def origin_of(url: str) -> str | None:
@@ -118,6 +119,8 @@ def load() -> LlmConfig:
         config.vision = data["vision"]
     if isinstance(data.get("ask_before_actions"), bool):
         config.ask_before_actions = data["ask_before_actions"]
+    if isinstance(data.get("always_allow"), list):
+        config.always_allow = tuple(n for n in data["always_allow"] if isinstance(n, str))
     config.base_url = config.base_url.rstrip("/")
     # A key is bound to the endpoint it was saved for: never sent anywhere else.
     here = origin_of(config.base_url)
@@ -146,7 +149,7 @@ def apply_settings(current: dict, body: object) -> dict:
     Changing the endpoint's host clears the saved key unless a new one comes with it."""
     if not isinstance(body, dict):
         raise SettingsError("expected a JSON object")
-    unknown = set(body) - {"llm_url", "model", "api_key", "max_tokens", "max_steps", "max_runs", "vision", "ask_before_actions"}
+    unknown = set(body) - {"llm_url", "model", "api_key", "max_tokens", "max_steps", "max_runs", "vision", "ask_before_actions", "always_allow"}
     if unknown:
         raise SettingsError(f"unknown setting(s): {', '.join(sorted(unknown))}")
     out = dict(current)
@@ -172,6 +175,11 @@ def apply_settings(current: dict, body: object) -> dict:
         if not isinstance(body["ask_before_actions"], bool):
             raise SettingsError("ask_before_actions must be true or false")
         out["ask_before_actions"] = body["ask_before_actions"]
+    if "always_allow" in body:
+        names = body["always_allow"]
+        if not isinstance(names, list) or not all(isinstance(n, str) and 0 < len(n) <= 128 for n in names):
+            raise SettingsError("always_allow must be a list of tool names")
+        out["always_allow"] = sorted(set(names))
     after = origin_of(str(out.get("llm_url") or os.environ.get("ZENAGENT_LLM_URL") or DEFAULT_URL))
     if "api_key" in body:
         key = body["api_key"]

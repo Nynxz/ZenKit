@@ -13,8 +13,9 @@ const { media } = defineProps<{ media: Attachment }>()
 const src = ref<string | null>(null)
 watchEffect(async () => {
   const { ref: mediaRef, url } = media
-  src.value = url && autoLoads(url) ? url : null
-  if (src.value) return
+  const direct = url && autoLoads(url) ? url : null
+  src.value = direct
+  if (direct) return
   const built = await resolveMedia(mediaRef).catch(() => null)
   if (media.ref === mediaRef && built && autoLoads(built.url, true)) src.value = built.url
 })

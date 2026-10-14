@@ -44,7 +44,7 @@ const ICONS: Record<string, string> = {
   panels_command: 'mdi-console-line',
 }
 
-const str = (v: unknown) => (typeof v === 'string' ? v : JSON.stringify(v))
+const str = (v: unknown) => (typeof v === 'string' ? v : (JSON.stringify(v) ?? String(v)))
 const short = (v: unknown) => {
   const s = str(v)
   return s.length > 40 ? `${s.slice(0, 40)}…` : s

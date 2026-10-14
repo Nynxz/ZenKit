@@ -78,4 +78,6 @@ def summaries() -> list[dict]:
         thread = load(name[:-5])
         if thread:
             rows.append({k: thread[k] for k in ("id", "title", "created_at", "updated_at")})
+            if thread.get("model"):
+                rows[-1]["model"] = thread["model"]
     return sorted(rows, key=lambda t: t["updated_at"], reverse=True)

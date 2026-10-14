@@ -2,12 +2,13 @@
 
 GET  /zenagent/settings                endpoint, model, limits, whether a key is set
 PUT  /zenagent/settings                save any of llm_url, model, api_key, max_tokens, max_steps,
-                                       max_runs, vision, ask_before_actions
-GET  /zenagent/models                  chat models the endpoint offers
+                                       max_runs, vision, ask_before_actions, always_allow
+POST /zenagent/settings/test           {llm_url, api_key?} -> {ok, models, error}: try an endpoint unsaved
+GET  /zenagent/models                  chat models the endpoint offers, or why it can't list them
 GET  /zenagent/threads                 saved conversations, newest first
 GET  /zenagent/threads/{id}            one conversation's messages
 DELETE /zenagent/threads/{id}
-POST /zenagent/threads/{id|new}/messages  {content, client_id, turn_id, workflow, tools} -> {thread_id, turn_id}
+POST /zenagent/threads/{id|new}/messages  {content, client_id, turn_id, workflow, tools, model?} -> {thread_id, turn_id}
 POST /zenagent/turns/{turn_id}/cancel  {client_id}
 POST /zenagent/approvals/{token}       the user's decision on a call: {client_id, decision}
 POST /zenagent/tools/{token}           a tool's result from the browser: {client_id, ok, result | error}
@@ -29,8 +30,8 @@ from . import agent, store
 from . import config as agent_config
 from .context import summarize_workflow
 from .guard import request_allowed
-from .llm import list_models
-from .tools import capability_tools
+from .llm import estimate_tokens, loaded_context, probe
+from .tools import TOOLS, capability_tools
 
 try:
     from server import PromptServer
@@ -103,6 +104,7 @@ def _settings_view() -> dict:
         "max_runs": c.max_runs,
         "vision": c.vision,
         "ask_before_actions": c.ask_before_actions,
+        "always_allow": list(c.always_allow),
         "has_key": bool(c.api_key),
     }
 
@@ -148,7 +150,40 @@ async def put_settings(request: web.Request) -> web.Response:
 async def get_models(request: web.Request) -> web.Response:
     if denied := request_allowed(request):
         return denied
-    return web.json_response({"models": await list_models(agent_config.load())})
+    models, error = await probe(agent_config.load())
+    return web.json_response({"models": models, "error": error})
+
+
+async def test_settings(request: web.Request) -> web.Response:
+    """Try an endpoint (and key) as typed, before it is saved. A saved key is only sent to the
+    endpoint it was saved for."""
+    if denied := request_allowed(request):
+        return denied
+    body = await _json(request)
+    if body is None:
+        return _bad("expected a JSON object")
+    url = body.get("llm_url")
+    if not isinstance(url, str) or len(url) > 2048 or not agent_config.origin_of(url):
+        return _bad("llm_url must be an http:// or https:// URL")
+    current = agent_config.load()
+    key = body.get("api_key")
+    if not isinstance(key, str) or not key:
+        same = agent_config.origin_of(url) == agent_config.origin_of(current.base_url)
+        key = current.api_key if same else None
+    config = agent_config.LlmConfig(base_url=url.strip().rstrip("/"), api_key=key)
+    models, error = await probe(config)
+    chosen = body.get("model") if isinstance(body.get("model"), str) and body.get("model") else None
+    return web.json_response(
+        {
+            "ok": error is None,
+            "models": models,
+            "error": error,
+            # What a request costs before the conversation and the browser's plugin tools, and
+            # the context the model was loaded with, so the settings can warn when it won't fit.
+            "context": await loaded_context(config, chosen) if error is None else None,
+            "base_tokens": estimate_tokens(agent._system_prompt(current.max_runs, None), TOOLS),
+        }
+    )
 
 
 async def get_threads(request: web.Request) -> web.Response:
@@ -201,6 +236,13 @@ async def post_message(request: web.Request) -> web.Response:
     turn = agent.Turn(id=turn_id, client_id=client_id, thread_id=thread["id"])
     agent.turns[turn_id] = turn
     try:
+        # A chat can pick its model; one that isn't set uses the settings' (or what's loaded).
+        if "model" in body:
+            model = body["model"]
+            if isinstance(model, str) and 0 < len(model) <= 200:
+                thread["model"] = model
+            else:
+                thread.pop("model", None)
         message: dict = {"role": "user", "content": content}
         attachments = _attachments(body.get("attachments"))
         if attachments:
@@ -236,8 +278,8 @@ async def post_approval(request: web.Request) -> web.Response:
         return denied
     body = await _json(request) or {}
     decision = body.get("decision")
-    if decision not in ("approve", "deny", "allow_turn"):
-        return _bad("decision must be approve, deny or allow_turn")
+    if decision not in ("approve", "deny", "allow_turn", "allow_always"):
+        return _bad("decision must be approve, deny, allow_turn or allow_always")
     accepted = agent.resolve(request.match_info["token"], body.get("client_id"), "approval", decision)
     return web.json_response({"accepted": accepted}, status=200 if accepted else 404)
 
@@ -256,6 +298,7 @@ async def post_tool_result(request: web.Request) -> web.Response:
 def register(routes: web.RouteTableDef) -> None:
     routes.get("/zenagent/settings")(get_settings)
     routes.put("/zenagent/settings")(put_settings)
+    routes.post("/zenagent/settings/test")(test_settings)
     routes.get("/zenagent/models")(get_models)
     routes.get("/zenagent/threads")(get_threads)
     routes.get("/zenagent/threads/{thread_id}")(get_thread)

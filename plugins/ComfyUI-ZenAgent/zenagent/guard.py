@@ -2,8 +2,11 @@
 nodekit `request_allowed`):
 
 1. Host: when ComfyUI listens only on loopback, the Host header must name loopback too, which
-   defeats DNS rebinding. When the user listens on other addresses, those are allowed as well;
-   listening on every interface (0.0.0.0, ::) allows any Host, since that exposure is their choice.
+   defeats DNS rebinding. When the user listens on other addresses, those are allowed as well, and
+   so is this machine's own name (`archon`, `archon.local`): a rebinding page sends its own domain
+   as the Host, never this machine's name. Listening on every interface (0.0.0.0, ::) allows any
+   Host, since that exposure is their choice. Behind a reverse proxy, list the names it serves
+   ComfyUI under in ZENKIT_ALLOWED_HOSTS (comma-separated); the proxy must pass the Host through.
 2. Origin: when present, its host:port must equal the Host header.
 3. Content type: a request with a body must be application/json, which a cross-site form can't
    send without a CORS preflight.
@@ -13,12 +16,16 @@ from __future__ import annotations
 
 import ipaddress
 import logging
+import os
+import socket
 from urllib.parse import urlsplit
 
 from aiohttp import web
 
 LOOPBACK_NAMES = {"localhost", "127.0.0.1", "::1"}
 WILDCARDS = {"", "0.0.0.0", "::"}
+# This machine's own names. gethostname() asks no DNS server, so this can't stall the import.
+OWN_NAMES = {socket.gethostname().lower(), f"{socket.gethostname().lower()}.local"}
 _logged: set[str] = set()
 log = logging.getLogger(__name__)
 
@@ -54,13 +61,25 @@ def _split_host(value: str, scheme: str = "http") -> tuple[str, int] | None:
     return parts.hostname.lower(), port or (443 if scheme == "https" else 80)
 
 
+def _proxied_hosts() -> set[str]:
+    """Names a reverse proxy serves ComfyUI under (ZENKIT_ALLOWED_HOSTS), ports dropped."""
+    out = set()
+    for name in os.environ.get("ZENKIT_ALLOWED_HOSTS", "").split(","):
+        parsed = _split_host(name.strip()) if name.strip() else None
+        if parsed:
+            out.add(parsed[0])
+    return out
+
+
 def _host_allowed(hostname: str) -> bool:
+    if hostname in _proxied_hosts():
+        return True
     listen = _listen_addresses()
     if any(a in WILDCARDS for a in listen):
         return True
     if all(_is_loopback(a) for a in listen):
         return _is_loopback(hostname)
-    return _is_loopback(hostname) or hostname in listen
+    return _is_loopback(hostname) or hostname in listen or hostname in OWN_NAMES
 
 
 def _deny(request: web.Request, reason: str) -> web.Response:
@@ -74,7 +93,13 @@ def request_allowed(request: web.Request) -> web.Response | None:
     """None when the request may proceed, else the 403 response to return."""
     host = _split_host(request.headers.get("Host", ""), request.scheme)
     if host is None or not _host_allowed(host[0]):
-        return _deny(request, "unexpected Host")
+        named = f" {host[0]!r}" if host else ""
+        where = ", ".join(a for a in _listen_addresses() if a) or "127.0.0.1"
+        return _deny(
+            request,
+            f"unexpected Host{named}. Open ComfyUI at an address it listens on ({where}), add it "
+            "to --listen, or (behind a proxy) to ZENKIT_ALLOWED_HOSTS",
+        )
     origin = request.headers.get("Origin")
     if origin is not None:
         parts = urlsplit(origin)

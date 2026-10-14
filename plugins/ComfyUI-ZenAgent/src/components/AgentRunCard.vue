@@ -60,7 +60,16 @@ function fill(r: Run): number | null {
 }
 
 const errors = computed(() => [...new Set(failed.value.map((r) => r.error).filter(Boolean))])
-const media = computed(() => list.value.flatMap((r) => r.outputs).filter((o) => o.kind !== 'audio'))
+/** What the runs saved (Save nodes write to output/). Previews, comparisons and other temp
+ *  images only show when a run saved nothing. */
+const media = computed(() => {
+  const all = list.value.flatMap((r) => r.outputs).filter((o) => o.kind !== 'audio')
+  const saved = all.filter((o) => o.type === 'output')
+  return saved.length ? saved : all
+})
+/** Runs sampling right now with a preview to show, drawn large while they decode; their outputs
+ *  take the place when done. */
+const live = computed(() => active.value.filter((r) => r.preview))
 
 function view(index: number): void {
   void openViewer(
@@ -111,6 +120,14 @@ async function toViewer(): Promise<void> {
       </span>
     </div>
     <div v-for="error in errors" :key="error!" class="zr-error">{{ error }}</div>
+    <div v-if="live.length" class="zr-stage" :class="{ many: live.length > 1 }">
+      <div v-for="r in live" :key="r.promptId" class="zr-live">
+        <img :src="r.preview!" alt="Live preview" />
+        <span v-if="r.progress?.max" class="zr-step">
+          {{ r.node ? `${r.node} · ` : '' }}{{ r.progress.value }}/{{ r.progress.max }}
+        </span>
+      </div>
+    </div>
     <TransitionGroup v-if="media.length" tag="div" name="zr-thumb" class="zr-grid">
       <button
         v-for="(o, i) in media"
@@ -235,6 +252,44 @@ async function toViewer(): Promise<void> {
   background: var(--zen-surface);
   cursor: zoom-in;
 }
+/* The sampler's preview, large while it decodes: one run fills the card's width. */
+.zr-stage {
+  display: grid;
+  gap: 6px;
+  padding: 0 10px 10px;
+}
+.zr-stage.many {
+  grid-template-columns: repeat(auto-fill, minmax(160px, 1fr));
+}
+.zr-live {
+  position: relative;
+  display: grid;
+  place-items: center;
+  overflow: hidden;
+  border: 1px solid var(--zen-surface-border, var(--zen-border));
+  border-radius: var(--zen-radius);
+  background: var(--zen-surface);
+}
+.zr-live img {
+  display: block;
+  max-width: 100%;
+  max-height: 420px;
+  object-fit: contain;
+}
+.zr-stage:not(.many) .zr-live img {
+  width: 100%;
+}
+.zr-step {
+  position: absolute;
+  right: 4px;
+  bottom: 4px;
+  padding: 1px 6px;
+  border-radius: 999px;
+  background: color-mix(in srgb, var(--zen-bg) 80%, transparent);
+  color: var(--zen-text);
+  font-size: 10.5px;
+  font-variant-numeric: tabular-nums;
+}
 .zr-thumb img,
 .zr-thumb video {
   display: block;
@@ -243,8 +298,8 @@ async function toViewer(): Promise<void> {
   object-fit: cover;
   transition: transform 0.25s ease;
 }
-.zr-thumb:hover img,
-.zr-thumb:hover video {
+button.zr-thumb:hover img,
+button.zr-thumb:hover video {
   transform: scale(1.04);
 }
 .zr-thumb-enter-active {

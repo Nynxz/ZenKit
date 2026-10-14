@@ -15,11 +15,13 @@ export interface Settings {
   vision: 'auto' | 'on' | 'off'
   /** Ask the user before every tool call that changes something (default on). */
   ask_before_actions: boolean
+  /** Tools the user chose "Always allow" for: they run without an approval card. */
+  always_allow: string[]
   has_key: boolean
 }
 
 /** The user's answer to an approval card. */
-export type Decision = 'approve' | 'deny' | 'allow_turn'
+export type Decision = 'approve' | 'deny' | 'allow_turn' | 'allow_always'
 
 /** A tool call's state in the panel; `approval` waits for the user, `declined` they said no. */
 export type ToolStatus = 'running' | 'approval' | 'done' | 'error' | 'declined'
@@ -27,6 +29,8 @@ export type ToolStatus = 'running' | 'approval' | 'done' | 'error' | 'declined'
 export interface ThreadSummary {
   id: string
   title: string
+  /** The model this chat picked; absent means the settings' (or what's loaded). */
+  model?: string
   created_at: string
   updated_at: string
 }
@@ -41,8 +45,22 @@ export type StoredMessage =
     }
   | { role: 'tool'; tool_call_id: string; content: string }
 
+/** A chat's token use: totals, and what the last request filled of the model's context. */
+export interface Usage {
+  input: number
+  output: number
+  /** Tokens the last request sent the model. */
+  last: number | null
+  /** The context length the model was loaded with; null when the endpoint doesn't say. */
+  context: number | null
+  /** Estimates of the fixed parts every request carries. */
+  parts?: { system: number; tools: number; plugins: number }
+  model?: string
+}
+
 export interface Thread extends ThreadSummary {
   messages: StoredMessage[]
+  usage?: Usage
 }
 
 export type AgentEvent = { thread_id: string; turn_id: string } & (
@@ -64,6 +82,7 @@ export type AgentEvent = { thread_id: string; turn_id: string } & (
       args: Record<string, unknown>
     }
   | { type: 'notice'; text: string }
+  | ({ type: 'usage' } & Usage)
   | { type: 'turn_end'; status: 'done' | 'error' | 'cancelled'; error: string | null }
 )
 
@@ -89,11 +108,35 @@ export interface CapabilityTool {
   effect?: 'read' | 'write'
 }
 
+export interface ModelList {
+  models: string[]
+  /** Why the endpoint couldn't list models, in words to show as is; null when it could. */
+  error: string | null
+}
+
+export interface ContextCheck {
+  /** The context length LM Studio loaded the model with; null when the endpoint doesn't say. */
+  context: number | null
+  /** About what a request costs before the conversation and the browser's plugin tools. */
+  base_tokens: number
+}
+
 export const agentApi = {
   settings: () => call<Settings>('/settings'),
   saveSettings: (patch: Partial<Settings> & { api_key?: string }) =>
     call<Settings>('/settings', { method: 'PUT', body: JSON.stringify(patch) }),
-  models: () => call<{ models: string[] }>('/models').then((r) => r.models),
+  /** The endpoint's chat models, or why it can't list them. */
+  models: () => call<ModelList>('/models'),
+  /** Try an endpoint (and key) as typed, without saving them. */
+  testSettings: (llmUrl: string, apiKey?: string, model?: string) =>
+    call<ModelList & ContextCheck & { ok: boolean }>('/settings/test', {
+      method: 'POST',
+      body: JSON.stringify({
+        llm_url: llmUrl,
+        ...(apiKey ? { api_key: apiKey } : {}),
+        ...(model ? { model } : {}),
+      }),
+    }),
   threads: () => call<{ threads: ThreadSummary[] }>('/threads').then((r) => r.threads),
   thread: (id: string) => call<Thread>(`/threads/${id}`),
   deleteThread: (id: string) => call(`/threads/${id}`, { method: 'DELETE' }),
@@ -103,6 +146,7 @@ export const agentApi = {
     message: { content: string; attachments: Attachment[]; images: string[] },
     workflow: unknown,
     tools: CapabilityTool[],
+    model: string | null,
   ) =>
     call<{ thread_id: string; turn_id: string }>(`/threads/${threadId ?? 'new'}/messages`, {
       method: 'POST',
@@ -110,6 +154,7 @@ export const agentApi = {
         ...message,
         workflow,
         tools,
+        model,
         turn_id: turnId,
         client_id: api.clientId,
       }),
