@@ -128,6 +128,7 @@ ZenKit runtime) but unreleased, not yet on npm; node packs get them through a `l
 | ZenIconButton    | Icon-only button                             | 0.2.0  | [Layout and primitives](UI-Layout-and-Primitives.md#zeniconbutton)   |
 | ZenIcon          | MDI or image-URL icon                        | 0.2.0  | [Layout and primitives](UI-Layout-and-Primitives.md#zenicon)         |
 | ZenEmpty         | Empty state with the lotus mark (new)        | no     | [Layout and primitives](UI-Layout-and-Primitives.md#zenempty)        |
+| ZenLotus         | ZenKit's lotus mark, one colour (new)        | no     | [Layout and primitives](UI-Layout-and-Primitives.md#zenlotus)        |
 | ZenInput         | Text, number, password, textarea             | 0.2.0  | [Inputs](UI-Inputs.md#zeninput)                                      |
 | ZenMentionInput  | Textarea with `@mentions`                    | no     | [Inputs](UI-Inputs.md#zenmentioninput)                               |
 | ZenNumber        | Numeric field with scrub and steppers        | 0.2.0  | [Inputs](UI-Inputs.md#zennumber)                                     |

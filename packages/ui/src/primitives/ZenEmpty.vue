@@ -4,34 +4,15 @@
 // lotus in one colour unless `icon` (MDI class or image URL) names something more specific.
 // Centres itself in whatever flex/grid parent it sits in.
 import ZenIcon from './ZenIcon.vue'
+import ZenLotus from './ZenLotus.vue'
 
 defineProps<{ title?: string; icon?: string }>()
-
-// The Full Bloom lotus (docs/assets/render/brand.mjs), single colour: opacity carries the layers.
-const petal = (h: number, w: number) =>
-  `M0,0 C${w},${-h * 0.3} ${w * 0.7},${-h * 0.78} 0,${-h} C${-w * 0.7},${-h * 0.78} ${-w},${-h * 0.3} 0,0Z`
-const PETALS = [
-  { d: petal(54, 24), r: -70, o: 0.35 },
-  { d: petal(54, 24), r: 70, o: 0.35 },
-  { d: petal(66, 26), r: -36, o: 0.6 },
-  { d: petal(66, 26), r: 36, o: 0.6 },
-  { d: petal(78, 28), r: 0, o: 1 },
-]
 </script>
 
 <template>
   <div class="zen-empty" role="status">
     <ZenIcon v-if="icon" class="zen-empty-mark zen-empty-icon" :icon="icon" />
-    <svg v-else class="zen-empty-mark" viewBox="-60 -84 120 106" aria-hidden="true">
-      <path
-        v-for="(p, i) in PETALS"
-        :key="i"
-        :d="p.d"
-        :transform="`rotate(${p.r})`"
-        :opacity="p.o"
-      />
-      <ellipse cx="0" cy="12" rx="44" ry="5" opacity="0.45" />
-    </svg>
+    <ZenLotus v-else class="zen-empty-mark" water />
     <div v-if="title" class="zen-empty-title">{{ title }}</div>
     <p v-if="$slots.default" class="zen-empty-text"><slot /></p>
     <div v-if="$slots.actions" class="zen-empty-actions"><slot name="actions" /></div>

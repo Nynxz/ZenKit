@@ -177,17 +177,53 @@ function onStageClick() {
 }
 
 // --- view transform ---------------------------------------------------------
+// Wheel and drag arrive faster than frames, so the view lives in plain variables and its
+// transform is written straight onto the media once per frame; going through a reactive style
+// re-rendered the whole lightbox (thumbnail grid included) on every event. `zoom` follows once a
+// frame for the readouts, ours and the host's.
 const zoom = ref(1)
 const rot = ref(0) // degrees
-const tx = ref(0)
-const ty = ref(0)
+let z = 1
+let tx = 0
+let ty = 0
 const MIN_Z = 1
 const MAX_Z = 8
 
-const imgStyle = computed(() => ({
-  transform: `translate(${tx.value}px, ${ty.value}px) rotate(${rot.value}deg) scale(${zoom.value})`,
-  cursor: zoom.value > 1 ? 'grab' : 'default',
-}))
+let viewEl: HTMLElement | null = null
+/** The media's untransformed centre on screen, read once per gesture (see onWheel). */
+let centre: { x: number; y: number } | null = null
+let frame = 0
+function draw() {
+  frame = 0
+  if (viewEl)
+    viewEl.style.transform = `translate(${tx}px, ${ty}px) rotate(${rot.value}deg) scale(${z})`
+  zoom.value = z
+}
+function redraw() {
+  if (!frame) frame = requestAnimationFrame(draw)
+}
+function setViewEl(el: unknown) {
+  const next = el instanceof HTMLElement ? el : null
+  if (next === viewEl) return
+  viewEl = next
+  redraw()
+}
+onBeforeUnmount(() => cancelAnimationFrame(frame))
+
+// While input streams in, the media drops its easing (which trailed every step by its duration)
+// and holds one GPU layer via `will-change`, so a huge picture is scaled rather than re-rasterised
+// each frame. Settling hands it back to the easing and re-rasterises it sharp at its final size.
+let settleTimer: ReturnType<typeof setTimeout> | undefined
+function steer() {
+  viewEl?.classList.add('steering')
+  clearTimeout(settleTimer)
+}
+function settle() {
+  clearTimeout(settleTimer)
+  viewEl?.classList.remove('steering')
+  centre = null
+}
+onBeforeUnmount(() => clearTimeout(settleTimer))
 
 // --- fit to stage ------------------------------------------------------------
 // `.zlb-media` is max-width/max-height only, which fits media DOWN but never UP: a 512px clip on
@@ -222,6 +258,7 @@ function measureStage() {
   const cs = getComputedStyle(el)
   const px = (v: string) => parseFloat(v) || 0
   stageW.value = el.clientWidth - px(cs.paddingLeft) - px(cs.paddingRight)
+  centre = null
 }
 
 /** `loadedmetadata` for video, `load` for images — both give us the intrinsic size. */
@@ -240,12 +277,13 @@ function onMediaMeta(e: Event) {
  *  container units of the stage, so the browser refits it on every frame of a resize (the
  *  sidebar sliding, a panel being dragged) instead of a measurement behind. */
 const mediaStyle = computed(() => {
-  if (!natW.value || !natH.value) return imgStyle.value
+  const cursor = zoom.value > 1 ? 'grab' : 'default'
+  if (!natW.value || !natH.value) return { cursor }
   const ar = natW.value / natH.value
   return {
     width: `min(100cqw, ${100 * ar}cqh)`,
     height: `min(100cqh, ${100 / ar}cqw)`,
-    ...imgStyle.value,
+    cursor,
   }
 })
 
@@ -274,24 +312,25 @@ watch(
 )
 
 function reset() {
-  zoom.value = 1
+  settle()
+  z = 1
   rot.value = 0
-  tx.value = 0
-  ty.value = 0
+  tx = ty = 0
+  redraw()
 }
-function clampZoom(z: number) {
-  return Math.max(MIN_Z, Math.min(MAX_Z, z))
+function clampZoom(v: number) {
+  return Math.max(MIN_Z, Math.min(MAX_Z, v))
 }
 function zoomBy(factor: number) {
-  const z = clampZoom(zoom.value * factor)
-  zoom.value = z
-  if (z === 1) {
-    tx.value = 0
-    ty.value = 0
-  }
+  settle()
+  z = clampZoom(z * factor)
+  if (z === 1) tx = ty = 0
+  redraw()
 }
 function rotateBy(deg: number) {
+  settle()
   rot.value = (rot.value + deg) % 360
+  redraw()
 }
 /** The current item's src, when it's safe to offer as a download (see lib/safeUrl). */
 const downloadUrl = computed(() => safeMediaUrl(item.value?.src))
@@ -378,24 +417,38 @@ watch(
 // --- pointer interactions ---------------------------------------------------
 // Wheel zoom keeps the point under the pointer where it is. The media is centred in the stage and
 // transformed as translate(t) · rotate · scale(z) about its centre C, so a point at the pointer
-// sits at d = pointer − C; zooming by f keeps it there when t' = d − f·(d − t).
+// sits at d = pointer − C; zooming by f keeps it there when t' = d − f·(d − t). C is layout-only
+// (transforms don't move it), so it is read once per gesture, not per event.
+//
+// The step follows the distance scrolled: a mouse notch (~100px) is the usual 15%, a trackpad's
+// stream of small deltas glides instead of jumping 15% per event, and a pinch (ctrl+wheel, the
+// smallest deltas) gets a stronger gain.
+const LINE_PX = 100 / 3 // Firefox reports a mouse notch as 3 lines
 function onWheel(e: WheelEvent) {
   e.preventDefault()
-  const before = zoom.value
-  const after = clampZoom(before * (e.deltaY < 0 ? 1.15 : 1 / 1.15))
+  const dist = e.deltaMode === 1 ? e.deltaY * LINE_PX : e.deltaY
+  const before = z
+  const after = clampZoom(before * Math.exp(-dist * (e.ctrlKey ? 0.01 : 0.0014)))
   if (after === before) return
-  zoom.value = after
-  const media = stageEl.value?.querySelector<HTMLElement>('.zlb-media:last-of-type')
-  const stage = stageEl.value?.getBoundingClientRect()
-  if (after === 1 || !media || !stage) {
-    if (after === 1) tx.value = ty.value = 0
-    return
+  steer()
+  settleTimer = setTimeout(settle, 150)
+  z = after
+  if (after === 1) tx = ty = 0
+  else if (viewEl && stageEl.value) {
+    if (!centre) {
+      const stage = stageEl.value.getBoundingClientRect()
+      centre = {
+        x: stage.left + viewEl.offsetLeft + viewEl.offsetWidth / 2,
+        y: stage.top + viewEl.offsetTop + viewEl.offsetHeight / 2,
+      }
+    }
+    const f = after / before
+    const dx = e.clientX - centre.x
+    const dy = e.clientY - centre.y
+    tx = dx - f * (dx - tx)
+    ty = dy - f * (dy - ty)
   }
-  const f = after / before
-  const dx = e.clientX - (stage.left + media.offsetLeft + media.offsetWidth / 2)
-  const dy = e.clientY - (stage.top + media.offsetTop + media.offsetHeight / 2)
-  tx.value = dx - f * (dx - tx.value)
-  ty.value = dy - f * (dy - ty.value)
+  redraw()
 }
 function onDblClick() {
   reset()
@@ -409,6 +462,10 @@ const mediaControls = ref<InstanceType<typeof ZenMediaControls> | null>(null)
 function setMediaEl(el: unknown) {
   mediaEl.value = el instanceof HTMLMediaElement ? el : null
 }
+function setVideoEl(el: unknown) {
+  setMediaEl(el)
+  setViewEl(el)
+}
 /** Set by a pan that actually moved, so the click ending it doesn't also toggle playback. */
 let panned = false
 function onMediaClick() {
@@ -417,23 +474,28 @@ function onMediaClick() {
 
 function startPan(e: PointerEvent) {
   panned = false
-  if (zoom.value <= 1 || e.button !== 0) return
+  if (z <= 1 || e.button !== 0) return
   e.preventDefault()
-  const ox = e.clientX - tx.value
-  const oy = e.clientY - ty.value
+  steer()
+  const ox = e.clientX - tx
+  const oy = e.clientY - ty
   const sx = e.clientX
   const sy = e.clientY
   const move = (m: PointerEvent) => {
     if (Math.hypot(m.clientX - sx, m.clientY - sy) > 3) panned = true
-    tx.value = m.clientX - ox
-    ty.value = m.clientY - oy
+    tx = m.clientX - ox
+    ty = m.clientY - oy
+    redraw()
   }
   const up = () => {
     window.removeEventListener('pointermove', move)
     window.removeEventListener('pointerup', up)
+    window.removeEventListener('pointercancel', up)
+    settle()
   }
   window.addEventListener('pointermove', move)
   window.addEventListener('pointerup', up)
+  window.addEventListener('pointercancel', up)
 }
 
 // --- slideshow --------------------------------------------------------------
@@ -731,7 +793,7 @@ defineExpose({
             <video
               v-if="item && item.kind === 'video'"
               :key="`v${index}`"
-              :ref="setMediaEl"
+              :ref="setVideoEl"
               :src="item.src"
               class="zlb-media"
               :style="mediaStyle"
@@ -750,6 +812,7 @@ defineExpose({
             <img
               v-else-if="item"
               :key="index"
+              :ref="setViewEl"
               :src="item.src"
               class="zlb-media"
               :style="mediaStyle"
@@ -901,6 +964,8 @@ defineExpose({
   z-index: 1;
   border-radius: var(--zen-radius, 7px);
   background: var(--zen-bg, #1a1a1f);
+  /* opaque, so the blur showed nothing, yet re-ran under every frame of a zoom or pan */
+  backdrop-filter: none;
 }
 
 .zlb-main {
@@ -1304,6 +1369,10 @@ defineExpose({
   border-radius: var(--zen-radius, 7px);
   box-shadow: 0 24px 60px -20px rgba(0, 0, 0, 0.55);
   transition: transform var(--zen-dur, 0.2s) linear;
+}
+.zlb-media.steering {
+  transition: none;
+  will-change: transform;
 }
 .zlb.inline .zlb-media {
   box-shadow: none;

@@ -326,6 +326,22 @@ pass an `icon`. It centres itself in a flex or grid parent.
 | default   | The guidance line      |
 | `actions` | Buttons under the text |
 
+## ZenLotus
+
+> New in the working tree; unreleased, not yet on npm.
+
+ZenKit's mark, the lotus, in one colour: it takes the text colour (`currentColor`) and lets opacity
+carry the petals' layers, so it sits on any theme. Size it with `width` (default `1.2em`, so it
+matches the text beside it). ZenEmpty uses it.
+
+```vue
+<span class="brand"><ZenLotus class="mark" /> My plugin</span>
+```
+
+| Prop    | Type      | Default | Description                     |
+| ------- | --------- | ------- | ------------------------------- |
+| `water` | `boolean` | `false` | Adds the ripple under the bloom |
+
 ## useFocusSurface
 
 Click-to-focus for a node body that needs the mouse wheel (a zoomable picture, a scrolling list).

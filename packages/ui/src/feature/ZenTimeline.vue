@@ -1,6 +1,6 @@
 <template>
   <div class="ztl" :style="{ '--ztl-head': `${headWidth}px` }">
-    <div ref="scroller" class="ztl-scroll" @wheel="onWheel" @scroll="onScroll">
+    <div ref="scroller" class="ztl-scroll" @scroll="onScroll">
       <div class="ztl-grid">
         <div ref="headsEl" class="ztl-heads">
           <div class="ztl-corner">
@@ -395,7 +395,7 @@
       :style="{ left: `${headWidth}px` }"
       @pointerdown="startBar"
     >
-      <div class="ztl-thumb" :style="thumbStyle" />
+      <div ref="thumbEl" class="ztl-thumb" :style="thumbStyle" />
     </div>
   </div>
 </template>
@@ -409,7 +409,7 @@ import '../lib/motion.css'
 //
 // Controlled: it emits what changed and the parent writes it back. `zoom` is pixels per second;
 // 0 fits the whole duration to the width.
-import { computed, onBeforeUnmount, onMounted, ref } from 'vue'
+import { computed, nextTick, onBeforeUnmount, onMounted, ref, watch } from 'vue'
 import { iconClass } from '../lib/icon'
 
 export interface TimelineItem {
@@ -439,6 +439,9 @@ export interface TimelineItem {
   wave?: number[]
   /** Short tags after the label (what's on the clip: "fx 2", "2×"…). */
   badges?: string[]
+  /** Other tracks it can be dragged onto (with `commit: 'drop'`): `move` then names the track it
+   *  was let go on. */
+  tracks?: string[]
   /** Moments inside the clip, at timeline times (where its source changes scene, say): drawn as
    *  lines across it, `strong` ones brighter, with `label` on hover. */
   marks?: { t: number; label?: string; strong?: boolean }[]
@@ -543,6 +546,9 @@ export interface TimelineTarget {
 const props = withDefaults(
   defineProps<{
     duration: number
+    /** Empty room after the end, in seconds, to drag a clip's end out into (making the timeline
+     *  longer). Part of the fitted width; nothing is drawn there. */
+    tail?: number
     tracks: TimelineTrack[]
     selected?: string | string[] | null
     snap?: number
@@ -672,7 +678,15 @@ const itemUnder = (e: DragEvent) =>
     : null
 /** An item being dragged with `commit: 'drop'`: where it is drawn until it is let go. */
 /** An item being dragged (commit: 'drop'): where it would land, and the others moving with it. */
-const held = ref<{ id: string; start: number; delta: number; with: Set<string> } | null>(null)
+const held = ref<{
+  id: string
+  start: number
+  delta: number
+  with: Set<string>
+  /** The track it would land on (another of its `tracks`), and how far down that is, in px. */
+  track?: string
+  dy?: number
+} | null>(null)
 /** Where a drag is snapped to right now, drawn as a line. */
 const snapLine = ref<number | null>(null)
 let ro: ResizeObserver | null = null
@@ -687,24 +701,41 @@ onMounted(() => {
 onBeforeUnmount(() => ro?.disconnect())
 
 const PAD = 14
-const fit = computed(() => Math.max(4, (viewWidth.value - PAD * 2) / Math.max(props.duration, 0.1)))
-const pps = computed(() => (zoom.value > 0 ? zoom.value : fit.value))
-const contentWidth = computed(() => Math.max(viewWidth.value, props.duration * pps.value + PAD * 2))
+/** The seconds the width is laid out for: the timeline, and the room after it. */
+const span = computed(() => props.duration + Math.max(0, props.tail ?? 0))
+const fit = computed(() => Math.max(4, (viewWidth.value - PAD * 2) / Math.max(span.value, 0.1)))
+/** The scale held while a clip's end is dragged: the timeline grows under the drag, and a fitted
+ *  scale shrinking with it would move the pointer's time on, growing it faster and faster. */
+const heldScale = ref<number | null>(null)
+const pps = computed(() => heldScale.value ?? Math.max(zoom.value, fit.value))
+const contentWidth = computed(() => Math.max(viewWidth.value, span.value * pps.value + PAD * 2))
 
+/** Scrolling re-renders nothing: the overlay scrollbar's thumb is moved directly, and the span the
+ *  filmstrips draw (`scrollX`, what's in view and a screen either side) only moves when the view
+ *  nears its edge. */
 function onScroll() {
   const el = scroller.value
-  if (el) scrollX.value = el.scrollLeft
+  if (!el) return
+  placeThumb()
+  const at = el.scrollLeft
+  if (Math.abs(at - scrollX.value) > viewWidth.value / 2) scrollX.value = at
 }
 
 // --- overlay scrollbar ----------------------------------------------------------------------------
 const overflowing = computed(() => contentWidth.value > viewWidth.value + 1)
+const thumbEl = ref<HTMLElement | null>(null)
+function placeThumb() {
+  const el = scroller.value
+  const t = thumbEl.value
+  if (!el || !t) return
+  t.style.left = `${(el.scrollLeft / contentWidth.value) * viewWidth.value}px`
+}
 const thumbStyle = computed(() => {
   const ratio = viewWidth.value / contentWidth.value
-  return {
-    width: `${Math.max(24, ratio * viewWidth.value)}px`,
-    left: `${(scrollX.value / contentWidth.value) * viewWidth.value}px`,
-  }
+  return { width: `${Math.max(24, ratio * viewWidth.value)}px` }
 })
+// The thumb's place follows the scroll directly (onScroll), and the zoom and size here.
+watch([contentWidth, viewWidth, overflowing], () => nextTick(placeThumb), { flush: 'post' })
 /** Drag the thumb to scroll; press the track elsewhere to jump there and keep dragging. */
 function startBar(e: PointerEvent) {
   const el = scroller.value
@@ -987,11 +1018,13 @@ function startShapePoint(e: PointerEvent, t: TimelineTrack, seg: Segment, i: num
   dot.addEventListener('pointerup', up)
 }
 
-function timeAt(clientX: number): number {
+/** The time under `clientX`, kept within the timeline — or, `beyond`, allowed past its end. */
+function timeAt(clientX: number, beyond = false): number {
   const body = bodyEl.value
   if (!body) return 0
   const t = ((clientX - body.getBoundingClientRect().left) / screenScale() - PAD) / pps.value
-  return Math.min(Math.max(t, 0), props.duration)
+  const at = Math.max(t, 0)
+  return beyond ? at : Math.min(at, props.duration)
 }
 
 const isSelected = (id: string) =>
@@ -1026,7 +1059,14 @@ function itemStyle(item: TimelineItem) {
     ? (item.end ?? item.start) + held.value.delta
     : (item.end ?? item.start)
   const width = Math.max(6, x(end) - left)
-  return { left: `${left}px`, width: `${width}px`, '--ztl-color': item.color }
+  // Dragged onto another track: drawn on that row until it's let go.
+  const dy = held.value?.id === item.id ? (held.value.dy ?? 0) : 0
+  return {
+    left: `${left}px`,
+    width: `${width}px`,
+    '--ztl-color': item.color,
+    ...(dy ? { transform: `translateY(${dy}px)` } : {}),
+  }
 }
 
 /** Height of a clip's filmstrip or waveform: its track's, less the clip's inset, border and label. */
@@ -1042,17 +1082,26 @@ function framesOf(item: TimelineItem, t: TimelineTrack) {
   const delta = held.value?.with.has(item.id) ? held.value.delta : 0
   const left = x(item.start + delta)
   const width = x((item.end ?? item.start) + delta) - left
-  const from = Math.max(0, Math.floor((scrollX.value - left) / w))
-  const to = Math.min(Math.ceil(width / w), Math.ceil((scrollX.value + viewWidth.value - left) / w))
+  // What's in view and a screen either side: scrolling within that changes nothing drawn.
+  const view = viewWidth.value
+  const from = Math.max(0, Math.floor((scrollX.value - view - left) / w))
+  const to = Math.min(Math.ceil(width / w), Math.ceil((scrollX.value + 2 * view - left) / w))
   const out: { at: number; left: number; width: number; src: string }[] = []
-  for (let i = from; i < to && out.length < 80; i++) {
+  for (let i = from; i < to && out.length < 240; i++) {
     const src = frames(item.start + (i * w + w / 2) / pps.value)
     if (src) out.push({ at: i, left: i * w, width: w, src })
   }
   return out
 }
-/** A waveform's outline: the peaks mirrored about the middle, on a `length` × 100 box. */
+/** A waveform's outline: the peaks mirrored about the middle, on a `length` × 100 box. Worked out
+ *  once per peaks array (a re-render with the same peaks reuses it). */
+const wavePaths = new WeakMap<number[], string>()
 function wavePath(peaks: number[]): string {
+  let d = wavePaths.get(peaks)
+  if (d === undefined) wavePaths.set(peaks, (d = outline(peaks)))
+  return d
+}
+function outline(peaks: number[]): string {
   const top = peaks.map(
     (v, i) => `${i},${50 - Math.min(1, v) * 48} ${i + 1},${50 - Math.min(1, v) * 48}`,
   )
@@ -1062,13 +1111,15 @@ function wavePath(peaks: number[]): string {
   return `M0,50 L${top.join(' ')} L${peaks.length},50 L${bottom.join(' ')} Z`
 }
 
-// Ticks: a step that keeps majors about 80px apart, with minor ticks between them.
+// Ticks: a step that keeps majors about 80px apart, with minor ticks between them, across the
+// whole width the ruler shows (past the content's end when it is short).
 const ticks = computed(() => {
   const steps = [0.1, 0.25, 0.5, 1, 2, 5, 10, 15, 30, 60, 120, 300]
   const major = steps.find((s) => s * pps.value >= 80) ?? 600
   const minor = major / (major >= 1 ? 4 : 5)
   const out: { at: number; major: boolean }[] = []
-  for (let t = 0; t <= props.duration + 1e-6; t += minor) {
+  const end = Math.max(props.duration, (contentWidth.value - PAD * 2) / pps.value)
+  for (let t = 0; t <= end + 1e-6; t += minor) {
     const at = Math.round(t * 1000) / 1000
     out.push({ at, major: Math.abs(at / major - Math.round(at / major)) < 1e-6 })
   }
@@ -1089,12 +1140,13 @@ function drag(
   e: PointerEvent,
   move: (t: number, ev: PointerEvent) => void,
   end?: () => void,
+  beyond = false,
 ): void {
   e.preventDefault()
   e.stopPropagation()
   const el = e.currentTarget as HTMLElement
   el.setPointerCapture(e.pointerId)
-  const onMove = (ev: PointerEvent) => move(timeAt(ev.clientX), ev)
+  const onMove = (ev: PointerEvent) => move(timeAt(ev.clientX, beyond), ev)
   const stop = () => {
     el.removeEventListener('pointermove', onMove)
     el.removeEventListener('pointerup', stop)
@@ -1206,22 +1258,55 @@ function startMove(e: PointerEvent, track: TimelineTrack, item: TimelineItem): v
   const change = (start: number) => (item.end == null ? { start } : { start, end: start + length })
   if (item.commit === 'drop') {
     let moved = false
+    let target = track.id
+    let dy = 0
     drag(
       e,
       (t, ev) => {
         moved = true
         const start = place(t, ev)
-        held.value = { id: item.id, start, delta: start - item.start, with: together }
+        if (item.tracks?.length)
+          [target, dy] = trackUnder(ev.clientY, track, item.tracks, target, dy)
+        held.value = {
+          id: item.id,
+          start,
+          delta: start - item.start,
+          with: together,
+          track: target,
+          dy,
+        }
       },
       () => {
         const at = held.value?.start
         held.value = null
-        if (moved && at !== undefined) emit('move', item.id, track.id, change(at))
+        if (moved && at !== undefined) emit('move', item.id, target, change(at))
       },
     )
     return
   }
   drag(e, (t, ev) => emit('move', item.id, track.id, change(place(t, ev))))
+}
+
+/** The track under the pointer among those an item may move to (its own included), and how far
+ *  that row is below its own, in px; off them, where it was. */
+function trackUnder(
+  clientY: number,
+  own: TimelineTrack,
+  allowed: string[],
+  was: string,
+  wasDy: number,
+): [string, number] {
+  const rows = [...(bodyEl.value?.querySelectorAll<HTMLElement>(':scope > .ztl-track') ?? [])]
+  const ownRow = rows[props.tracks.indexOf(own)]
+  if (!ownRow) return [was, wasDy]
+  for (const [i, t] of props.tracks.entries()) {
+    const row = rows[i]
+    if (!row || (t.id !== own.id && !allowed.includes(t.id))) continue
+    const r = row.getBoundingClientRect()
+    if (clientY >= r.top && clientY < r.bottom)
+      return [t.id, (r.top - ownRow.getBoundingClientRect().top) / screenScale()]
+  }
+  return [was, wasDy]
 }
 
 function startFade(e: PointerEvent, track: TimelineTrack, item: TimelineItem, edge: 'in' | 'out') {
@@ -1242,39 +1327,102 @@ function startResize(
   if (e.button !== 0) return
   emit('select', item.id, track.id, e)
   const together = companions(item)
-  drag(e, (t, ev) => {
-    const at = snapEdge(t, together, ev, track)
-    emit('move', item.id, track.id, edge === 'start' ? { start: at } : { end: at })
-  })
+  const outward = edge === 'end' && (props.tail ?? 0) > 0
+  if (outward) heldScale.value = pps.value
+  drag(
+    e,
+    (t, ev) => {
+      const at = snapEdge(t, together, ev, track)
+      emit('move', item.id, track.id, edge === 'start' ? { start: at } : { end: at })
+    },
+    () => (heldScale.value = null),
+    outward,
+  )
 }
 
 /** Alt / Ctrl / ⌘ + wheel zooms about the pointer (inside ComfyUI only Alt arrives — Ctrl + wheel
  *  always goes to the canvas). A plain wheel pans along a zoomed-in timeline. */
+/** A wheel event's movement in px, whatever unit it came in (lines from some mice, pages rarely). */
+function wheelPx(e: WheelEvent, d: number): number {
+  return e.deltaMode === 1 ? d * 16 : e.deltaMode === 2 ? d * viewWidth.value : d
+}
+/** A zoom on its way: the px per second and scroll it lands on, applied once a frame. Every wheel
+ *  event between frames builds on it, not on what's drawn, so a burst of small events (a trackpad)
+ *  adds up exactly and the time under the pointer stays under it. */
+let zooming: { pps: number; scroll: number } | null = null
+let zoomFrame = 0
 function onWheel(e: WheelEvent): void {
+  const el = scroller.value
+  if (!el) return
   if (!e.ctrlKey && !e.metaKey && !e.altKey) {
-    const el = scroller.value
-    if (!el) return
     const sideways = e.shiftKey || Math.abs(e.deltaX) > Math.abs(e.deltaY)
     // Up and down scrolls the tracks when they overflow (the browser does that); otherwise, or with
     // Shift, the wheel pans along a zoomed-in timeline.
     if (!sideways && el.scrollHeight > el.clientHeight) return
     if (el.scrollWidth <= el.clientWidth) return
     e.preventDefault()
-    el.scrollLeft += Math.abs(e.deltaX) > Math.abs(e.deltaY) ? e.deltaX : e.deltaY
+    const d = Math.abs(e.deltaX) > Math.abs(e.deltaY) ? e.deltaX : e.deltaY
+    el.scrollLeft += wheelPx(e, d)
     return
   }
   e.preventDefault()
   e.stopPropagation()
-  const el = scroller.value!
-  const anchor = timeAt(e.clientX)
-  const next = Math.min(Math.max(pps.value * (e.deltaY < 0 ? 1.15 : 1 / 1.15), fit.value), 2000)
-  zoom.value = Math.abs(next - fit.value) < 0.5 ? 0 : next
-  requestAnimationFrame(() => {
-    const rect = el.getBoundingClientRect()
-    el.scrollLeft =
-      PAD + anchor * pps.value - ((e.clientX - rect.left) / screenScale() - props.headWidth)
+  // Where the pointer is across the tracks, in the timeline's own px.
+  const local = (e.clientX - el.getBoundingClientRect().left) / screenScale() - props.headWidth
+  const from = zooming ?? { pps: pps.value, scroll: el.scrollLeft }
+  const at = (from.scroll + local - PAD) / from.pps
+  // Smooth in the wheel's movement: a mouse notch (~100px) is about 25%, a trackpad's small steps
+  // a little each.
+  const factor = Math.exp(-Math.max(-300, Math.min(300, wheelPx(e, e.deltaY))) * 0.0025)
+  const next = Math.min(Math.max(from.pps * factor, fit.value), 2000)
+  zooming = { pps: next, scroll: PAD + at * next - local }
+  if (zoomFrame) return
+  zoomFrame = requestAnimationFrame(async () => {
+    zoomFrame = 0
+    const z = zooming
+    zooming = null
+    if (!z) return
+    wheeling = true
+    zoom.value = Math.abs(z.pps - fit.value) < 0.5 ? 0 : z.pps
+    // The new width is laid out before the next paint; the scroll goes with it, in the same frame.
+    await nextTick()
+    wheeling = false
+    el.scrollLeft = z.scroll
+    scrollX.value = el.scrollLeft
+    placeThumb()
   })
 }
+onBeforeUnmount(() => cancelAnimationFrame(zoomFrame))
+/** The wheel is listened for on the window, before anything else sees it: inside a ComfyUI node the
+ *  canvas takes Ctrl + wheel and sideways swipes on their way down (to zoom and pan the graph), so
+ *  a listener on the timeline itself would never hear them. Over the tracks of a timeline that has
+ *  the focus (as ComfyUI's own `data-capture-wheel` rule asks), they're the timeline's. */
+function onWindowWheel(e: WheelEvent): void {
+  const el = scroller.value
+  if (!el || !(e.target instanceof Node) || !el.contains(e.target)) return
+  const capture = el.closest('[data-capture-wheel="true"]')
+  if (capture && !capture.contains(document.activeElement)) return
+  onWheel(e)
+  if (e.defaultPrevented) e.stopPropagation()
+}
+onMounted(() => window.addEventListener('wheel', onWindowWheel, { capture: true, passive: false }))
+onBeforeUnmount(() => window.removeEventListener('wheel', onWindowWheel, { capture: true }))
+/** A zoom from outside (a slider, a button) keeps the playhead where it is on screen, or, with it
+ *  out of view, the middle of the view. (The wheel keeps the time under the pointer itself.) */
+let wheeling = false
+watch(pps, (now, before) => {
+  const el = scroller.value
+  if (wheeling || !el || !before) return
+  const view = viewWidth.value
+  const head = PAD + playhead.value * before - el.scrollLeft
+  const local = head >= 0 && head <= view ? head : view / 2
+  const at = (el.scrollLeft + local - PAD) / before
+  void nextTick(() => {
+    el.scrollLeft = PAD + at * now - local
+    scrollX.value = el.scrollLeft
+    placeThumb()
+  })
+})
 
 function onDragOver(e: DragEvent, trackId: string): void {
   e.preventDefault()
@@ -1705,7 +1853,7 @@ defineExpose({ timeAt, follow })
   cursor: pointer;
 }
 /* Touching clips: square where they meet, and a seam there — a hairline in the theme's text colour
-   between the two clips' own dark edges, with a notch top and bottom, as an editor marks a cut. */
+   between the two clips' own dark edges. */
 .ztl-item.clip.join-start {
   border-left-color: var(--ztl-seam);
   border-top-left-radius: 0;
@@ -1714,19 +1862,6 @@ defineExpose({ timeAt, follow })
 .ztl-item.clip.join-end {
   border-top-right-radius: 0;
   border-bottom-right-radius: 0;
-}
-.ztl-item.clip.join-start::before {
-  content: '';
-  position: absolute;
-  top: 0;
-  bottom: 0;
-  left: 0;
-  z-index: 1;
-  width: 5px;
-  background:
-    linear-gradient(135deg, var(--ztl-seam) 3px, transparent 3px) top left / 5px 5px no-repeat,
-    linear-gradient(45deg, var(--ztl-seam) 3px, transparent 3px) bottom left / 5px 5px no-repeat;
-  pointer-events: none;
 }
 .ztl-item.clip.on {
   border-color: var(--zen-text, #e5e5ea);

@@ -279,33 +279,42 @@ function onMove(itemId: string, trackId: string, change: { start?: number; end?:
 | `v-model:playhead` | `number` | `0`     | Seconds                              |
 | `v-model:zoom`     | `number` | `0`     | px per second; `0` fits the duration |
 
-| Prop         | Type                                     | Default  | Description                                                                                                                                                                                                                             |
-| ------------ | ---------------------------------------- | -------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `duration`   | `number`                                 | required | Seconds                                                                                                                                                                                                                                 |
-| `tracks`     | `TimelineTrack[]`                        | required |                                                                                                                                                                                                                                         |
-| `selected`   | `string \| string[] \| null`             | `null`   | Selected item id(s)                                                                                                                                                                                                                     |
-| `snap`       | `number`                                 | `0.05`   | Seconds                                                                                                                                                                                                                                 |
-| `guides`     | `number[]`                               | `[]`     | Vertical lines through every track (e.g. scene boundaries)                                                                                                                                                                              |
-| `range`      | `{ start: number; end: number } \| null` | `null`   | Highlighted range                                                                                                                                                                                                                       |
-| `headWidth`  | `number`                                 | `112`    | Track header width in px                                                                                                                                                                                                                |
-| `magnet`     | `number \| false`                        | `6`      | Magnetic snapping in px: a moved item's edges, a trimmed edge or a drop catch on other items' edges, the playhead and `snapPoints`, with a line while caught. Alt held while dragging skips it. Otherwise times fall on the `snap` grid |
-| `snapPoints` | `number[]`                               | `[]`     | Extra snap targets (markers, beats)                                                                                                                                                                                                     |
+| Prop          | Type                                     | Default   | Description                                                                                                                                                                                                                             |
+| ------------- | ---------------------------------------- | --------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `duration`    | `number`                                 | required  | Seconds                                                                                                                                                                                                                                 |
+| `tracks`      | `TimelineTrack[]`                        | required  |                                                                                                                                                                                                                                         |
+| `selected`    | `string \| string[] \| null`             | `null`    | Selected item id(s)                                                                                                                                                                                                                     |
+| `snap`        | `number`                                 | `0.05`    | Seconds                                                                                                                                                                                                                                 |
+| `guides`      | `number[]`                               | `[]`      | Vertical lines through every track (e.g. scene boundaries)                                                                                                                                                                              |
+| `range`       | `{ start: number; end: number } \| null` | `null`    | Highlighted range                                                                                                                                                                                                                       |
+| `headWidth`   | `number`                                 | `112`     | Track header width in px                                                                                                                                                                                                                |
+| `magnet`      | `number \| false`                        | `6`       | Magnetic snapping in px: a moved item's edges, a trimmed edge or a drop catch on other items' edges, the playhead and `snapPoints`, with a line while caught. Alt held while dragging skips it. Otherwise times fall on the `snap` grid |
+| `snapPoints`  | `number[]`                               | `[]`      | Extra snap targets (markers, beats)                                                                                                                                                                                                     |
+| `headActions` | `'below' \| 'inline'`                    | `'below'` | Where a track header's `actions` go: on a line under the name, or beside it (faint until hovered)                                                                                                                                       |
+| `marquee`     | `boolean`                                | `false`   | A drag on empty track space selects the clips in a box (`marquee` event) instead of scrubbing; the ruler still scrubs                                                                                                                   |
 
-| Event      | Payload                                      | Description                                     |
-| ---------- | -------------------------------------------- | ----------------------------------------------- |
-| `select`   | `(itemId \| null, trackId, PointerEvent)`    | Curve tracks send `'curve:<trackId>'` as the id |
-| `open`     | `(itemId, trackId)`                          | Double-click on an item                         |
-| `move`     | `(itemId, trackId, { start?, end? })`        | Drag or resize                                  |
-| `context`  | `(target: TimelineTarget, time, MouseEvent)` | Right-click                                     |
-| `drop`     | `(trackId, time, DragEvent)`                 | Something dropped on a track                    |
-| `dblclick` | `(trackId, time)`                            | Double-click on empty track space               |
-| `reorder`  | `(trackId, beforeId \| null)`                | A movable track header was dragged              |
-| `curve`    | `(trackId, points: { t, v }[])`              | Curve edited                                    |
-| `level`    | `(trackId, segmentId, v \| null)`            | Level segment changed                           |
-| `shape`    | `(trackId, segmentId, points: { x, y }[])`   | Segment shape changed                           |
-| `action`   | `(trackId, actionId)`                        | Header action clicked                           |
+| Event      | Payload                                      | Description                                                                                           |
+| ---------- | -------------------------------------------- | ----------------------------------------------------------------------------------------------------- |
+| `select`   | `(itemId \| null, trackId, PointerEvent)`    | Curve tracks send `'curve:<trackId>'` as the id                                                       |
+| `open`     | `(itemId, trackId)`                          | Double-click on an item                                                                               |
+| `move`     | `(itemId, trackId, { start?, end? })`        | Drag or resize                                                                                        |
+| `context`  | `(target: TimelineTarget, time, MouseEvent)` | Right-click                                                                                           |
+| `drop`     | `(trackId, time, DragEvent)`                 | Something dropped on a track                                                                          |
+| `dblclick` | `(trackId, time)`                            | Double-click on empty track space                                                                     |
+| `reorder`  | `(trackId, beforeId \| null)`                | A movable track header was dragged                                                                    |
+| `curve`    | `(trackId, points: { t, v }[])`              | Curve edited                                                                                          |
+| `level`    | `(trackId, segmentId, v \| null)`            | Level segment changed                                                                                 |
+| `shape`    | `(trackId, segmentId, points: { x, y }[])`   | Segment shape changed                                                                                 |
+| `action`   | `(trackId, actionId)`                        | Header action clicked                                                                                 |
+| `marquee`  | `(itemIds: string[])`                        | The selection a box drag makes, as it changes: what it touches, plus (Shift/Ctrl/⌘) what was selected |
 
 Exposed: `timeAt(clientX): number`, `follow()` (scroll the playhead into view).
+
+The wheel pans a zoomed-in timeline; Ctrl/⌘ (or Alt) + wheel zooms, keeping the time under the
+pointer where it is. Inside a ComfyUI node the canvas would take Ctrl + wheel and sideways swipes
+for itself, so the timeline listens for the wheel first: over its tracks, while the node has focus
+(ComfyUI's `data-capture-wheel` rule), they're the timeline's. A `zoom` set from outside (a slider)
+keeps the playhead where it is on screen. Scrolling doesn't re-render the tracks.
 
 ### Timeline types
 
@@ -327,19 +336,25 @@ Exposed: `timeAt(clientX): number`, `follow()` (scroll the playhead into view).
 
 `TimelineItem`:
 
-| Field                                      | Type                                  | Description                                                                                                                                                                               |
-| ------------------------------------------ | ------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `id`                                       | `string`                              |                                                                                                                                                                                           |
-| `start`, `end`                             | `number`, `number?`                   | Seconds. A marker uses only `start`.                                                                                                                                                      |
-| `kind`                                     | `'clip' \| 'marker'`                  |                                                                                                                                                                                           |
-| `label`, `title`, `color`, `thumb`, `icon` | `string?`                             |                                                                                                                                                                                           |
-| `muted`                                    | `boolean?`                            |                                                                                                                                                                                           |
-| `ghost`                                    | `boolean?`                            | Placeholder slot: dashed, not draggable                                                                                                                                                   |
-| `resize`                                   | `'start' \| 'end' \| 'both' \| false` | Draggable edges (clips default `'end'`)                                                                                                                                                   |
-| `movable`                                  | `boolean?`                            | Markers default yes, clips no                                                                                                                                                             |
-| `commit`                                   | `'live' \| 'drop'`                    | `'drop'` emits one `move` on release instead of on every step                                                                                                                             |
-| `progress`                                 | `number?`                             | 0–1 progress fill along the bottom edge                                                                                                                                                   |
-| `group`                                    | `string?`                             | Items sharing a group move together (a video and its sound): a drag shows them following, and they never snap to each other. A selected item drags the rest of the selection the same way |
+| Field                                      | Type                                    | Description                                                                                                                                                                               |
+| ------------------------------------------ | --------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `id`                                       | `string`                                |                                                                                                                                                                                           |
+| `start`, `end`                             | `number`, `number?`                     | Seconds. A marker uses only `start`.                                                                                                                                                      |
+| `kind`                                     | `'clip' \| 'marker'`                    |                                                                                                                                                                                           |
+| `label`, `title`, `color`, `thumb`, `icon` | `string?`                               |                                                                                                                                                                                           |
+| `muted`                                    | `boolean?`                              |                                                                                                                                                                                           |
+| `ghost`                                    | `boolean?`                              | Placeholder slot: dashed, not draggable                                                                                                                                                   |
+| `resize`                                   | `'start' \| 'end' \| 'both' \| false`   | Draggable edges (clips default `'end'`)                                                                                                                                                   |
+| `movable`                                  | `boolean?`                              | Markers default yes, clips no                                                                                                                                                             |
+| `commit`                                   | `'live' \| 'drop'`                      | `'drop'` emits one `move` on release instead of on every step                                                                                                                             |
+| `progress`                                 | `number?`                               | 0–1 progress fill along the bottom edge                                                                                                                                                   |
+| `group`                                    | `string?`                               | Items sharing a group move together (a video and its sound): a drag shows them following, and they never snap to each other. A selected item drags the rest of the selection the same way |
+| `peek`                                     | `{ src?, kind?, id?, label?, detail? }` | What Shift shows (ZenPeek): a media `src`, or `kind: 'custom'` with an `id` the host's ZenPeek draws                                                                                      |
+| `frames`, `framesAspect`                   | `(t) => string?`, `number?`             | A filmstrip under the label: the picture at each timeline time, asked only for the frames near the view                                                                                   |
+| `wave`                                     | `number[]?`                             | A waveform under the label: peaks 0–1, evenly across the clip                                                                                                                             |
+| `badges`                                   | `string[]?`                             | Short tags after the label                                                                                                                                                                |
+| `marks`                                    | `{ t, label?, strong? }[]?`             | Lines across the clip at timeline times (where its source changes scene, say)                                                                                                             |
+| `tracks`                                   | `string[]?`                             | Other tracks it can be dragged onto (with `commit: 'drop'`); `move` then names the track it was let go on                                                                                 |
 
 `TimelineTarget`: `{ trackId: string; itemId?: string }`.
 

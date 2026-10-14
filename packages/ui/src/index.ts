@@ -31,6 +31,8 @@ export { default as ZenIconButton } from './primitives/ZenIconButton.vue'
 export { default as ZenIcon } from './primitives/ZenIcon.vue'
 // ZenEmpty: the "nothing here yet" state — a faint lotus (or `icon`), a title and a line.
 export { default as ZenEmpty } from './primitives/ZenEmpty.vue'
+// ZenLotus: ZenKit's mark in one colour (currentColor), for a brand corner or an empty state.
+export { default as ZenLotus } from './primitives/ZenLotus.vue'
 export { isIconUrl } from './lib/icon'
 
 // inputs (zero-dep, token-driven)
