@@ -77,6 +77,14 @@ export {
 // The canvas only yields the wheel to a focused `data-capture-wheel` element — this is what
 // makes that focus happen on a PRESS rather than on hover.
 export { useFocusSurface, type FocusSurface, type FocusSurfaceOptions } from './lib/useFocusSurface'
+// Hover-to-focus with the wheel decided per event: scroll whatever scrolls under the pointer,
+// otherwise leave the wheel to the graph. For a node body with panels and lists in it.
+export {
+  useWheelClaim,
+  scrollsUnder,
+  type WheelClaim,
+  type WheelClaimOptions,
+} from './lib/useWheelClaim'
 
 // overlays (anchored, teleported, auto-flipping; hover-intent submenus)
 export { default as ZenPopover } from './overlays/ZenPopover.vue'

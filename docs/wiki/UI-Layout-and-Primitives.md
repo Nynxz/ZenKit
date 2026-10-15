@@ -332,6 +332,34 @@ matches the text beside it). ZenEmpty uses it.
 | ------- | --------- | ------- | ------------------------------- |
 | `water` | `boolean` | `false` | Adds the ripple under the bloom |
 
+## useWheelClaim
+
+Hover to focus, with the wheel decided per event: a wheel over something that scrolls in that
+direction (a side panel, a list, a text box) is the node's; anywhere else it goes on to the graph
+to zoom or pan. For a node body with panels in it. (`useFocusSurface` below is the other policy:
+click to take the wheel, for a surface that uses the wheel itself.)
+
+```vue
+<script setup lang="ts">
+import { useWheelClaim } from '@nynxz/zenkit-ui'
+
+const wheel = useWheelClaim({
+  // also claim the wheel where a control uses it itself
+  ours: (e, target) => !!target.closest('.zoomable'),
+  // send keystrokes to a canvas inside rather than the root
+  focusTarget: () => canvasEl.value,
+})
+</script>
+
+<template>
+  <div :ref="(el) => (wheel.el.value = el as HTMLElement | null)" v-bind="wheel.attrs">…</div>
+</template>
+```
+
+Hovering takes focus — never out of a text field the user is in — and leaving gives it back, so
+the body's keyboard shortcuts work without a click. `scrollsUnder(e, target, root)` is the scroll
+test on its own.
+
 ## useFocusSurface
 
 Click-to-focus for a node body that needs the mouse wheel (a zoomable picture, a scrolling list).

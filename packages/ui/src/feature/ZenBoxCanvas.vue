@@ -211,13 +211,19 @@ function onDown(e: PointerEvent) {
         : [...selected.value, id]
       return
     }
+    // Which boxes this drag moves is decided HERE, from the press, not read back from
+    // `selected`: with a v-model the new selection only arrives after the host re-renders, so
+    // reading it now would move whatever was selected before the press.
+    const moving = selectedSet.value.has(id) ? new Set(selected.value) : new Set([id])
     if (!selectedSet.value.has(id)) selected.value = [id]
     gesture = {
       kind: 'move',
       ax: x,
       ay: y,
       moved: false,
-      starts: new Map(selectedBoxes.value.filter((b) => !b.locked).map((b) => [b.id, rectOf(b)])),
+      starts: new Map(
+        boxes.value.filter((b) => moving.has(b.id) && !b.locked).map((b) => [b.id, rectOf(b)]),
+      ),
     }
     capture(e)
     return
