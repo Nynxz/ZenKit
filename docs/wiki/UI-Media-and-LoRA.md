@@ -405,11 +405,15 @@ function setMask(id: string, mask: string | null) {
 - **Live and committed edits.** `update:boxes` fires on every pointer move so the host can draw;
   `commit` fires once when a move, resize, nudge or stroke ends. Persist on `commit`.
 - **Selection.** Click a box; Shift/Ctrl-click to add or remove; Shift-drag on empty canvas for a
-  marquee. Two or more selected get a group frame whose handles scale them together.
+  marquee. Where boxes overlap, a click that doesn't move steps down through them, Alt
+  goes straight to the one under the selection, and the selected box's handles sit above every box
+  so a covered box can still be resized. Two or more selected get a group frame whose handles scale them together.
 - **Masks.** `tool` `brush` (key `B`) paints into the selected box, `erase` (`E`) removes, `V`
   goes back to select. A mask is box-local — a PNG data URL whose alpha is the shape, stretched over
   the box, so it moves and scales with it. `update:mask` hands it over when a stroke ends, or `null`
-  when the stroke left the whole box covered. No mask means the whole box.
+  when the stroke left the whole box covered. No mask means the whole box. `maskClips: false` keeps the box
+  drawn whole and hands the mask only to the `box` slot's `maskStyle` — for a shape that marks
+  something inside the box rather than the box itself.
 - **Keys.** Delete/Backspace emits `delete`, arrows nudge (Shift for more), Escape deselects,
   Ctrl+A selects all. Handled keys stop there, so the graph doesn't also act on them.
 - **Modifiers.** Shift keeps a box's on-screen shape while resizing and locks a move to one axis;

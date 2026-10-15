@@ -539,7 +539,7 @@ function rectStyle(r: BoxRect) {
 function boxStyle(b: ZenBox) {
   return { ...rectStyle(b), '--zbc-color': b.color ?? 'var(--zen-accent, #6366f1)' }
 }
-function fillStyle(b: ZenBox) {
+function maskStyle(b: ZenBox) {
   if (!b.mask) return undefined
   const image = `url("${b.mask}")`
   return { maskImage: image, WebkitMaskImage: image }
@@ -601,16 +601,16 @@ const gridStyle = computed(() =>
           sel: selectedSet.has(b.id),
           primary: primary?.id === b.id,
           locked: b.locked,
-          masked: !!b.mask,
+          masked: !!b.mask && b.maskClips !== false,
           painting: painting === b.id,
         }"
         :style="boxStyle(b)"
         :data-box-id="b.id"
       >
         <div v-if="$slots.box" class="zbc-content">
-          <slot name="box" v-bind="{ box: b, index: i, maskStyle: fillStyle(b) }" />
+          <slot name="box" v-bind="{ box: b, index: i, maskStyle: maskStyle(b) }" />
         </div>
-        <div class="zbc-fill" :style="fillStyle(b)" />
+        <div class="zbc-fill" :style="b.maskClips === false ? undefined : maskStyle(b)" />
         <span v-if="showLabels" class="zbc-tag">
           <span class="zbc-n">{{ i + 1 }}</span>
           <span v-if="b.label" class="zbc-label">{{ b.label }}</span>

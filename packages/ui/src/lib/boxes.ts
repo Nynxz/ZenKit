@@ -21,6 +21,10 @@ export interface ZenBox {
   locked?: boolean
   /** Box-local mask: an image whose ALPHA is the shape, stretched over the box. None = the box. */
   mask?: string | null
+  /** Whether the box is drawn clipped to its mask (default true). False keeps the box whole on
+   *  the canvas and hands the mask only to the `box` slot's `maskStyle`, for a mask that shapes
+   *  something inside the box rather than the box itself. Painting edits the mask either way. */
+  maskClips?: boolean
 }
 
 export type BoxRect = Pick<ZenBox, 'x' | 'y' | 'w' | 'h'>
