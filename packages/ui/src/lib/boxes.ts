@@ -147,3 +147,20 @@ export function boxAt<T extends ZenBox>(boxes: T[], x: number, y: number): T | n
   }
   return null
 }
+
+/** Every visible box under a canvas point, topmost first. */
+export function boxesAt<T extends ZenBox>(boxes: T[], x: number, y: number): T[] {
+  const out: T[] = []
+  for (let i = boxes.length - 1; i >= 0; i--) {
+    const b = boxes[i]!
+    if (!b.hidden && x >= b.x && x <= b.x + b.w && y >= b.y && y <= b.y + b.h) out.push(b)
+  }
+  return out
+}
+
+/** The box after `id` going down a topmost-first stack, wrapping to the top; the top if `id` isn't
+ *  in it. How a click cycles through boxes stacked under one point. */
+export function nextBelow<T extends ZenBox>(stack: T[], id: string | undefined): T | undefined {
+  const at = stack.findIndex((b) => b.id === id)
+  return at < 0 ? stack[0] : stack[(at + 1) % stack.length]
+}

@@ -20,9 +20,11 @@ import {
   BOX_HANDLES,
   boundsOf,
   boxAt,
+  boxesAt,
   clamp01,
   intersects,
   moveRect,
+  nextBelow,
   resizeRect,
   scaleWithin,
   spanRect,
@@ -129,7 +131,15 @@ const groupBounds = computed(() =>
 type Gesture =
   | { kind: 'draw'; ax: number; ay: number }
   | { kind: 'marquee'; ax: number; ay: number; base: string[] }
-  | { kind: 'move'; ax: number; ay: number; starts: Map<string, BoxRect>; moved: boolean }
+  | {
+      kind: 'move'
+      ax: number
+      ay: number
+      starts: Map<string, BoxRect>
+      moved: boolean
+      /** On a click that doesn't move: select this instead (the next box down the stack). */
+      cycleTo?: string
+    }
   | { kind: 'resize'; id: string; handle: BoxHandle; ax: number; ay: number; start: BoxRect }
   | {
       kind: 'group'
@@ -202,25 +212,36 @@ function onDown(e: PointerEvent) {
     return
   }
 
-  const boxEl = target.closest<HTMLElement>('[data-box-id]')
-  const id = boxEl?.dataset.boxId
+  // Picked from geometry, not from the element under the pointer: boxes overlap, and the one
+  // the press means is not always the topmost. A selected box under the pointer wins (so a box
+  // you selected beneath another can still be dragged), Alt goes straight to the one below the
+  // selection, and a click that doesn't move steps down the stack (see `cycleTo`).
+  const stack = boxesAt(boxes.value, x, y)
+  const chosen = e.altKey
+    ? nextBelow(stack, stack.find((b) => selectedSet.value.has(b.id))?.id)
+    : (stack.find((b) => selectedSet.value.has(b.id)) ?? stack[0])
+  const id = chosen?.id
   if (id) {
     if (e.shiftKey || e.ctrlKey || e.metaKey) {
-      selected.value = selectedSet.value.has(id)
-        ? selected.value.filter((s) => s !== id)
-        : [...selected.value, id]
+      // Adding to the selection means the box you can see, the topmost.
+      const toggled = e.altKey ? id : stack[0]!.id
+      selected.value = selectedSet.value.has(toggled)
+        ? selected.value.filter((s) => s !== toggled)
+        : [...selected.value, toggled]
       return
     }
     // Which boxes this drag moves is decided HERE, from the press, not read back from
     // `selected`: with a v-model the new selection only arrives after the host re-renders, so
     // reading it now would move whatever was selected before the press.
-    const moving = selectedSet.value.has(id) ? new Set(selected.value) : new Set([id])
-    if (!selectedSet.value.has(id)) selected.value = [id]
+    const wasSelected = selectedSet.value.has(id)
+    const moving = wasSelected ? new Set(selected.value) : new Set([id])
+    if (!wasSelected) selected.value = [id]
     gesture = {
       kind: 'move',
       ax: x,
       ay: y,
       moved: false,
+      cycleTo: wasSelected && !e.altKey && stack.length > 1 ? nextBelow(stack, id)?.id : undefined,
       starts: new Map(
         boxes.value.filter((b) => moving.has(b.id) && !b.locked).map((b) => [b.id, rectOf(b)]),
       ),
@@ -324,6 +345,7 @@ function onUp() {
       break
     case 'move':
       if (g.moved) emit('commit')
+      else if (g.cycleTo) selected.value = [g.cycleTo]
       break
     case 'resize':
     case 'group':
@@ -594,9 +616,6 @@ const gridStyle = computed(() =>
           <span v-if="b.label" class="zbc-label">{{ b.label }}</span>
           <i v-if="b.locked" class="mdi mdi-lock" />
         </span>
-        <template v-if="showHandles && primary?.id === b.id">
-          <i v-for="h in BOX_HANDLES" :key="h" class="zbc-h" :class="`h-${h}`" :data-handle="h" />
-        </template>
       </div>
 
       <canvas
@@ -605,6 +624,16 @@ const gridStyle = computed(() =>
         class="zbc-paint"
         :style="paintRect ? rectStyle(paintRect) : undefined"
       />
+
+      <!-- The selected box's handles sit above every box, so a box selected beneath others can
+           still be resized; the dashed outline shows where it is through whatever covers it. -->
+      <div
+        v-if="showHandles && primary && !primary.hidden"
+        class="zbc-selframe"
+        :style="boxStyle(primary)"
+      >
+        <i v-for="h in BOX_HANDLES" :key="h" class="zbc-h" :class="`h-${h}`" :data-handle="h" />
+      </div>
 
       <div
         v-if="groupBounds && tool === 'select'"
@@ -828,6 +857,16 @@ const gridStyle = computed(() =>
   cursor: ew-resize;
 }
 
+.zbc-selframe {
+  position: absolute;
+  box-sizing: border-box;
+  outline: 1.5px dashed var(--zbc-color);
+  outline-offset: -1px;
+  pointer-events: none;
+}
+.zbc-selframe .zbc-h {
+  pointer-events: auto;
+}
 .zbc-group {
   position: absolute;
   box-sizing: border-box;

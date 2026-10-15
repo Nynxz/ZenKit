@@ -63,3 +63,21 @@ test('the topmost visible box wins a hit test', async () => {
   assert.equal(boxAt(list, 0.9, 0.9)?.id, 'a')
   assert.equal(boxAt(list.slice(2), 0.3, 0.3), null)
 })
+
+test('a point under several boxes lists them topmost first, and a click steps down and wraps', async () => {
+  const { boxesAt, nextBelow } = await boxes()
+  const list = [
+    { id: 'bottom', x: 0, y: 0, w: 1, h: 1 },
+    { id: 'middle', x: 0.1, y: 0.1, w: 0.5, h: 0.5 },
+    { id: 'top', x: 0.2, y: 0.2, w: 0.3, h: 0.3 },
+    { id: 'gone', x: 0.2, y: 0.2, w: 0.3, h: 0.3, hidden: true },
+  ]
+  const stack = boxesAt(list, 0.3, 0.3)
+  assert.deepEqual(
+    stack.map((b) => b.id),
+    ['top', 'middle', 'bottom'],
+  )
+  assert.equal(nextBelow(stack, 'top')?.id, 'middle')
+  assert.equal(nextBelow(stack, 'bottom')?.id, 'top')
+  assert.equal(nextBelow(stack, undefined)?.id, 'top')
+})
