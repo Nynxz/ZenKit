@@ -55,4 +55,5 @@ export { registerZenCapability, type ZenCapability } from './zenCapability'
 // The identity-bound helpers (registerNodes, mountWidget, addNodeHeaderButton, …) come from
 // createNodekit; only their types are here.
 export type { DOMWidget, MountOptions, NodeLike } from './mountWidget'
+export { mirrorOf, type ZenMirror } from './widgetMirror'
 export type { NodeHeaderButtonHandle, NodeHeaderButtonOptions } from './nodeHeaderButton'

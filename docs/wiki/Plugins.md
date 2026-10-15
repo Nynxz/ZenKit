@@ -84,7 +84,10 @@ with the widget's own range and step (seeds get a dice), combos searchable, togg
 edits go to the widget itself, its callback included, so they behave exactly as editing it on its
 node; changes made on the canvas show up in the list as they happen. Double-click a label to
 rename it, drag the grip to reorder; a binding whose node was deleted stays, greyed, until
-unbound. Widgets fed by a link can't be bound (their value comes from the link). The bindings are
+unbound. Widgets fed by a link can't be bound (their value comes from the link). Widgets a ZenKit pack mounts — a LoRA stack, a
+scene editor — are bound as themselves: Zen Bind shows the pack's own component, kept in step with
+the node (see `zenMirror` in [Nodekit panels and canvas](Nodekit-Panels-and-Canvas.md#mountwidget));
+the pack needs a nodekit with mirrors. The bindings are
 the node's properties, so they save with the workflow. The node pops out into a ZenKit panel
 (`zenbind:<graph>:<node>`) to tile into a workspace; it reopens with the workflow.
 

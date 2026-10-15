@@ -339,6 +339,13 @@ What it handles for you:
   top-level `widget.serialize = false` and returns the light default from `getValue`.
 - Undo/redo rebuilds every node with the same id; nodekit reclaims the reused Vue-nodes host so the
   body does not go blank.
+- Mirrors: `widget.zenMirror.mount(el)` mounts another instance of the component elsewhere (Zen
+  Bind uses it; `mirrorOf(widget)` reads the handle) and returns the unmount. Components read
+  `widget.value` on mount and write it back, without watching it, so when one view writes a
+  different value the others are remounted. A mirror writes through a proxy that marks it as the
+  writer, so it isn't remounted by its own edit, and a write that changes nothing remounts nobody.
+  Transient state in the other views (an open popover) is lost when they remount. Nothing to do in
+  a component; one that reads its value only on mount stays correct.
 
 For a frontend-only node, also: mount in `onAdded` (a loaded workflow writes saved values right
 after), set `isVirtualNode = true` to keep it out of the prompt, set `category` **after**

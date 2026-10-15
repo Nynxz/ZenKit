@@ -52,10 +52,16 @@ test('random seeds stay in range and exact', async () => {
   const w = { name: 'noise_seed', type: 'number', options: { min: 0, max: 2 ** 64 } }
   assert.ok(isSeed(w))
   assert.ok(!isSeed({ name: 'seeds_count', type: 'number' }))
-  assert.equal(randomSeed(w, () => 0), 0)
+  assert.equal(
+    randomSeed(w, () => 0),
+    0,
+  )
   const high = randomSeed(w, () => 0.999999999999)
   assert.ok(Number.isSafeInteger(high) && high <= Number.MAX_SAFE_INTEGER)
-  assert.equal(randomSeed({ ...w, options: { min: 10, max: 12 } }, () => 0.5), 11)
+  assert.equal(
+    randomSeed({ ...w, options: { min: 10, max: 12 } }, () => 0.5),
+    11,
+  )
 })
 
 test('saved bindings are cleaned up on read', async () => {
@@ -92,4 +98,19 @@ test('moving a binding reorders without losing any', async () => {
     ['c', 'a', 'b'],
   )
   assert.equal(moveBinding(list, 5, 0), list)
+})
+
+test('a ZenKit widget is bound as itself', async () => {
+  const { controlKind, bindableWidgets } = await bind()
+  const stack = {
+    name: 'loras',
+    type: 'NYNXZ_LORA_STACK',
+    zenMirror: { fill: false, mount: () => () => {} },
+  }
+  assert.equal(controlKind(stack), 'mirror')
+  assert.equal(controlKind({ name: 'loras', type: 'NYNXZ_LORA_STACK' }), null)
+  assert.deepEqual(
+    bindableWidgets({ id: 1, widgets: [stack] }).map((w) => w.name),
+    ['loras'],
+  )
 })

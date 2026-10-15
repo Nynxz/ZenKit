@@ -1,5 +1,5 @@
 <template>
-  <div class="zb" :class="{ 'in-panel': panel }">
+  <div class="zb" :class="{ 'in-panel': panel }" @pointerdown="keepPressOnControl">
     <div v-if="!panel && popped" class="zb-away">
       <span>{{ countText }} · in a panel</span>
       <ZenButton sm icon="mdi mdi-open-in-new" @click="popOut(node, true)">Show</ZenButton>
@@ -63,7 +63,7 @@
           class="zb-row"
           :class="{
             missing: !targets[i],
-            wide: targets[i] && kindOf(i) === 'multiline',
+            wide: targets[i] && (kindOf(i) === 'multiline' || kindOf(i) === 'mirror'),
             over: dropAt === i,
           }"
           @dragover.prevent="dragFrom !== null && (dropAt = i)"
@@ -176,6 +176,15 @@ function follow() {
 }
 onMounted(() => (frame = requestAnimationFrame(follow)))
 onBeforeUnmount(() => cancelAnimationFrame(frame))
+
+const CONTROLS =
+  'button, input, select, textarea, a[href], [contenteditable="true"], [data-zen-drag], ' +
+  '[draggable="true"], [role="button"], [role="slider"], [role="switch"], [role="combobox"], ' +
+  '[role="checkbox"], [role="tab"]'
+/** A press on a control stays with the control; on bare body it still drags the node. */
+function keepPressOnControl(e: PointerEvent) {
+  if ((e.target as HTMLElement | null)?.closest?.(CONTROLS)) e.stopPropagation()
+}
 
 function save(next: typeof list.value) {
   setBindings(node, next)

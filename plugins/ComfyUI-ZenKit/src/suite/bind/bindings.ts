@@ -12,7 +12,7 @@ export interface Binding {
   label?: string
 }
 
-export type ControlKind = 'number' | 'combo' | 'toggle' | 'text' | 'multiline'
+export type ControlKind = 'number' | 'combo' | 'toggle' | 'text' | 'multiline' | 'mirror'
 
 export interface WidgetLike {
   name: string
@@ -31,6 +31,8 @@ export interface WidgetLike {
     multiline?: boolean
   }
   callback?: (value: unknown, ...rest: unknown[]) => void
+  /** A ZenKit widget's own component, mountable again elsewhere (nodekit's widgetMirror). */
+  zenMirror?: { fill: boolean; mount: (el: HTMLElement) => () => void }
 }
 
 export interface InputLike {
@@ -49,8 +51,10 @@ export interface NodeLike {
 export const BIND_TYPE = 'zen.Bind'
 export const PROPERTY = 'zenBindings'
 
-/** How a widget is edited, or null when Zen Bind can't show it (images, buttons, DOM widgets). */
+/** How a widget is edited, or null when Zen Bind can't show it (images, buttons, plain DOM
+ *  widgets). A ZenKit widget — a LoRA stack, a scene editor — is shown as itself. */
 export function controlKind(w: WidgetLike): ControlKind | null {
+  if (typeof w.zenMirror?.mount === 'function') return 'mirror'
   switch (w.type) {
     case 'number':
     case 'slider':

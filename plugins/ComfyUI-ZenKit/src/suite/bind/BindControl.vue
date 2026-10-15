@@ -1,5 +1,6 @@
 <template>
-  <div class="bc" :class="kind">
+  <BindMirror v-if="kind === 'mirror'" :target="target" />
+  <div v-else class="bc" :class="kind">
     <template v-if="kind === 'number'">
       <ZenNumber
         size="sm"
@@ -50,6 +51,7 @@
 import { computed } from 'vue'
 import { ZenCombo, ZenIconButton, ZenInput, ZenNumber, ZenSwitch } from '@nynxz/zenkit-ui'
 
+import BindMirror from './BindMirror.vue'
 import { comboValues, controlKind, isSeed, numberSpec, randomSeed } from './bindings'
 import { writeWidget, type Target } from './store'
 
