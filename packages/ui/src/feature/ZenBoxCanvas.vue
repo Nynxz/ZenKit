@@ -654,12 +654,15 @@ const gridStyle = computed(() =>
       0 0 / 16px 16px,
     var(--zen-input, #1b1b20);
   outline: 1px solid var(--zen-border, #34343c);
+  /* Inside the stage: the frame clips anything past its edge, and the stage fills it exactly. */
+  outline-offset: -1px;
   user-select: none;
   touch-action: none;
   cursor: crosshair;
 }
 .zbc:focus {
   outline: 1px solid color-mix(in srgb, var(--zen-text, #fff) 22%, transparent);
+  outline-offset: -1px;
 }
 .zbc.tool-brush,
 .zbc.tool-erase {
