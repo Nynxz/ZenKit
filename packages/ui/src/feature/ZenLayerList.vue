@@ -12,6 +12,8 @@
 // under the pointer.
 import { computed, ref } from 'vue'
 
+import { insertionIndex, rowStride, shiftStyle, sortShift } from '../lib/sortable'
+
 export interface LayerItem {
   id: string
   label: string
@@ -58,14 +60,11 @@ function pick(item: LayerItem, e: MouseEvent) {
 
 // --- drag to reorder ------------------------------------------------------------------------
 
-interface Slot {
-  index: number
-  mid: number
-}
 const dragId = ref<string | null>(null)
 const dropIndex = ref(-1)
 const offset = ref(0)
-let slots: Slot[] = []
+const stride = ref(0)
+let mids: number[] = []
 let startY = 0
 let scale = 1
 let lo = 0
@@ -77,10 +76,15 @@ function onGrip(e: PointerEvent, item: LayerItem, index: number) {
   const row = rows[index]
   if (!row) return
   scale = row.getBoundingClientRect().height / (row.offsetHeight || 1) || 1
-  slots = rows.map((el) => {
+  mids = rows.map((el) => {
     const r = el.getBoundingClientRect()
-    return { index: Number(el.dataset.layerIndex), mid: r.top + r.height / 2 }
+    return r.top + r.height / 2
   })
+  stride.value = rowStride(
+    rows.map((el) => el.offsetTop),
+    rows.map((el) => el.offsetHeight),
+    index,
+  )
   // The reachable range: between the nearest pinned rows on either side of this one.
   lo = 0
   hi = props.items.length - 1
@@ -105,13 +109,8 @@ function onGrip(e: PointerEvent, item: LayerItem, index: number) {
 function onGripMove(e: PointerEvent, index: number) {
   if (dragId.value === null) return
   offset.value = (e.clientY - startY) / scale
-  const y = e.clientY
-  let target = index
-  for (const s of slots) {
-    if (s.index < index && y < s.mid) target = Math.min(target, s.index)
-    if (s.index > index && y > s.mid) target = Math.max(target, s.index)
-  }
-  dropIndex.value = Math.min(hi, Math.max(lo, target))
+  const center = (mids[index] ?? e.clientY) + (e.clientY - startY)
+  dropIndex.value = insertionIndex(mids, index, center, lo, hi)
 }
 
 function onGripUp() {
@@ -125,13 +124,11 @@ function onGripUp() {
   if (from >= 0 && to >= 0 && to !== from) emit('reorder', id, to)
 }
 
-function shift(index: number): number {
+/** Rows between the grab and the landing slot move aside, so the drop is shown before it lands. */
+function aside(index: number) {
+  if (dragId.value === null) return undefined
   const from = props.items.findIndex((i) => i.id === dragId.value)
-  const to = dropIndex.value
-  if (dragId.value === null || from < 0 || index === from) return 0
-  if (from < to && index > from && index <= to) return -1
-  if (from > to && index < from && index >= to) return 1
-  return 0
+  return shiftStyle(sortShift(index, from, dropIndex.value), stride.value)
 }
 </script>
 
@@ -150,11 +147,7 @@ function shift(index: number): number {
         dragging: dragId === item.id,
       }"
       :style="
-        dragId === item.id
-          ? { transform: `translateY(${offset}px)` }
-          : shift(index)
-            ? { transform: `translateY(${shift(index) * 100}%)` }
-            : undefined
+        dragId === item.id ? { transform: `translateY(${offset}px)` } : aside(index)
       "
       :data-layer-index="index"
       @click="pick(item, $event)"
