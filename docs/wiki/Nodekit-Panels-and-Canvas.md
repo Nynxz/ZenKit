@@ -97,9 +97,11 @@ flashing open over the graph. `reveal: true` says the user asked for it: ZenKit 
 workspace and opens it there. Opening an id that is already waiting also counts as asking (pass
 `reveal: false` to opt out), as does `handle.focus()`.
 
-Unmounting is the point: a pack whose panel instance marks itself open on mount and closed on
-unmount (below) shows its editor in the node again whenever the panel's workspace is away, and
-pops back out when it returns. Node removal and workflow switches work as before: the node's
+The node should show its body again whenever the panel's workspace is away, and step aside when it
+returns. The handle says when: `handle.shown` is whether the panel is on screen, and
+`handle.onShown(cb)` calls back each time that changes (it is false while waiting and once closed).
+Drive the node's "in a panel" state from it, not from holding a handle — a handle outlives every
+park. (Marking the panel instance open on mount and closed on unmount, as Fresco does, works too.) Node removal and workflow switches work as before: the node's
 `onRemoved` closes the panel with `keep`, and the panel is the node's to reopen.
 
 ZenKit counts a waiting panel as its workspace's: the tab's count, tooltip and **Panels here** menu

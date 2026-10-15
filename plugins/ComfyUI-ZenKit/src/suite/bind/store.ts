@@ -96,5 +96,5 @@ export function writeWidget({ node, widget }: Target, value: unknown): void {
   app.graph?.change?.()
 }
 
-/** Bind nodes whose panel is open, by node — the body shows a summary meanwhile. */
+/** Bind nodes whose panel is on screen — the body shows a summary meanwhile. */
 export const openPanels = reactive(new Set<object>())

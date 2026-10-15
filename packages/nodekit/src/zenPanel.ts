@@ -48,6 +48,11 @@ export interface ZenPanelHandle {
   /** Bring the panel to the front (and out of a minimized state, where ZenKit supports it) — its
    *  workspace too, reopening it if it stepped aside for that workspace. */
   focus(): void
+  /** Whether the panel is on screen. False while it steps aside for a workspace that isn't
+   *  showing — the node it came from should show its body again meanwhile — and once closed. */
+  readonly shown: boolean
+  /** Called with `shown` whenever it changes. Returns the unsubscribe. */
+  onShown(listener: (shown: boolean) => void): () => void
 }
 
 /** Whether a ZenKit panel can be opened right now. Components use this to decide between a
@@ -109,11 +114,25 @@ function follow(zen: ZenKitApi, first: ZenPanelSpec, firstComponent: Component):
   let parked = false
   let done = false
   let stopFollowing: (() => void) | undefined
+  let shown = false
+  const watchers = new Set<(shown: boolean) => void>()
+  const setShown = (next: boolean) => {
+    if (shown === next) return
+    shown = next
+    for (const watcher of [...watchers]) {
+      try {
+        watcher(next)
+      } catch (e) {
+        console.error('[ZenKit] panel onShown failed', id, e)
+      }
+    }
+  }
 
   /** Closed for real: stop following and tell the caller, once. */
   const finish = () => {
     if (done) return
     done = true
+    setShown(false)
     offClose?.()
     stopFollowing?.()
     if (followed.get(id) === self) followed.delete(id)
@@ -146,6 +165,7 @@ function follow(zen: ZenKitApi, first: ZenPanelSpec, firstComponent: Component):
     })
     offClose?.()
     offClose = panel?.on?.('close', finish) ?? undefined
+    setShown(!!panel)
   }
   /** Step aside for the workspace: close, keeping the tile, without it counting as a close. */
   const park = () => {
@@ -155,6 +175,7 @@ function follow(zen: ZenKitApi, first: ZenPanelSpec, firstComponent: Component):
     const p = panel
     panel = null
     p?.close?.({ keep: true })
+    setShown(false)
   }
   const sync = () => {
     if (done || !following) return
@@ -187,6 +208,13 @@ function follow(zen: ZenKitApi, first: ZenPanelSpec, firstComponent: Component):
       panel?.setTitle?.(t)
     },
     focus: reveal,
+    get shown() {
+      return shown
+    },
+    onShown(listener) {
+      watchers.add(listener)
+      return () => watchers.delete(listener)
+    },
   }
   const self: Follower = {
     handle,

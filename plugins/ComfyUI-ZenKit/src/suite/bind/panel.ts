@@ -1,7 +1,9 @@
 /**
- * A Bind node's controls in a ZenKit panel, to tile into a workspace. The node remembers it is
- * popped out (a property, so it survives a reload) and reopens its panel when the workflow loads;
- * the panel id names the graph and the node, so ZenKit keeps its tile and drops it with the node.
+ * A Bind node's controls in a ZenKit panel, to tile into a workspace. While the panel is on screen
+ * the node shows a summary; while it steps aside for a workspace that isn't showing, the node shows
+ * the controls again. The node remembers it is popped out (a property, so it survives a reload)
+ * and reopens its panel when the workflow loads; the panel id names the graph and the node, so
+ * ZenKit keeps its tile and drops it with the node.
  */
 import { markRaw, type Component } from 'vue'
 import { hasZenPanels, openZenPanel, type ZenPanelHandle } from '@nynxz/zenkit-nodekit'
@@ -65,7 +67,9 @@ export function popOut(node: BindNode, reveal = false): void {
   )
   if (!handle) return
   handles.set(node, handle)
-  openPanels.add(node)
+  const shown = (on: boolean) => (on ? openPanels.add(node) : openPanels.delete(node))
+  shown(handle.shown)
+  handle.onShown(shown)
   remember(node, true)
   const previous = node.onRemoved
   node.onRemoved = function (this: unknown, ...args: unknown[]) {
