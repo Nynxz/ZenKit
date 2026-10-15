@@ -42,6 +42,14 @@ export function rowStride(tops: number[], heights: number[], from: number): numb
   return height
 }
 
+/** Where the dragged row's top is once the list has its new order: at `to`'s top going up, or
+ *  ending where `to`'s row ends going down. With `offset` (how far it was dragged) this is the
+ *  little distance left to settle when it's let go — animate that, not the reorder. */
+export function landingTop(tops: number[], heights: number[], from: number, to: number): number {
+  if (to <= from) return tops[to] ?? 0
+  return (tops[to] ?? 0) + (heights[to] ?? 0) - (heights[from] ?? 0)
+}
+
 /** A row that moves aside, as a style: `translateY` by `shift` strides. */
 export function shiftStyle(shift: number, stride: number): Record<string, string> | undefined {
   return shift ? { transform: `translateY(${shift * stride}px)` } : undefined

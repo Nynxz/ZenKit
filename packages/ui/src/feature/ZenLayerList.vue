@@ -12,7 +12,7 @@
 // under the pointer.
 import { computed, ref } from 'vue'
 
-import { insertionIndex, rowStride, shiftStyle, sortShift } from '../lib/sortable'
+import { insertionIndex, landingTop, rowStride, shiftStyle, sortShift } from '../lib/sortable'
 
 export interface LayerItem {
   id: string
@@ -65,6 +65,12 @@ const dropIndex = ref(-1)
 const offset = ref(0)
 const stride = ref(0)
 let mids: number[] = []
+let tops: number[] = []
+let heights: number[] = []
+// On the drop the host reorders with transitions off — the rows that moved aside are already in
+// place — and only the dropped row glides the little way left to its slot.
+const settling = ref(false)
+const settle = ref<{ id: string; y: number } | null>(null)
 let startY = 0
 let scale = 1
 let lo = 0
@@ -80,11 +86,9 @@ function onGrip(e: PointerEvent, item: LayerItem, index: number) {
     const r = el.getBoundingClientRect()
     return r.top + r.height / 2
   })
-  stride.value = rowStride(
-    rows.map((el) => el.offsetTop),
-    rows.map((el) => el.offsetHeight),
-    index,
-  )
+  tops = rows.map((el) => el.offsetTop)
+  heights = rows.map((el) => el.offsetHeight)
+  stride.value = rowStride(tops, heights, index)
   // The reachable range: between the nearest pinned rows on either side of this one.
   lo = 0
   hi = props.items.length - 1
@@ -116,12 +120,22 @@ function onGripMove(e: PointerEvent, index: number) {
 function onGripUp() {
   const id = dragId.value
   const to = dropIndex.value
+  const moved = offset.value
   dragId.value = null
   dropIndex.value = -1
   offset.value = 0
   if (id === null) return
   const from = props.items.findIndex((i) => i.id === id)
-  if (from >= 0 && to >= 0 && to !== from) emit('reorder', id, to)
+  if (from < 0 || to < 0) return
+  settling.value = true
+  settle.value = { id, y: (tops[from] ?? 0) + moved - landingTop(tops, heights, from, to) }
+  if (to !== from) emit('reorder', id, to)
+  requestAnimationFrame(() =>
+    requestAnimationFrame(() => {
+      settling.value = false
+      settle.value = null
+    }),
+  )
 }
 
 /** Rows between the grab and the landing slot move aside, so the drop is shown before it lands. */
@@ -133,7 +147,7 @@ function aside(index: number) {
 </script>
 
 <template>
-  <div ref="list" class="zll" role="listbox" aria-multiselectable="true">
+  <div ref="list" class="zll" :class="{ settling }" role="listbox" aria-multiselectable="true">
     <div
       v-for="(item, index) in items"
       :key="item.id"
@@ -147,7 +161,11 @@ function aside(index: number) {
         dragging: dragId === item.id,
       }"
       :style="
-        dragId === item.id ? { transform: `translateY(${offset}px)` } : aside(index)
+        dragId === item.id
+          ? { transform: `translateY(${offset}px)` }
+          : settle?.id === item.id
+            ? { transform: `translateY(${settle.y}px)` }
+            : aside(index)
       "
       :data-layer-index="index"
       @click="pick(item, $event)"
@@ -231,6 +249,9 @@ function aside(index: number) {
 .zll-row.hidden .zll-text,
 .zll-row.hidden .zll-swatch {
   opacity: 0.45;
+}
+.zll.settling .zll-row {
+  transition: background 0.12s ease;
 }
 .zll-row.dragging {
   z-index: 1;

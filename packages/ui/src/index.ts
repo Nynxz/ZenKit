@@ -132,7 +132,7 @@ export {
   type BoxRect,
   type ZenBox,
 } from './lib/boxes'
-export { insertionIndex, rowStride, shiftStyle, sortShift } from './lib/sortable'
+export { insertionIndex, landingTop, rowStride, shiftStyle, sortShift } from './lib/sortable'
 export type {
   TimelineCurve,
   TimelineLevels,

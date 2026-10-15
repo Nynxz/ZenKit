@@ -31,8 +31,14 @@ test('rows between the grab and the landing slot move aside toward the gap', asy
   assert.deepEqual(down, [0, 0, -1, -1, 0])
   const up = [0, 1, 2, 3, 4].map((i) => sortShift(i, 3, 1))
   assert.deepEqual(up, [0, 1, 1, 0, 0])
-  assert.deepEqual([0, 1, 2].map((i) => sortShift(i, 1, 1)), [0, 0, 0])
-  assert.deepEqual([0, 1].map((i) => sortShift(i, -1, 1)), [0, 0])
+  assert.deepEqual(
+    [0, 1, 2].map((i) => sortShift(i, 1, 1)),
+    [0, 0, 0],
+  )
+  assert.deepEqual(
+    [0, 1].map((i) => sortShift(i, -1, 1)),
+    [0, 0],
+  )
 })
 
 test('a stride is the dragged row and its gap, whatever the others measure', async () => {
@@ -45,4 +51,14 @@ test('a stride is the dragged row and its gap, whatever the others measure', asy
   assert.equal(rowStride([0], [24], 0), 24)
   assert.deepEqual(shiftStyle(-1, 36), { transform: 'translateY(-36px)' })
   assert.equal(shiftStyle(0, 36), undefined)
+})
+
+test('the dragged row lands where its slot is in the new order', async () => {
+  const { landingTop } = await sortable()
+  const tops = [0, 36, 100, 136]
+  const heights = [30, 58, 30, 30]
+  assert.equal(landingTop(tops, heights, 3, 1), 36)
+  assert.equal(landingTop(tops, heights, 0, 2), 100)
+  assert.equal(landingTop(tops, heights, 1, 3), 108)
+  assert.equal(landingTop(tops, heights, 2, 2), 100)
 })
