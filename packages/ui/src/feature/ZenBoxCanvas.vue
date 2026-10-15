@@ -579,6 +579,9 @@ const gridStyle = computed(() =>
         :style="boxStyle(b)"
         :data-box-id="b.id"
       >
+        <div v-if="$slots.box" class="zbc-content">
+          <slot name="box" v-bind="{ box: b, index: i, maskStyle: fillStyle(b) }" />
+        </div>
         <div class="zbc-fill" :style="fillStyle(b)" />
         <span v-if="showLabels" class="zbc-tag">
           <span class="zbc-n">{{ i + 1 }}</span>
@@ -713,6 +716,19 @@ const gridStyle = computed(() =>
   -webkit-mask-size: 100% 100%;
   mask-size: 100% 100%;
   pointer-events: none;
+}
+/* Host content inside a box (the `box` slot). Not clipped to the painted shape — the slot gets
+   `maskStyle` to clip just what should be (a picture, not its caption). A size container, so the
+   host can drop detail on small boxes with container queries. */
+.zbc-content {
+  position: absolute;
+  inset: 0;
+  overflow: hidden;
+  container-type: size;
+  pointer-events: none;
+}
+.zbc-box.painting .zbc-content {
+  opacity: 0.35;
 }
 .zbc-box.masked .zbc-fill {
   background: color-mix(in srgb, var(--zbc-color) 45%, transparent);

@@ -428,7 +428,10 @@ function setMask(id: string, mask: string | null) {
 | `grid`            | `number`         | `0`     | Faint grid lines every this fraction.              |
 | `minSize`         | `number`         | `0.02`  | Smallest box `create` reports.                     |
 
-Slots: `empty` (shown with no visible boxes), `overlay` (anything drawn over the stage).
+Slots: `box` (`{ box, index, maskStyle }` — drawn inside each box; spread `maskStyle` onto
+whatever should be clipped to the painted shape; a size container, so content can respond to the
+box's size), `empty` (shown with no visible boxes),
+`overlay` (anything drawn over the stage).
 `open` fires on a double-click on a box. The pure geometry (`resizeRect`, `moveRect`, `boxAt`, …)
 is exported for hosts that edit boxes elsewhere.
 
