@@ -168,3 +168,28 @@ export function nextBelow<T extends ZenBox>(stack: T[], id: string | undefined):
   const at = stack.findIndex((b) => b.id === id)
   return at < 0 ? stack[0] : stack[(at + 1) % stack.length]
 }
+
+/**
+ * Where a mask painted over the frame `paint` sits inside the box `box`, as fractions of the box:
+ * `[left, top, width, height]`. A resize changes the box but not where the paint is on the canvas,
+ * so the mask's frame stays put and the box crops or extends around it.
+ */
+export function paintFrame(paint: BoxRect, box: BoxRect): [number, number, number, number] {
+  const w = box.w || 1
+  const h = box.h || 1
+  return [(paint.x - box.x) / w, (paint.y - box.y) / h, paint.w / w, paint.h / h]
+}
+
+/** CSS `mask-size` and `mask-position` that place a mask painted over `paint` inside `box`.
+ *  A percentage position aligns that point of the image with the same point of the box, so the
+ *  offset is divided by the size difference; equal sizes need no offset. */
+export function paintMaskCss(paint: BoxRect, box: BoxRect): { size: string; position: string } {
+  const [left, top, width, height] = paintFrame(paint, box)
+  const pos = (offset: number, size: number) =>
+    Math.abs(1 - size) < 1e-6 ? 0 : (offset / (1 - size)) * 100
+  const pct = (v: number) => `${Math.round(v * 1e4) / 1e4}%`
+  return {
+    size: `${pct(width * 100)} ${pct(height * 100)}`,
+    position: `${pct(pos(left, width))} ${pct(pos(top, height))}`,
+  }
+}

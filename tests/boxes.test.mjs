@@ -81,3 +81,20 @@ test('a point under several boxes lists them topmost first, and a click steps do
   assert.equal(nextBelow(stack, 'bottom')?.id, 'top')
   assert.equal(nextBelow(stack, undefined)?.id, 'top')
 })
+
+test('a resize keeps the paint where it was: the mask frame stays and the box crops around it', async () => {
+  const { paintFrame, paintMaskCss } = await boxes()
+  const painted = { x: 0.2, y: 0.2, w: 0.4, h: 0.4 }
+  // unchanged: the mask fills the box
+  assert.deepEqual(paintFrame(painted, painted), [0, 0, 1, 1])
+  assert.deepEqual(paintMaskCss(painted, painted), { size: '100% 100%', position: '0% 0%' })
+  // grown to the right: the paint keeps the left half
+  const wider = { x: 0.2, y: 0.2, w: 0.8, h: 0.4 }
+  assert.deepEqual(paintFrame(painted, wider), [0, 0, 0.5, 1])
+  assert.deepEqual(paintMaskCss(painted, wider), { size: '50% 100%', position: '0% 0%' })
+  // grown to the left: the paint sits on the right half, which a 100% position puts there
+  const leftward = { x: 0.0, y: 0.2, w: 0.6, h: 0.4 }
+  const [l] = paintFrame(painted, leftward)
+  assert.ok(Math.abs(l - 1 / 3) < 1e-9)
+  assert.equal(paintMaskCss(painted, leftward).position.split(' ')[0], '100%')
+})

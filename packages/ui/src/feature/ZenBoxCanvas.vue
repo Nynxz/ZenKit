@@ -25,6 +25,8 @@ import {
   intersects,
   moveRect,
   nextBelow,
+  paintFrame,
+  paintMaskCss,
   resizeRect,
   scaleWithin,
   spanRect,
@@ -153,6 +155,8 @@ type Gesture =
 
 let gesture: Gesture | null = null
 const draft = ref<BoxRect | null>(null)
+/** The box being resized and its rect at the start — its mask keeps that frame meanwhile. */
+const resizing = ref<{ id: string; start: BoxRect } | null>(null)
 const marquee = ref<BoxRect | null>(null)
 const painting = ref<string | null>(null)
 const pointer = ref<[number, number] | null>(null)
@@ -207,6 +211,7 @@ function onDown(e: PointerEvent) {
         ay: y,
         start: rectOf(primary.value),
       }
+      resizing.value = { id: primary.value.id, start: rectOf(primary.value) }
     }
     capture(e)
     return
@@ -348,6 +353,10 @@ function onUp() {
       else if (g.cycleTo) selected.value = [g.cycleTo]
       break
     case 'resize':
+      refitMask(g.id, g.start)
+      resizing.value = null
+      emit('commit')
+      break
     case 'group':
       emit('commit')
       break
@@ -516,6 +525,33 @@ function endPaint(id: string) {
   emit('commit')
 }
 
+/** After a resize, redraw box `id`'s mask into its new frame, with the paint where it was on the
+ *  canvas: what the box grew into is empty, what it shrank away from is cropped. */
+function refitMask(id: string, start: BoxRect) {
+  const box = boxes.value.find((b) => b.id === id)
+  const image = box?.mask ? decoded.get(box.mask) : undefined
+  if (!box || !image?.complete || !image.naturalWidth) return
+  const [left, top, width, height] = paintFrame(start, box)
+  if (
+    Math.abs(left) < 1e-6 &&
+    Math.abs(top) < 1e-6 &&
+    Math.abs(width - 1) < 1e-6 &&
+    Math.abs(height - 1) < 1e-6
+  )
+    return
+  const out = document.createElement('canvas')
+  out.width = STORE_RES
+  out.height = STORE_RES
+  const ctx = out.getContext('2d')
+  if (!ctx) return
+  ctx.drawImage(image, left * STORE_RES, top * STORE_RES, width * STORE_RES, height * STORE_RES)
+  const url = out.toDataURL('image/png')
+  const img = new Image()
+  img.src = url
+  decoded.set(url, img)
+  emit('update:mask', id, url)
+}
+
 /** The painting as a white shape on transparency, at STORE_RES: the alpha is all a mask is. */
 function storable(canvas: HTMLCanvasElement): string {
   const out = document.createElement('canvas')
@@ -542,7 +578,21 @@ function boxStyle(b: ZenBox) {
 function maskStyle(b: ZenBox) {
   if (!b.mask) return undefined
   const image = `url("${b.mask}")`
-  return { maskImage: image, WebkitMaskImage: image }
+  // While this box is being resized its paint stays where it is on the canvas: the mask keeps the
+  // frame it was painted over and the box crops or extends around it (redrawn into the new frame
+  // when the resize ends — see `refitMask`).
+  const paint = resizing.value?.id === b.id ? resizing.value.start : b
+  const { size, position } = paintMaskCss(paint, b)
+  return {
+    maskImage: image,
+    WebkitMaskImage: image,
+    maskSize: size,
+    WebkitMaskSize: size,
+    maskPosition: position,
+    WebkitMaskPosition: position,
+    maskRepeat: 'no-repeat',
+    WebkitMaskRepeat: 'no-repeat',
+  }
 }
 
 const showHandles = computed(
