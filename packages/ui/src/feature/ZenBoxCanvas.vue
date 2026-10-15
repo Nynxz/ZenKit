@@ -655,8 +655,8 @@ const gridStyle = computed(() =>
   touch-action: none;
   cursor: crosshair;
 }
-.zbc:focus-visible {
-  outline: 1px solid var(--zen-accent, #6366f1);
+.zbc:focus {
+  outline: 1px solid color-mix(in srgb, var(--zen-text, #fff) 22%, transparent);
 }
 .zbc.tool-brush,
 .zbc.tool-erase {
