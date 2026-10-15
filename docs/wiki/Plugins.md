@@ -71,9 +71,22 @@ Nodes (category `Zen/Suite`; the ids are unchanged, so workflows saved with ZenS
 | `zen.Channel.Sync`      | Zen Sync            | Publishes an image, mask, video or audio to a channel; passes it through    |
 | `zen.Channel.Save`      | Zen Save            | Saves to the output folder (workflow embedded) and publishes the saved file |
 | `zen.Channel.Preview`   | Zen Channel Preview | A live wall of recent images on a channel, on the graph                     |
+| `zen.Bind`              | Zen Bind            | Controls for widgets of other nodes in one place, on the node or in a panel |
 
 The Sync/Save nodes hide their `channel`/`enable` widgets and show them in a popover from a header
 cog; Channel Preview replaces its widgets with a live grid.
+
+**Zen Bind** is canvas-only: no Python class, kept out of the prompt, so it never runs or touches
+the cache. Right-click any node → **Bind to Zen Bind** to add one of its widgets (a new Bind node
+appears beside it if there is none; with several, pick which), or use **+** on the node to pick
+widgets from any node in the graph. Each binding gets the control its widget calls for — numbers
+with the widget's own range and step (seeds get a dice), combos searchable, toggles, text — and
+edits go to the widget itself, its callback included, so they behave exactly as editing it on its
+node; changes made on the canvas show up in the list as they happen. Double-click a label to
+rename it, drag the grip to reorder; a binding whose node was deleted stays, greyed, until
+unbound. Widgets fed by a link can't be bound (their value comes from the link). The bindings are
+the node's properties, so they save with the workflow. The node pops out into a ZenKit panel
+(`zenbind:<graph>:<node>`) to tile into a workspace; it reopens with the workflow.
 
 Routes: `GET /zensuite/roots`, `/zensuite/assets`, `/zensuite/outputs`, `/zensuite/thumb`,
 `/zensuite/search` (Asset Browser), and `/zensuite/visual` for the experimental search by
