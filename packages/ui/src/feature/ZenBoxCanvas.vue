@@ -576,8 +576,9 @@ function boxStyle(b: ZenBox) {
   return { ...rectStyle(b), '--zbc-color': b.color ?? 'var(--zen-accent, #6366f1)' }
 }
 function maskStyle(b: ZenBox) {
-  if (!b.mask) return undefined
-  const image = `url("${b.mask}")`
+  const shown = b.maskView ?? b.mask
+  if (!shown) return undefined
+  const image = `url("${shown}")`
   // While this box is being resized its paint stays where it is on the canvas: the mask keeps the
   // frame it was painted over and the box crops or extends around it (redrawn into the new frame
   // when the resize ends — see `refitMask`).

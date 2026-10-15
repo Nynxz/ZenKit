@@ -413,7 +413,8 @@ function setMask(id: string, mask: string | null) {
   the box, so it moves and scales with it. `update:mask` hands it over when a stroke ends, or `null`
   when the stroke left the whole box covered. No mask means the whole box. `maskClips: false` keeps the box
   drawn whole and hands the mask only to the `box` slot's `maskStyle` — for a shape that marks
-  something inside the box rather than the box itself.
+  something inside the box rather than the box itself. `maskView` is what the canvas shows in place
+  of the mask (a grown or processed view of it); painting and resizing still work on `mask`.
 - **Keys.** Delete/Backspace emits `delete`, arrows nudge (Shift for more), Escape deselects,
   Ctrl+A selects all. Handled keys stop there, so the graph doesn't also act on them.
 - **Modifiers.** Shift keeps a box's on-screen shape while resizing and locks a move to one axis;
