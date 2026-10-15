@@ -102,6 +102,26 @@ export type {
   MediaPickerLibrary,
 } from './feature/ZenMediaPicker.vue'
 export { default as ZenTimeline } from './feature/ZenTimeline.vue'
+// ZenBoxCanvas: draw, move and resize boxes over a canvas, and paint a mask inside one. The host
+// owns the boxes and decides what a drawn rect becomes. ZenLayerList: the stack beside it —
+// select, hide, lock, drag to reorder, with pinned rows that never move.
+export { default as ZenBoxCanvas } from './feature/ZenBoxCanvas.vue'
+export type { BoxTool } from './feature/ZenBoxCanvas.vue'
+export { default as ZenLayerList } from './feature/ZenLayerList.vue'
+export type { LayerItem } from './feature/ZenLayerList.vue'
+export {
+  BOX_HANDLES,
+  boundsOf,
+  boxAt,
+  intersects,
+  moveRect,
+  resizeRect,
+  scaleWithin,
+  spanRect,
+  type BoxHandle,
+  type BoxRect,
+  type ZenBox,
+} from './lib/boxes'
 export type {
   TimelineCurve,
   TimelineLevels,

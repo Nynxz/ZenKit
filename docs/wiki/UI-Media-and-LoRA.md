@@ -354,6 +354,106 @@ keeps the playhead where it is on screen. Scrolling doesn't re-render the tracks
 
 `TimelineTarget`: `{ trackId: string; itemId?: string }`.
 
+## ZenBoxCanvas
+
+Boxes over a canvas: drag on empty canvas to draw one, drag a box to move it, drag a handle to
+resize it, and paint a mask inside one. The host owns the boxes and decides what a drawn rect
+becomes — the canvas reports it through `create` and adds nothing itself.
+
+Geometry is in 0..1 of the canvas (`x`/`w` of its width, `y`/`h` of its height), so boxes survive
+a resolution change. The stage contain-fits whatever space it is given, at `aspect`.
+
+```vue
+<script setup lang="ts">
+import { ref } from 'vue'
+import { ZenBoxCanvas, type BoxTool, type ZenBox } from '@nynxz/zenkit-ui'
+
+const boxes = ref<ZenBox[]>([])
+const selected = ref<string[]>([])
+const tool = ref<BoxTool>('select')
+let n = 0
+
+function add(rect: { x: number; y: number; w: number; h: number }) {
+  const id = `b${++n}`
+  boxes.value = [...boxes.value, { id, ...rect, label: `Box ${n}`, color: '#4fb8ff' }]
+  selected.value = [id]
+}
+function save() {
+  localStorage.setItem('boxes', JSON.stringify(boxes.value))
+}
+function setMask(id: string, mask: string | null) {
+  boxes.value = boxes.value.map((b) => (b.id === id ? { ...b, mask } : b))
+}
+</script>
+
+<template>
+  <div style="height: 400px">
+    <ZenBoxCanvas
+      v-model:boxes="boxes"
+      v-model:selected="selected"
+      v-model:tool="tool"
+      :aspect="16 / 9"
+      @create="add"
+      @update:mask="setMask"
+      @commit="save"
+      @delete="(ids) => (boxes = boxes.filter((b) => !ids.includes(b.id)))"
+    />
+  </div>
+</template>
+```
+
+- **Live and committed edits.** `update:boxes` fires on every pointer move so the host can draw;
+  `commit` fires once when a move, resize, nudge or stroke ends. Persist on `commit`.
+- **Selection.** Click a box; Shift/Ctrl-click to add or remove; Shift-drag on empty canvas for a
+  marquee. Two or more selected get a group frame whose handles scale them together.
+- **Masks.** `tool` `brush` (key `B`) paints into the selected box, `erase` (`E`) removes, `V`
+  goes back to select. A mask is box-local — a PNG data URL whose alpha is the shape, stretched over
+  the box, so it moves and scales with it. `update:mask` hands it over when a stroke ends, or `null`
+  when the stroke left the whole box covered. No mask means the whole box.
+- **Keys.** Delete/Backspace emits `delete`, arrows nudge (Shift for more), Escape deselects,
+  Ctrl+A selects all. Handled keys stop there, so the graph doesn't also act on them.
+- **Modifiers.** Shift keeps a box's on-screen shape while resizing and locks a move to one axis;
+  Alt suspends `snap`.
+
+| Prop              | Type             | Default |                                                    |
+| ----------------- | ---------------- | ------- | -------------------------------------------------- |
+| `aspect`          | `number`         | `1`     | Canvas width / height.                             |
+| `backdrop`        | `string \| null` | `null`  | Image under the boxes.                             |
+| `backdropOpacity` | `number`         | `1`     |                                                    |
+| `draw`            | `boolean`        | `true`  | Dragging on empty canvas draws a box.              |
+| `snap`            | `number`         | `0`     | Snap edges to multiples of this fraction.          |
+| `brushSize`       | `number`         | `0.06`  | Brush diameter, as a fraction of the canvas width. |
+| `brushSoftness`   | `number`         | `0.15`  | 0 hard to 1 soft.                                  |
+| `showLabels`      | `boolean`        | `true`  | The number-and-label tag on each box.              |
+| `grid`            | `number`         | `0`     | Faint grid lines every this fraction.              |
+| `minSize`         | `number`         | `0.02`  | Smallest box `create` reports.                     |
+
+Slots: `empty` (shown with no visible boxes), `overlay` (anything drawn over the stage).
+`open` fires on a double-click on a box. The pure geometry (`resizeRect`, `moveRect`, `boxAt`, …)
+is exported for hosts that edit boxes elsewhere.
+
+## ZenLayerList
+
+The stack beside a ZenBoxCanvas: pick a layer, hide it, lock it, drag it up or down. The host
+passes the rows top-first and owns the order — a drag reports `reorder(id, index)` with the
+display position it should move to. `pinned` rows (a background) have no grip and nothing can be
+dropped past them.
+
+```vue
+<ZenLayerList
+  v-model:selected="selected"
+  :items="[
+    { id: 'hat', label: 'Hat', color: '#f05a5a', sub: '1 LoRA' },
+    { id: 'bg', label: 'Background', pinned: true },
+  ]"
+  @reorder="(id, index) => move(id, index)"
+  @toggle-hidden="(id) => toggle(id)"
+/>
+```
+
+Rows take a `color` swatch or a `thumb` image, and a dimmer `sub` line. The `actions` slot adds
+buttons to a row; `lockable` (default on) shows the lock toggle.
+
 ## ZenStepChart
 
 A canvas chart of a sampler run: the sigma schedule (dashed) and the per-step change (filled).
