@@ -91,7 +91,8 @@ export function hasMediaDrop(e: DragEvent): boolean {
 }
 
 /** The media refs a drop carries: every ComfyUI file of a dragged media list, else the one
- *  dragged file, uploading desktop files into `input/<subfolder>`. Reads the drop synchronously
+ *  dragged file, uploading desktop files — and media URLs that aren't ComfyUI files, like another
+ *  pack's proxy — into `input/<subfolder>`. Reads the drop synchronously
  *  before awaiting anything (a DataTransfer empties once its event returns), so call it from the
  *  drop handler itself. Call `preventDefault` when you accept the drop.
  *  `upload` replaces the plain upload, e.g. with one that reuses a file the server already has. */
@@ -129,5 +130,36 @@ export async function readMediaDrop(
     ]
   const fromUri = uri ? refFromViewUrl(uri) : null
   if (fromUri) return [fromUri]
-  return Promise.all(files.map((f) => upload(f, subfolder)))
+  if (files.length) return Promise.all(files.map((f) => upload(f, subfolder)))
+  // A media URL that isn't a ComfyUI file — another pack's proxy (a stash card), a web page's
+  // image — is fetched and uploaded like a file from the desktop, so a drag from anywhere lands.
+  const url = (zen && typeof zen.url === 'string' && zen.url) || uri
+  if (!url) return []
+  const fetched = await fileFromUrl(
+    url,
+    zen && typeof zen.filename === 'string' ? zen.filename : '',
+  )
+  return fetched ? [await upload(fetched, subfolder)] : []
+}
+
+/** The media at `url` as a File, or null when it can't be fetched (offline, or a cross-origin
+ *  server that doesn't allow it) or isn't an image, video or audio file. */
+async function fileFromUrl(url: string, filename: string): Promise<File | null> {
+  try {
+    const absolute = new URL(url, location.href)
+    if (!/^https?:$/.test(absolute.protocol)) return null
+    const res = await fetch(absolute.href, {
+      credentials: absolute.origin === location.origin ? 'include' : 'omit',
+    })
+    if (!res.ok) return null
+    const blob = await res.blob()
+    if (!/^(image|video|audio)\//.test(blob.type)) return null
+    const name =
+      filename ||
+      decodeURIComponent(absolute.pathname.split('/').pop() || '') ||
+      `dropped.${blob.type.split('/')[1] || 'png'}`
+    return new File([blob], name, { type: blob.type })
+  } catch {
+    return null
+  }
 }

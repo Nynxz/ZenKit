@@ -120,3 +120,63 @@ test('a node widget takes every ComfyUI file of a dropped media list from this o
   globalThis.fetch = async () => assert.fail('a list on another origin is never fetched')
   assert.deepEqual(await nodekit.readMediaDrop(drop(elsewhere)), ['output/one.png'])
 })
+
+test('a drop carrying a media URL that is not a ComfyUI file is fetched and uploaded', async () => {
+  const shared = await sourceUrl(sharedPath)
+  const api = mockModule('export const api = { apiURL: path => "/api" + path }')
+  const nodekit = await sourceModule('packages/nodekit/src/mediaRefs.ts', {
+    '@comfy/api': api,
+    './viewUrl': await sourceUrl('packages/nodekit/src/viewUrl.ts', {
+      '@comfy/api': api,
+      '@comfy/app': mockModule('export const app = {}'),
+    }),
+    './zenkit': mockModule(`export { mediaKind, parseMediaRef } from '${shared}';
+      export const ZEN_MEDIA_MIME = 'zen-media';
+      export const ZEN_MEDIA_LIST_MIME = 'zen-list';
+      export const COMFY_ASSET_MIME = 'comfy-asset';`),
+  })
+  globalThis.location = { href: 'http://localhost/', origin: 'http://localhost' }
+  const drop = (data) => ({
+    dataTransfer: { types: Object.keys(data), files: [], getData: (type) => data[type] ?? '' },
+  })
+  // A stash card: another pack's proxy URL and a ref that isn't a ComfyUI file.
+  const stash = {
+    'zen-media': JSON.stringify({
+      url: 'http://localhost/zenstash/e/1/media/images/5.jpg',
+      filename: 'beach.jpg',
+      ref: 'stash:1/images/5',
+    }),
+  }
+  const fetched = []
+  globalThis.fetch = async (url) => {
+    fetched.push(url)
+    return { ok: true, blob: async () => new Blob(['x'], { type: 'image/jpeg' }) }
+  }
+  const uploaded = []
+  const upload = async (file, subfolder) => {
+    uploaded.push([file.name, file.type, subfolder])
+    return `input/${subfolder}/${file.name}`
+  }
+  assert.deepEqual(await nodekit.readMediaDrop(drop(stash), 'fresco', upload), [
+    'input/fresco/beach.jpg',
+  ])
+  assert.deepEqual(fetched, ['http://localhost/zenstash/e/1/media/images/5.jpg'])
+  assert.deepEqual(uploaded, [['beach.jpg', 'image/jpeg', 'fresco']])
+  // Not media, or not fetchable: nothing, rather than a broken file.
+  globalThis.fetch = async () => ({
+    ok: true,
+    blob: async () => new Blob(['<html>'], { type: 'text/html' }),
+  })
+  assert.deepEqual(await nodekit.readMediaDrop(drop(stash), 'fresco', upload), [])
+  globalThis.fetch = async () => ({ ok: false })
+  assert.deepEqual(await nodekit.readMediaDrop(drop(stash), 'fresco', upload), [])
+  // A ComfyUI file is still taken as it is, never fetched.
+  globalThis.fetch = async () => assert.fail('a ComfyUI file is never fetched')
+  const own = {
+    'zen-media': JSON.stringify({
+      ref: 'output/one.png',
+      url: 'http://localhost/api/view?filename=one.png',
+    }),
+  }
+  assert.deepEqual(await nodekit.readMediaDrop(drop(own), 'fresco', upload), ['output/one.png'])
+})
