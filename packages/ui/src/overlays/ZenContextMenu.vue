@@ -33,7 +33,7 @@
 <script setup lang="ts">
 // ZenContextMenu — a right-click menu at the pointer. Pass `items` and call `show(event)` from a
 // contextmenu handler; it opens where the pointer is, keeps itself on screen, and closes on a pick
-// (before the pick runs), Escape, or a click anywhere else. `show(event, { clear: rect })` keeps it
+// (before the pick runs, unless the item has `keepOpen`), Escape, or a click anywhere else. `show(event, { clear: rect })` keeps it
 // off a strip — a taskbar: it opens above the strip (below it when there's no room above).
 import '../lib/scrollbar.css'
 import '../lib/surface.css'
@@ -48,6 +48,8 @@ export interface ContextMenuAction {
   hint?: string
   danger?: boolean
   disabled?: boolean
+  /** Leave the menu open after this item runs — for toggles, so several can be set in a row. */
+  keepOpen?: boolean
   run: () => void
 }
 export type ContextMenuItem = ContextMenuAction | { heading: string } | '-'
@@ -105,7 +107,7 @@ function close() {
   window.removeEventListener('keydown', onKey, true)
 }
 function pick(item: ContextMenuAction) {
-  close()
+  if (!item.keepOpen) close()
   item.run()
 }
 onBeforeUnmount(close)

@@ -137,6 +137,7 @@ const items: ContextMenuItem[] = [
 | `hint`     | `string?`    | Right-aligned                              |
 | `danger`   | `boolean?`   |                                            |
 | `disabled` | `boolean?`   |                                            |
+| `keepOpen` | `boolean?`   | Stay open after `run`, for toggles         |
 | `run`      | `() => void` | Called on click, after the menu has closed |
 
 Exposed: `show(e: MouseEvent, opts?: { clear?: DOMRect })`, `close()`. No events or slots. The menu
