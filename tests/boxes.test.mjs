@@ -98,3 +98,22 @@ test('a resize keeps the paint where it was: the mask frame stays and the box cr
   assert.ok(Math.abs(l - 1 / 3) < 1e-9)
   assert.equal(paintMaskCss(painted, leftward).position.split(' ')[0], '100%')
 })
+
+test('pasted boxes land centred on the pointer as one group, kept inside the canvas', async () => {
+  const { placeRects } = await boxes()
+  const pair = [
+    { x: 0.1, y: 0.1, w: 0.2, h: 0.2 },
+    { x: 0.3, y: 0.1, w: 0.2, h: 0.2 },
+  ]
+  const [a, b] = placeRects(pair, [0.5, 0.5])
+  close(a, { x: 0.3, y: 0.4, w: 0.2, h: 0.2 })
+  close(b, { x: 0.5, y: 0.4, w: 0.2, h: 0.2 })
+  const [edge] = placeRects(pair, [0.98, 0.98])
+  close(edge, { x: 0.6, y: 0.8, w: 0.2, h: 0.2 })
+})
+
+test('a duplicate with no pointer is nudged from the original', async () => {
+  const { placeRects } = await boxes()
+  const [copy] = placeRects([{ x: 0.2, y: 0.2, w: 0.1, h: 0.1 }], null, 0.05)
+  close(copy, { x: 0.25, y: 0.25, w: 0.1, h: 0.1 })
+})

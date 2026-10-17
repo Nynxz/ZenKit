@@ -419,19 +419,30 @@ function setMask(id: string, mask: string | null) {
   Ctrl+A selects all. Handled keys stop there, so the graph doesn't also act on them.
 - **Modifiers.** Shift keeps a box's on-screen shape while resizing and locks a move to one axis;
   Alt suspends `snap`.
+- **Undo and redo.** Pass a `history` (see [`createHistory`](#createhistory)) and Ctrl+Z undoes,
+  Ctrl+Shift+Z or Ctrl+Y redoes. Record into it on `commit`.
+- **Right-click, copy, paste, duplicate.** Listen to `menu`, `copy`, `paste` or `duplicate` and the
+  canvas claims the matching click or key; a host that doesn't listen keeps the graph's own.
+  `menu` selects the box under the pointer first and hands over the event (show a
+  `ZenContextMenu` at it) with the ids it acts on, empty on bare canvas. Ctrl+C emits `copy`,
+  Ctrl+X emits `copy` then `delete`, Ctrl+D emits `duplicate`, and Ctrl+V emits `paste` with the
+  pointer's spot on the canvas, or null when the pointer is elsewhere. The host keeps the copied
+  boxes and adds the new ones; `placeRects(rects, at)` places them as a group, centred on `at` or
+  nudged from where they were, without leaving the canvas.
 
-| Prop              | Type             | Default |                                                    |
-| ----------------- | ---------------- | ------- | -------------------------------------------------- |
-| `aspect`          | `number`         | `1`     | Canvas width / height.                             |
-| `backdrop`        | `string \| null` | `null`  | Image under the boxes.                             |
-| `backdropOpacity` | `number`         | `1`     |                                                    |
-| `draw`            | `boolean`        | `true`  | Dragging on empty canvas draws a box.              |
-| `snap`            | `number`         | `0`     | Snap edges to multiples of this fraction.          |
-| `brushSize`       | `number`         | `0.06`  | Brush diameter, as a fraction of the canvas width. |
-| `brushSoftness`   | `number`         | `0.15`  | 0 hard to 1 soft.                                  |
-| `showLabels`      | `boolean`        | `true`  | The number-and-label tag on each box.              |
-| `grid`            | `number`         | `0`     | Faint grid lines every this fraction.              |
-| `minSize`         | `number`         | `0.02`  | Smallest box `create` reports.                     |
+| Prop              | Type              | Default |                                                    |
+| ----------------- | ----------------- | ------- | -------------------------------------------------- |
+| `aspect`          | `number`          | `1`     | Canvas width / height.                             |
+| `backdrop`        | `string \| null`  | `null`  | Image under the boxes.                             |
+| `backdropOpacity` | `number`          | `1`     |                                                    |
+| `draw`            | `boolean`         | `true`  | Dragging on empty canvas draws a box.              |
+| `snap`            | `number`          | `0`     | Snap edges to multiples of this fraction.          |
+| `brushSize`       | `number`          | `0.06`  | Brush diameter, as a fraction of the canvas width. |
+| `brushSoftness`   | `number`          | `0.15`  | 0 hard to 1 soft.                                  |
+| `showLabels`      | `boolean`         | `true`  | The number-and-label tag on each box.              |
+| `grid`            | `number`          | `0`     | Faint grid lines every this fraction.              |
+| `minSize`         | `number`          | `0.02`  | Smallest box `create` reports.                     |
+| `history`         | `History \| null` | `null`  | Undo/redo for Ctrl+Z, Ctrl+Shift+Z and Ctrl+Y.     |
 
 Slots: `box` (`{ box, index, maskStyle }` — drawn inside each box; spread `maskStyle` onto
 whatever should be clipped to the painted shape; a size container, so content can respond to the
@@ -439,6 +450,26 @@ box's size), `empty` (shown with no visible boxes),
 `overlay` (anything drawn over the stage).
 `open` fires on a double-click on a box. The pure geometry (`resizeRect`, `moveRect`, `boxAt`, …)
 is exported for hosts that edit boxes elsewhere.
+
+### createHistory
+
+Undo/redo for an editor whose state is plain JSON-shaped data. `record()` keeps the state as it is
+now (a no-op if nothing changed), so call it once per finished gesture, not per move.
+
+```ts
+import { createHistory } from '@nynxz/zenkit-ui'
+
+const history = createHistory({
+  read: () => scene.value,
+  write: (s) => (scene.value = s),
+  limit: 80,
+})
+// <ZenBoxCanvas :history="history" @commit="history.record()" … />
+```
+
+`undo()` and `redo()` return false when there is nothing to step to; `canUndo` and `canRedo` are
+computed refs for toolbar buttons; `reset()` starts over from the current state, after a load.
+`write` gets a fresh copy each time, so the history never shares objects with the editor.
 
 ## ZenLayerList
 

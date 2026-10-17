@@ -36,6 +36,23 @@ export const BOX_HANDLES: readonly BoxHandle[] = ['nw', 'n', 'ne', 'e', 'se', 's
 
 export const clamp01 = (v: number) => Math.min(1, Math.max(0, v))
 
+/** Where pasted or duplicated `rects` land, as one group: centred on `at` when given, else nudged
+ *  down-right by `offset` from where they were. The group is shifted back inside the canvas rather
+ *  than squashed, so every copy keeps its size. */
+export function placeRects(
+  rects: BoxRect[],
+  at: [number, number] | null,
+  offset = 0.03,
+): BoxRect[] {
+  const all = boundsOf(rects)
+  if (!all) return []
+  let dx = at ? at[0] - (all.x + all.w / 2) : offset
+  let dy = at ? at[1] - (all.y + all.h / 2) : offset
+  dx = Math.min(1 - all.x - all.w, Math.max(-all.x, dx))
+  dy = Math.min(1 - all.y - all.h, Math.max(-all.y, dy))
+  return rects.map((r) => ({ x: r.x + dx, y: r.y + dy, w: r.w, h: r.h }))
+}
+
 /** Round to the nearest multiple of `step`; `step <= 0` leaves the value alone. */
 export function snapTo(v: number, step: number): number {
   return step > 0 ? Math.round(v / step) * step : v

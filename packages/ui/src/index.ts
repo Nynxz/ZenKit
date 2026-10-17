@@ -125,6 +125,7 @@ export {
   intersects,
   nextBelow,
   moveRect,
+  placeRects,
   resizeRect,
   scaleWithin,
   spanRect,
@@ -132,6 +133,7 @@ export {
   type BoxRect,
   type ZenBox,
 } from './lib/boxes'
+export { createHistory, type History, type HistoryOptions } from './lib/history'
 export { insertionIndex, landingTop, rowStride, shiftStyle, sortShift } from './lib/sortable'
 export type {
   TimelineCurve,

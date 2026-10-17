@@ -15,7 +15,7 @@
 // Masks are box-local: an image whose alpha is the shape, stretched over the box, so it moves and
 // scales with it. Painting happens on one canvas laid over the box being painted, and the result
 // goes out as a PNG data URL through `update:mask` when the stroke ends.
-import { computed, onBeforeUnmount, onMounted, ref, watch } from 'vue'
+import { computed, getCurrentInstance, onBeforeUnmount, onMounted, ref, watch } from 'vue'
 import {
   BOX_HANDLES,
   boundsOf,
@@ -34,6 +34,7 @@ import {
   type BoxRect,
   type ZenBox,
 } from '../lib/boxes'
+import type { History } from '../lib/history'
 
 export type BoxTool = 'select' | 'brush' | 'erase'
 
@@ -57,6 +58,8 @@ const props = withDefaults(
     grid?: number
     /** Smallest box `create` reports, as a fraction of either side. */
     minSize?: number
+    /** Undo/redo the canvas's keys drive: Ctrl+Z, and Ctrl+Shift+Z or Ctrl+Y. */
+    history?: Pick<History, 'undo' | 'redo'> | null
   }>(),
   {
     aspect: 1,
@@ -69,6 +72,7 @@ const props = withDefaults(
     showLabels: true,
     grid: 0,
     minSize: 0.02,
+    history: null,
   },
 )
 
@@ -87,7 +91,21 @@ const emit = defineEmits<{
   delete: [ids: string[]]
   /** A box was double-clicked. */
   open: [id: string]
+  /** Right-click. `ids` is the selection it acts on (the box under the pointer is selected
+   *  first); empty on bare canvas. Show a ZenContextMenu at `event`. */
+  menu: [event: MouseEvent, ids: string[]]
+  /** Ctrl+C, or Ctrl+X (followed by `delete`) — the host keeps what these boxes are. */
+  copy: [ids: string[]]
+  /** Ctrl+V. `at` is the pointer over the canvas, or null when it's elsewhere — see `placeRects`. */
+  paste: [at: [number, number] | null]
+  /** Ctrl+D with these boxes selected. */
+  duplicate: [ids: string[]]
 }>()
+
+// Copy, paste, duplicate and the menu only claim their keys and clicks when the host handles
+// them, so a host that doesn't still gets the graph's own Ctrl+C and right-click.
+const vnodeProps = getCurrentInstance()?.vnode.props ?? {}
+const handles = (event: 'onMenu' | 'onCopy' | 'onPaste' | 'onDuplicate') => !!vnodeProps[event]
 
 /** Painting resolution. Box-local, so this is resolution across the BOX, not the canvas. */
 const MASK_RES = 512
@@ -366,6 +384,19 @@ function onUp() {
   }
 }
 
+function onContextMenu(e: MouseEvent) {
+  e.preventDefault()
+  if (!stage.value || !handles('onMenu')) return
+  e.stopPropagation()
+  stage.value.focus({ preventScroll: true })
+  const [x, y] = at(e)
+  const stack = boxesAt(boxes.value, x, y)
+  const chosen = stack.find((b) => selectedSet.value.has(b.id)) ?? stack[0]
+  const ids = !chosen ? [] : selectedSet.value.has(chosen.id) ? [...selected.value] : [chosen.id]
+  selected.value = ids
+  emit('menu', e, ids)
+}
+
 function onDoubleClick(e: MouseEvent) {
   const id = (e.target as HTMLElement).closest<HTMLElement>('[data-box-id]')?.dataset.boxId
   if (id) emit('open', id)
@@ -396,7 +427,19 @@ function onKey(e: KeyboardEvent) {
     ArrowUp: [0, -nudge],
     ArrowDown: [0, nudge],
   }
-  if ((e.key === 'Delete' || e.key === 'Backspace') && selected.value.length) {
+  const mod = e.ctrlKey || e.metaKey
+  const key = e.key.toLowerCase()
+  if (mod && props.history && (key === 'z' || key === 'y')) {
+    if (key === 'y' || e.shiftKey) props.history.redo()
+    else props.history.undo()
+  } else if (mod && (key === 'c' || key === 'x') && selected.value.length && handles('onCopy')) {
+    emit('copy', [...selected.value])
+    if (key === 'x') emit('delete', [...selected.value])
+  } else if (mod && key === 'v' && handles('onPaste')) {
+    emit('paste', pointer.value ? [...pointer.value] : null)
+  } else if (mod && key === 'd' && selected.value.length && handles('onDuplicate')) {
+    emit('duplicate', [...selected.value])
+  } else if ((e.key === 'Delete' || e.key === 'Backspace') && selected.value.length) {
     emit('delete', [...selected.value])
   } else if (e.key === 'Escape') {
     selected.value = []
@@ -632,7 +675,7 @@ const gridStyle = computed(() =>
       @pointerleave="pointer = null"
       @dblclick="onDoubleClick"
       @keydown="onKey"
-      @contextmenu.prevent
+      @contextmenu="onContextMenu"
     >
       <img
         v-if="backdrop"
