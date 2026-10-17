@@ -61,6 +61,7 @@ export function addNodeHeaderButton(
   identity: Identity,
 ): NodeHeaderButtonHandle {
   let active = false
+  let hovered = false
 
   // ── Nodes 2.0: a DOM button pinned to the right of the header ───────────────────────────
   const btn = document.createElement('button')
@@ -95,6 +96,14 @@ export function addNodeHeaderButton(
     e.stopPropagation()
     opts.onClick()
   })
+  btn.addEventListener('pointerenter', () => {
+    hovered = true
+    paint()
+  })
+  btn.addEventListener('pointerleave', () => {
+    hovered = false
+    paint()
+  })
   // Absorb double-click too, or toggling twice quickly opens litegraph's title rename.
   btn.addEventListener('dblclick', (e) => {
     e.stopPropagation()
@@ -114,6 +123,13 @@ export function addNodeHeaderButton(
   }
   ensure()
   const interval = window.setInterval(ensure, 500)
+
+  /** Lit (accent, full opacity) while active or hovered; dimmed otherwise. */
+  function paint() {
+    const lit = active || hovered
+    btn.style.opacity = lit ? '1' : '0.6'
+    btn.style.color = lit ? `var(--zen-accent, ${ACCENT})` : 'inherit'
+  }
 
   // ── Nodes 1.0: a litegraph canvas title button ──────────────────────────────────────────
   const lg = node as LiteNode
@@ -138,8 +154,7 @@ export function addNodeHeaderButton(
   }
 
   const applyActive = () => {
-    btn.style.opacity = active ? '1' : '0.6'
-    btn.style.color = active ? `var(--zen-accent, ${ACCENT})` : 'inherit'
+    paint()
     if (lgBtn) {
       lgBtn.bgColor = active ? (opts.activeColor ?? ACCENT) : LG_IDLE_BG
       redraw()
