@@ -1,6 +1,6 @@
 <script setup lang="ts">
 // ZenMenuItem — a styled action row for inside a ZenPopover. Icon + label (the default slot)
-// + optional #hint / danger. Add a #submenu slot to make it a submenu trigger: the flyout
+// + optional #lead (before the icon: a ZenDot for a toggle) / #hint / danger. Add a #submenu slot to make it a submenu trigger: the flyout
 // opens on hover with a close-delay (hover-intent) so a diagonal cursor path toward it doesn't
 // snap it shut — the failing of a pure CSS :hover submenu. Emits `select` on click.
 import { ref, useSlots } from 'vue'
@@ -59,6 +59,7 @@ function onClick() {
     :disabled="disabled"
     @click="onClick"
   >
+    <span v-if="slots.lead" class="zmi-lead"><slot name="lead" /></span>
     <i v-if="icon" class="zmi-ico" :class="iconClass(icon)" />
     <span class="zmi-lbl"><slot /></span>
     <span v-if="slots.hint" class="zmi-hint"><slot name="hint" /></span>
@@ -66,6 +67,11 @@ function onClick() {
 </template>
 
 <style scoped>
+.zmi-lead {
+  flex: none;
+  display: inline-flex;
+  align-items: center;
+}
 .zmi-wrap {
   position: relative;
 }
