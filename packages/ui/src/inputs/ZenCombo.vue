@@ -9,6 +9,7 @@ import { computed, nextTick, onBeforeUnmount, ref, useSlots, watch } from 'vue'
 import type { ComboItem } from '../types'
 import { inOtherLayer, openLayer, Z, type Layer } from '../overlays/layers'
 import ZenPeek from '../feature/ZenPeek.vue'
+import { followAnchor, liveRect } from '../lib/followAnchor'
 import '../lib/scrollbar.css'
 import '../lib/surface.css'
 
@@ -189,11 +190,19 @@ function openMenu() {
     window.addEventListener('pointerdown', onDoc, true)
     window.addEventListener('scroll', onOutsideScroll, true)
     window.addEventListener('resize', place)
+    stopFollow = followAnchor(
+      () => liveRect(root.value?.querySelector('.zc-trigger')),
+      place,
+      close,
+    )
   })
 }
+let stopFollow: (() => void) | null = null
 function close() {
   if (!open.value) return
   open.value = false
+  stopFollow?.()
+  stopFollow = null
   layer?.release()
   layer = null
   window.removeEventListener('pointerdown', onDoc, true)

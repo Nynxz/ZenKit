@@ -33,7 +33,8 @@
 <script setup lang="ts">
 // ZenContextMenu — a right-click menu at the pointer. Pass `items` and call `show(event)` from a
 // contextmenu handler; it opens where the pointer is, keeps itself on screen, and closes on a pick
-// (before the pick runs, unless the item has `keepOpen`), Escape, or a click anywhere else. `show(event, { clear: rect })` keeps it
+// (before the pick runs, unless the item has `keepOpen`), Escape, a click anywhere else, or a
+// wheel scroll or zoom outside it. `show(event, { clear: rect })` keeps it
 // off a strip — a taskbar: it opens above the strip (below it when there's no room above).
 import '../lib/scrollbar.css'
 import '../lib/surface.css'
@@ -96,7 +97,12 @@ async function show(e: MouseEvent, opts?: { clear?: DOMRect | null }) {
   setTimeout(() => {
     window.addEventListener('pointerdown', onDoc, true)
     window.addEventListener('keydown', onKey, true)
+    window.addEventListener('wheel', onWheel, { capture: true, passive: true })
   }, 0)
+}
+/** Opened at a point, it has nothing to follow: a wheel zoom or scroll elsewhere puts it away. */
+function onWheel(e: WheelEvent) {
+  if (!menuEl.value?.contains(e.target as Node)) close()
 }
 function close() {
   if (!open.value) return
@@ -105,6 +111,7 @@ function close() {
   layer = null
   window.removeEventListener('pointerdown', onDoc, true)
   window.removeEventListener('keydown', onKey, true)
+  window.removeEventListener('wheel', onWheel, true)
 }
 function pick(item: ContextMenuAction) {
   if (!item.keepOpen) close()
