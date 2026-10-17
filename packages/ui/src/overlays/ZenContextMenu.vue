@@ -138,7 +138,7 @@ defineExpose({ show, close })
   width: 100%;
   padding: 6px 8px;
   border: 0;
-  border-radius: 5px;
+  border-radius: var(--zen-radius, 7px);
   background: none;
   color: inherit;
   font: inherit;

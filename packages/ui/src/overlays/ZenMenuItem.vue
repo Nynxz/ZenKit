@@ -80,7 +80,7 @@ function onClick() {
   font-size: 12px;
   padding: 7px 9px;
   border: none;
-  border-radius: max(0px, calc(var(--zen-radius, 7px) - 3px));
+  border-radius: var(--zen-radius, 7px);
   background: none;
   color: var(--zen-text, #e5e5ea);
 }
