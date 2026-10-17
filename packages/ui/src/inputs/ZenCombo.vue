@@ -8,6 +8,7 @@ import '../lib/motion.css'
 import { computed, nextTick, onBeforeUnmount, ref, useSlots, watch } from 'vue'
 import type { ComboItem } from '../types'
 import { inOtherLayer, openLayer, Z, type Layer } from '../overlays/layers'
+import ZenPeek from '../feature/ZenPeek.vue'
 import '../lib/scrollbar.css'
 import '../lib/surface.css'
 
@@ -380,6 +381,7 @@ onBeforeUnmount(close)
         </div>
 
         <div v-if="$slots.footer" class="zc-footer"><slot name="footer" :close="close" /></div>
+        <ZenPeek />
       </div>
     </Teleport>
   </div>
