@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict'
 import test from 'node:test'
 import { sourceModule, sourceUrl } from './source.mjs'
-import { testRenderer } from './renderer.mjs'
+import { findElement, testRenderer } from './renderer.mjs'
 
 function findStage(el) {
   if (el.props?.tabindex === '-1') return el
@@ -40,6 +40,8 @@ async function mount(props = {}) {
   app.mount(root)
   const stage = findStage(root)
   stage.focus = () => {}
+  const keys = findElement(stage, 'input')
+  keys.focus = () => (keys.focused = true)
   stage.getBoundingClientRect = () => ({ left: 0, top: 0, width: 100, height: 100 })
   let defaultPrevented = false
   let propagationStopped = false
@@ -59,7 +61,7 @@ async function mount(props = {}) {
     })
     return { defaultPrevented, propagationStopped }
   }
-  return { app, events, state, fire }
+  return { app, events, state, fire, keys }
 }
 
 test('Ctrl+Z undoes and Ctrl+Shift+Z or Ctrl+Y redo through the history it was given', async () => {
@@ -100,11 +102,12 @@ test('a host that handles none of them leaves Ctrl+C and right-click to the grap
 })
 
 test('right-click selects the box under the pointer and hands the menu its ids', async () => {
-  const { events, state, fire } = await mount((events) => ({
+  const { events, state, fire, keys } = await mount((events) => ({
     onMenu: (_event, ids) => events.push(ids),
   }))
   const click = fire('onContextmenu', { clientX: 70, clientY: 70 })
   assert.ok(click.defaultPrevented && click.propagationStopped)
+  assert.ok(keys.focused, 'keyboard focus goes to the hidden input, which hosts skip shortcuts for')
   fire('onContextmenu', { clientX: 50, clientY: 5 })
   assert.deepEqual(events, [['b'], []])
   assert.deepEqual(state.selected, [])

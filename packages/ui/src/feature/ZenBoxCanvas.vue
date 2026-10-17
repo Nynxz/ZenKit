@@ -114,6 +114,7 @@ const MASK_RES = 512
 const STORE_RES = 256
 
 const frame = ref<HTMLElement | null>(null)
+const keysEl = ref<HTMLInputElement | null>(null)
 const stage = ref<HTMLElement | null>(null)
 const paintEl = ref<HTMLCanvasElement | null>(null)
 
@@ -193,7 +194,7 @@ function setRects(rects: Map<string, BoxRect>) {
 
 function onDown(e: PointerEvent) {
   if (e.button !== 0 || !stage.value) return
-  stage.value.focus({ preventScroll: true })
+  takeKeys()
   const [x, y] = at(e)
   const target = e.target as HTMLElement
 
@@ -388,7 +389,7 @@ function onContextMenu(e: MouseEvent) {
   e.preventDefault()
   if (!stage.value || !handles('onMenu')) return
   e.stopPropagation()
-  stage.value.focus({ preventScroll: true })
+  takeKeys()
   const [x, y] = at(e)
   const stack = boxesAt(boxes.value, x, y)
   const chosen = stack.find((b) => selectedSet.value.has(b.id)) ?? stack[0]
@@ -400,6 +401,14 @@ function onContextMenu(e: MouseEvent) {
 function onDoubleClick(e: MouseEvent) {
   const id = (e.target as HTMLElement).closest<HTMLElement>('[data-box-id]')?.dataset.boxId
   if (id) emit('open', id)
+}
+
+/** Keyboard focus goes to a hidden read-only input inside the stage, not the stage itself. Keys
+ *  still bubble to the stage's handler, but a host page that skips its own shortcuts while a text
+ *  field has focus — ComfyUI's graph undo listens on the window, before any handler here can stop
+ *  it — now leaves Ctrl+Z, Delete and the rest to the canvas. */
+function takeKeys() {
+  ;(keysEl.value ?? stage.value)?.focus({ preventScroll: true })
 }
 
 function capture(e: PointerEvent) {
@@ -668,6 +677,7 @@ const gridStyle = computed(() =>
       tabindex="-1"
       data-zen-drag
       @pointerdown="onDown"
+      @mousedown.prevent
       @pointermove="onMove"
       @pointerup="onUp"
       @pointercancel="onUp"
@@ -677,6 +687,7 @@ const gridStyle = computed(() =>
       @keydown="onKey"
       @contextmenu="onContextMenu"
     >
+      <input ref="keysEl" class="zbc-keys" readonly tabindex="-1" aria-hidden="true" />
       <img
         v-if="backdrop"
         class="zbc-backdrop"
@@ -789,7 +800,18 @@ const gridStyle = computed(() =>
   touch-action: none;
   cursor: crosshair;
 }
-.zbc:focus {
+.zbc-keys {
+  position: absolute;
+  top: 0;
+  left: 0;
+  width: 1px;
+  height: 1px;
+  padding: 0;
+  border: 0;
+  opacity: 0;
+  pointer-events: none;
+}
+.zbc:focus-within {
   outline: 1px solid color-mix(in srgb, var(--zen-text, #fff) 22%, transparent);
   outline-offset: -1px;
 }
