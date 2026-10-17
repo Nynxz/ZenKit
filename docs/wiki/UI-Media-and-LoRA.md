@@ -186,7 +186,7 @@ nodekit's `mediaLibrary` fits it directly ([Nodekit media](Nodekit-Media.md#medi
 | `open`         | `boolean`            | required                      | Use `v-model:open`              |
 | `library`      | `MediaPickerLibrary` | required                      | Data source                     |
 | `kinds`        | `MediaPickerKind[]`  | `['image', 'video', 'audio']` | Which kinds are shown           |
-| `multiple`     | `boolean`            | `true`                        |                                 |
+| `multiple`     | `boolean`            | `false`                       | Select several, in click order  |
 | `title`        | `string`             | `'Choose media'`              |                                 |
 | `confirmLabel` | `string`             | `'Add'`                       |                                 |
 | `subfolder`    | `string`             | `'zenkit'`                    | Upload target under `input/`    |
