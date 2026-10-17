@@ -56,4 +56,8 @@ export { registerZenCapability, type ZenCapability } from './zenCapability'
 // createNodekit; only their types are here.
 export type { DOMWidget, MountOptions, NodeLike } from './mountWidget'
 export { mirrorOf, type ZenMirror } from './widgetMirror'
-export type { NodeHeaderButtonHandle, NodeHeaderButtonOptions } from './nodeHeaderButton'
+export type {
+  HeaderButtonAnchor,
+  NodeHeaderButtonHandle,
+  NodeHeaderButtonOptions,
+} from './nodeHeaderButton'

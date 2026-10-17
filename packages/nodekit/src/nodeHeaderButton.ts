@@ -5,7 +5,7 @@
  *     icon: 'mdi mdi-cog',   // Vue nodes: class on an <i> in the DOM header
  *     text: '\u2699',            // canvas nodes: glyph for the title button
  *     title: 'Settings',
- *     onClick: () => {},
+ *     onClick: (anchor) => {}, // the DOM button (2.0) or the click point (1.0) — a popover anchor
  *   })
  *   cog.destroy()            // in onBeforeUnmount
  *
@@ -22,10 +22,14 @@ export interface NodeHeaderButtonOptions {
   /** Glyph for the Nodes 1.0 canvas title button (default '⚙'). */
   text?: string
   title?: string
-  onClick: () => void
+  /** `anchor` is where to hang a popover: the DOM button on Nodes 2.0, the click point on the
+   *  1.0 canvas, which draws its title buttons and has no element for them. */
+  onClick: (anchor: HeaderButtonAnchor) => void
   /** Background for the active state on the 1.0 canvas button. */
   activeColor?: string
 }
+
+export type HeaderButtonAnchor = HTMLElement | { x: number; y: number }
 
 export interface NodeHeaderButtonHandle {
   destroy(): void
@@ -94,7 +98,7 @@ export function addNodeHeaderButton(
   btn.addEventListener('pointerup', (e) => e.stopPropagation())
   btn.addEventListener('click', (e) => {
     e.stopPropagation()
-    opts.onClick()
+    opts.onClick(btn)
   })
   btn.addEventListener('pointerenter', () => {
     hovered = true
@@ -135,8 +139,14 @@ export function addNodeHeaderButton(
   const lg = node as LiteNode
   const redraw = () => (lg.setDirtyCanvas ?? lg.graph?.setDirtyCanvas)?.(true, true)
   let lgBtn: { bgColor?: string; fgColor?: string } | null = null
+  const pressedAt = { x: 0, y: 0 }
+  const notePress = (e: PointerEvent) => {
+    pressedAt.x = e.clientX
+    pressedAt.y = e.clientY
+  }
   if (typeof lg.addTitleButton === 'function') {
     try {
+      window.addEventListener('pointerdown', notePress, true)
       lgBtn = lg.addTitleButton({
         text: opts.text ?? '⚙',
         name: `${identity.NAMESPACE}-header-btn`,
@@ -146,7 +156,7 @@ export function addNodeHeaderButton(
       const previous = lg.onTitleButtonClick
       lg.onTitleButtonClick = function (this: unknown, button: unknown, canvas: unknown) {
         previous?.call(this, button, canvas)
-        if (button === lgBtn) opts.onClick()
+        if (button === lgBtn) opts.onClick({ ...pressedAt })
       }
     } catch {
       lgBtn = null
@@ -164,6 +174,7 @@ export function addNodeHeaderButton(
   return {
     destroy() {
       window.clearInterval(interval)
+      window.removeEventListener('pointerdown', notePress, true)
       btn.remove()
       if (lgBtn && Array.isArray(lg.title_buttons)) {
         const i = lg.title_buttons.indexOf(lgBtn)
