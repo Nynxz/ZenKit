@@ -4,9 +4,12 @@
 //                   (keyboard: ←/→ while focused); rests at `rest` (0–1) when the pointer leaves
 //   mode="dissolve" `before`, crossfading to `after` while hovered
 // Labels are optional corner tags. The frame keeps the images' box (object-fit: cover).
+// `track-closest` (a selector) lets the nearest matching ancestor — a card around it — drive the
+// divider too: past the picture's edge it pins to that side, and it rests only when the pointer
+// leaves that ancestor.
 //
 //   <ZenCompare :before="plain" :after="styled" before-label="Before" after-label="After" />
-import { computed, ref } from 'vue'
+import { computed, onBeforeUnmount, onMounted, ref } from 'vue'
 
 const props = withDefaults(
   defineProps<{
@@ -18,6 +21,8 @@ const props = withDefaults(
     /** where the divider sits with no pointer over it (0 = all `after`, 1 = all `before`) */
     rest?: number
     alt?: string
+    /** a selector: the closest ancestor matching it also moves the divider (see above) */
+    trackClosest?: string
   }>(),
   { mode: 'slider', rest: 0.5, alt: '' },
 )
@@ -26,15 +31,31 @@ const split = ref<number | null>(null)
 const at = computed(() => split.value ?? props.rest)
 const hovering = ref(false)
 
+const root = ref<HTMLElement | null>(null)
 function onMove(e: PointerEvent) {
-  if (props.mode !== 'slider') return
-  const r = (e.currentTarget as HTMLElement).getBoundingClientRect()
+  if (props.mode !== 'slider' || !root.value) return
+  const r = root.value.getBoundingClientRect()
   split.value = Math.min(1, Math.max(0, (e.clientX - r.left) / r.width))
 }
 function onLeave() {
   split.value = null
   hovering.value = false
 }
+let area: HTMLElement | null = null
+const tracked = ref(false) // an ancestor drives it: the picture's own events bubble up to that
+const onAreaEnter = () => (hovering.value = true)
+onMounted(() => {
+  area = props.trackClosest ? (root.value?.parentElement?.closest<HTMLElement>(props.trackClosest) ?? null) : null
+  tracked.value = !!area
+  area?.addEventListener('pointermove', onMove)
+  area?.addEventListener('pointerenter', onAreaEnter)
+  area?.addEventListener('pointerleave', onLeave)
+})
+onBeforeUnmount(() => {
+  area?.removeEventListener('pointermove', onMove)
+  area?.removeEventListener('pointerenter', onAreaEnter)
+  area?.removeEventListener('pointerleave', onLeave)
+})
 function onKey(e: KeyboardEvent) {
   if (props.mode !== 'slider' || (e.key !== 'ArrowLeft' && e.key !== 'ArrowRight')) return
   e.preventDefault()
@@ -44,15 +65,16 @@ function onKey(e: KeyboardEvent) {
 
 <template>
   <div
+    ref="root"
     class="zen-compare"
     :class="[mode, { hovering, moving: split !== null }]"
     :style="{ '--split': `${at * 100}%` }"
     :tabindex="mode === 'slider' ? 0 : undefined"
     role="img"
     :aria-label="alt || `${beforeLabel ?? 'Before'} / ${afterLabel ?? 'After'}`"
-    @pointermove="onMove"
+    @pointermove="tracked || onMove($event)"
     @pointerenter="hovering = true"
-    @pointerleave="onLeave"
+    @pointerleave="tracked || onLeave()"
     @keydown="onKey"
     @blur="split = null"
   >
