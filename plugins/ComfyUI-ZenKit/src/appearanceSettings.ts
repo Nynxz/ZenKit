@@ -9,6 +9,22 @@ import { theme } from '@nynxz/zenkit-core'
 
 const RESTYLE_ID = 'zenkit.appearance.restyleComfy'
 
+/** The top-bar Zen Settings button's tooltip, which ComfyUI also uses as its aria-label — the
+ *  only stable handle on a button ComfyUI renders for us. */
+export const SETTINGS_BUTTON_TOOLTIP = 'ZenKit — Zen Settings'
+
+const HIDE_BUTTON_STYLE_ID = 'zenkit-hide-settings-button'
+
+// Styled away rather than unregistered: ComfyUI reads `actionBarButtons` once, at registration.
+function showSettingsButton(show: boolean): void {
+  document.getElementById(HIDE_BUTTON_STYLE_ID)?.remove()
+  if (show) return
+  const style = document.createElement('style')
+  style.id = HIDE_BUTTON_STYLE_ID
+  style.textContent = `button[aria-label="${SETTINGS_BUTTON_TOOLTIP}"] { display: none !important; }`
+  document.head.appendChild(style)
+}
+
 export function registerAppearanceSettings(): void {
   app.registerExtension({
     name: 'zenkit.appearance.settings',
@@ -25,6 +41,19 @@ export function registerAppearanceSettings(): void {
           'taskbar and panels still follow the theme.',
         onChange(value: boolean) {
           theme.setComfyRestyle(value !== false)
+        },
+      },
+      {
+        id: 'zenkit.appearance.settingsButton',
+        name: 'Show the Zen Settings top bar button',
+        category: ['ZenKit', 'Appearance', 'Settings button'],
+        type: 'boolean',
+        defaultValue: true,
+        tooltip:
+          'Show the Zen Settings button in the top bar. Zen Settings stays in the Start menu and ' +
+          'the command palette either way.',
+        onChange(value: boolean) {
+          showSettingsButton(value !== false)
         },
       },
     ],

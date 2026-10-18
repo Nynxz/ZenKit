@@ -1,6 +1,6 @@
 import { app } from '@comfy/app'
 import { registerBackgroundSettings } from './backgroundSettings'
-import { registerAppearanceSettings } from './appearanceSettings'
+import { registerAppearanceSettings, SETTINGS_BUTTON_TOOLTIP } from './appearanceSettings'
 import { registerSuite } from './suite'
 import { allowedHostsSetting } from './allowedHosts'
 import {
@@ -66,7 +66,7 @@ app.registerExtension({
   actionBarButtons: [
     {
       icon: 'mdi mdi-tune-variant',
-      tooltip: 'ZenKit — Zen Settings',
+      tooltip: SETTINGS_BUTTON_TOOLTIP,
       onClick: openZenSettings,
     },
   ],
