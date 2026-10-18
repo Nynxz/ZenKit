@@ -329,6 +329,10 @@ const { dropLine, draggingId, onPointerDown, clickWasDrag } = useTaskReorder(
   taskIds,
   (id, beforeId) => ops.reorderTask(taskIds(), id, beforeId),
 )
+// Room for the overflow chip. Also the task strip's minimum width while it holds any tasks:
+// everything else on the bar (apps, workspaces, widgets) is rigid, so without a floor the strip
+// can shrink to nothing and clip the chip along with the tasks it stands for.
+const CHIP = 44
 const visibleCount = ref(99)
 const overflowCount = computed(() => Math.max(0, tasks.value.length - visibleCount.value))
 const overflowTasks = computed(() => tasks.value.slice(visibleCount.value))
@@ -347,7 +351,6 @@ function measureTasks() {
     visibleCount.value = n
     return
   } // all fit
-  const CHIP = 44 // reserve room for the overflow chip
   let count = 0
   for (let i = 0; i < n; i++) {
     if (btns[i].offsetLeft + btns[i].offsetWidth <= avail - CHIP) count = i + 1
@@ -742,7 +745,11 @@ function openTaskFromOverflow(p: Parameters<typeof taskClick>[0]) {
       </button>
     </div>
 
-    <div ref="tasksEl" class="tb-tasks">
+    <div
+      ref="tasksEl"
+      class="tb-tasks"
+      :style="tasks.length ? { minWidth: CHIP + 'px' } : undefined"
+    >
       <button
         v-for="(p, i) in tasks"
         :key="p.id"
@@ -1118,7 +1125,9 @@ img.tb-logo {
 .tb-task.tb-off {
   visibility: hidden;
 } /* overflowed: kept in DOM for stable measurement */
-.tb-ovf {
+/* Two classes so it outranks `.tb-task { position: relative }` further down: at equal weight
+   that later rule wins and the chip lays out after the overflowed tasks, clipped out of view. */
+.tb-task.tb-ovf {
   position: absolute;
   right: 0;
   top: 0;
