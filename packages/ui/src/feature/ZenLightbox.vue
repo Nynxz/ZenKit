@@ -876,8 +876,25 @@ defineExpose({
               class="zlb-media zlb-layered"
               :style="mediaStyle"
             >
-              <img :src="item.src" draggable="false" alt="" @load="onMediaMeta" />
               <img
+                :src="item.src"
+                draggable="false"
+                alt=""
+                :class="{ 'zlb-masked-out': showOverlay && item.overlayMode === 'mask' }"
+                @load="onMediaMeta"
+              />
+              <!-- "mask": the picture again, cut to the overlay's white part, over a dimmed copy -->
+              <img
+                v-if="item.overlayMode === 'mask'"
+                v-show="showOverlay"
+                :src="item.src"
+                class="zlb-overlay-mask"
+                :style="{ maskImage: `url(${item.overlay})` }"
+                draggable="false"
+                alt=""
+              />
+              <img
+                v-else
                 v-show="showOverlay"
                 :src="item.overlay"
                 class="zlb-overlay"
@@ -1491,6 +1508,16 @@ defineExpose({
 .zlb-overlay {
   mix-blend-mode: multiply;
   opacity: 0.75;
+  pointer-events: none;
+}
+.zlb-masked-out {
+  /* dimmed, not faded: opacity would let the page behind show through */
+  filter: grayscale(0.85) brightness(0.32);
+}
+.zlb-overlay-mask {
+  mask-mode: luminance;
+  mask-size: 100% 100%;
+  mask-repeat: no-repeat;
   pointer-events: none;
 }
 /* a floating card like the thumbnails strip on the other side */

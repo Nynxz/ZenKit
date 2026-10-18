@@ -21,6 +21,9 @@ export interface LightboxItem {
   /** Image laid over the picture (e.g. a training mask), multiplied in; zooms, pans and
    *  rotates with it. M or the toolbar toggles it. */
   overlay?: string
+  /** how the overlay shows: "multiply" (default) darkens through it; "mask" reads it as a mask:
+   *  the picture dims and only the overlay's white part shows at full strength */
+  overlayMode?: 'multiply' | 'mask'
   /** If set, the lightbox shows a "Load workflow" button that calls this. */
   onWorkflow?: () => void
 }
