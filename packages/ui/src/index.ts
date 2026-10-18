@@ -101,6 +101,7 @@ export type { PeekKind, PeekRender, PeekRenderContext } from './feature/peek'
 export type { ContextMenuAction, ContextMenuItem } from './overlays/ZenContextMenu.vue'
 
 // feature
+export { default as ZenCompare } from './feature/ZenCompare.vue'
 export { default as ZenLightbox } from './feature/ZenLightbox.vue'
 export { default as ZenMediaControls } from './feature/ZenMediaControls.vue'
 export { default as ZenStepChart } from './feature/ZenStepChart.vue'
