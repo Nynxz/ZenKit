@@ -10,6 +10,7 @@ import '../lib/motion.css'
 import { computed, nextTick, onBeforeUnmount, onMounted, ref, watch, Teleport } from 'vue'
 import ZenIconButton from '../primitives/ZenIconButton.vue'
 import ZenScroll from '../primitives/ZenScroll.vue'
+import ZenTip from '../primitives/ZenTip.vue'
 import ZenPopover from '../overlays/ZenPopover.vue'
 import ZenSwitch from '../inputs/ZenSwitch.vue'
 import ZenSlider from '../inputs/ZenSlider.vue'
@@ -72,12 +73,16 @@ const T_GAP = 7
 const T_OVERSCAN = 3
 const tileW = ref(92) // min tile width; tiles grow to fill the row
 const sideWidth = ref(264) // panel width — user-resizable via the drag handle
-const sideScroll = ref<{ $el?: HTMLElement } | null>(null) // the ZenScroll component ref
+const sideScroll = ref<{ viewport: HTMLElement | null } | null>(null) // the ZenScroll component ref
 const sideScrollTop = ref(0)
 const sideW = ref(244)
+// the thumbnails sidebar is open: the position lives in its footer instead of the top bar
+const sideShown = computed(() => showChrome.value && !props.inline && strip.value && count.value > 1 && !props.grid)
+// what the top bar's ⓘ tells: the item's name and details
+const infoText = computed(() => [item.value?.label, item.value?.meta].filter(Boolean).join(' · '))
 const sideH = ref(480)
 let sideRO: ResizeObserver | null = null
-const scrollDiv = (): HTMLElement | null => (sideScroll.value?.$el as HTMLElement) ?? null
+const scrollDiv = (): HTMLElement | null => sideScroll.value?.viewport ?? null
 
 function onSideScroll(e: Event) {
   sideScrollTop.value = (e.target as HTMLElement).scrollTop
@@ -712,7 +717,7 @@ defineExpose({
     >
       <Transition name="zlb-side">
         <aside
-          v-if="showChrome && !inline && strip && count > 1 && !grid"
+          v-if="sideShown"
           class="zlb-side"
           :style="{ flexBasis: sideWidth + 'px', '--zlb-side-w': sideWidth + 'px' }"
         >
@@ -722,7 +727,7 @@ defineExpose({
               <input v-model="search" placeholder="Search…" spellcheck="false" />
             </div>
           </div>
-          <ZenScroll ref="sideScroll" class="zlb-tscroll" @scroll="onSideScroll">
+          <ZenScroll ref="sideScroll" class="zlb-tscroll" overlay @scroll="onSideScroll">
             <div class="zlb-tpad" :style="{ height: tTotalH + 'px' }">
               <div class="zlb-grid" :style="tGridStyle">
                 <button
@@ -766,9 +771,9 @@ defineExpose({
               @click.stop="zoomThumbs(1)"
             />
             <span class="zlb-grow" />
-            <span class="zlb-foot-n">
-              {{ thumbs.length }}
-              <template v-if="thumbs.length !== count">/ {{ count }}</template>
+            <span class="zlb-foot-n" :title="thumbs.length !== count ? `${thumbs.length} match the search` : undefined">
+              {{ count ? index + 1 : 0 }} / {{ count }}
+              <template v-if="thumbs.length !== count"> · {{ thumbs.length }} shown</template>
             </span>
           </div>
           <div
@@ -783,11 +788,10 @@ defineExpose({
 
       <div class="zlb-main" :class="{ idle: idle && !inline }" @pointermove="wake">
         <header v-if="showChrome" class="zlb-top">
-          <!-- fixed width, counter first: paging through items never resizes or shifts the bar -->
-          <div
-            class="zlb-chrome zlb-info"
-            :title="[item?.label, item?.meta].filter(Boolean).join('\n')"
-          >
+          <!-- compact: an ⓘ with the name and details, and the position unless the thumbnails
+               sidebar shows it; fixed-width counter, so paging never resizes the bar -->
+          <div v-if="infoText || grid || !sideShown" class="zlb-chrome zlb-info">
+            <span v-if="infoText" class="zlb-tip"><ZenTip :text="infoText" label="About this picture" /></span>
             <span
               v-if="grid"
               class="zlb-pos"
@@ -799,11 +803,9 @@ defineExpose({
               {{ Math.floor(index / grid) + 1 }}/{{ Math.ceil(count / grid) }} ·
               {{ (index % grid) + 1 }}/{{ grid }}
             </span>
-            <span v-else class="zlb-pos" :style="{ minWidth: `${String(count).length * 2 + 3}ch` }">
+            <span v-else-if="!sideShown" class="zlb-pos" :style="{ minWidth: `${String(count).length * 2 + 3}ch` }">
               {{ count ? index + 1 : 0 }} / {{ count }}
             </span>
-            <span v-if="item?.label" class="zlb-label">{{ item.label }}</span>
-            <span v-if="item?.meta" class="zlb-meta">{{ item.meta }}</span>
           </div>
           <span class="zlb-grow" />
           <div class="zlb-chrome zlb-actions">
@@ -1047,7 +1049,7 @@ defineExpose({
       </div>
 
       <aside v-if="$slots.side && item && !inline" class="zlb-panel">
-        <ZenScroll class="zlb-panel-scroll">
+        <ZenScroll class="zlb-panel-scroll" overlay>
           <div class="zlb-panel-body"><slot name="side" :item="item" :index="index" /></div>
         </ZenScroll>
       </aside>
@@ -1146,32 +1148,26 @@ defineExpose({
   flex: 1;
 }
 .zlb-info {
-  gap: 10px;
+  gap: 6px;
   min-width: 0;
-  width: min(560px, 100%);
-  flex: 0 1 auto;
+  flex: 0 0 auto;
   height: 38px;
   box-sizing: border-box;
-  padding: 0 14px;
+  padding: 0 10px 0 4px;
   font-size: 13px;
 }
-.zlb-label {
-  font-weight: 600;
-  color: var(--zen-text, #e5e5ea);
-  white-space: nowrap;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  flex: 0 1 auto;
-  min-width: 0;
+.zlb-info:not(:has(.zlb-pos)) {
+  padding-right: 4px;
 }
-.zlb-meta {
-  flex: 1 1 0;
-  min-width: 0;
-  overflow: hidden;
-  text-overflow: ellipsis;
+.zlb-tip {
+  display: grid;
+  place-items: center;
+  width: 30px;
+  height: 30px;
+  font-size: 15px;
+  color: var(--zen-muted, #9aa0aa);
 }
 .zlb-pos,
-.zlb-meta,
 .zlb-zval {
   font-size: 11.5px;
   color: var(--zen-muted, #9aa0aa);
@@ -1369,6 +1365,8 @@ defineExpose({
 .zlb-tscroll {
   flex: 1;
   min-height: 0;
+}
+.zlb-tscroll :deep(.zen-scroll-viewport) {
   padding: 10px;
 }
 .zlb-tpad {
