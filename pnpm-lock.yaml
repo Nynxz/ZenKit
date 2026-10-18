@@ -92,6 +92,9 @@ importers:
       '@nynxz/zenkit-client':
         specifier: workspace:*
         version: link:../client
+      vite:
+        specifier: ^6.4.3
+        version: 6.4.3(@types/node@22.20.1)
 
   packages/ui:
     dependencies:

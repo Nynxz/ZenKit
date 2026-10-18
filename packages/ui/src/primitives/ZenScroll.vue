@@ -117,7 +117,12 @@ defineExpose({
     class="zen-scroll-ov"
     :class="{ x: horizontal, active, scrollable }"
   >
-    <div ref="inner" class="zen-scroll zen-scroll-viewport" :class="{ x: horizontal }" @scroll.passive="onScroll">
+    <div
+      ref="inner"
+      class="zen-scroll zen-scroll-viewport"
+      :class="{ x: horizontal }"
+      @scroll.passive="onScroll"
+    >
       <slot />
     </div>
     <div v-show="scrollable" class="zen-scroll-track" @pointerdown="onTrackDown">

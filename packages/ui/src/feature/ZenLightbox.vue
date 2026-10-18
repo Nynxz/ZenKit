@@ -77,7 +77,9 @@ const sideScroll = ref<{ viewport: HTMLElement | null } | null>(null) // the Zen
 const sideScrollTop = ref(0)
 const sideW = ref(244)
 // the thumbnails sidebar is open: the position lives in its footer instead of the top bar
-const sideShown = computed(() => showChrome.value && !props.inline && strip.value && count.value > 1 && !props.grid)
+const sideShown = computed(
+  () => showChrome.value && !props.inline && strip.value && count.value > 1 && !props.grid,
+)
 // what the top bar's ⓘ tells: the item's name and details
 const infoText = computed(() => [item.value?.label, item.value?.meta].filter(Boolean).join(' · '))
 const sideH = ref(480)
@@ -795,9 +797,12 @@ defineExpose({
               @click.stop="zoomThumbs(1)"
             />
             <span class="zlb-grow" />
-            <span class="zlb-foot-n" :title="thumbs.length !== count ? `${thumbs.length} match the search` : undefined">
+            <span
+              class="zlb-foot-n"
+              :title="thumbs.length !== count ? `${thumbs.length} match the search` : undefined"
+            >
               {{ count ? index + 1 : 0 }} / {{ count }}
-              <template v-if="thumbs.length !== count"> · {{ thumbs.length }} shown</template>
+              <template v-if="thumbs.length !== count">· {{ thumbs.length }} shown</template>
             </span>
           </div>
           <div
@@ -812,7 +817,11 @@ defineExpose({
 
       <div
         class="zlb-main"
-        :class="{ idle: idle && !inline, 'far-top': !inline && !nearTop, 'far-bottom': !inline && !nearBottom }"
+        :class="{
+          idle: idle && !inline,
+          'far-top': !inline && !nearTop,
+          'far-bottom': !inline && !nearBottom,
+        }"
         @pointermove="onMainMove"
         @pointerleave="onMainLeave"
       >
@@ -820,7 +829,9 @@ defineExpose({
           <!-- compact: an ⓘ with the name and details, and the position unless the thumbnails
                sidebar shows it; fixed-width counter, so paging never resizes the bar -->
           <div v-if="infoText || grid || !sideShown" class="zlb-chrome zlb-info">
-            <span v-if="infoText" class="zlb-tip"><ZenTip :text="infoText" label="About this picture" /></span>
+            <span v-if="infoText" class="zlb-tip">
+              <ZenTip :text="infoText" label="About this picture" />
+            </span>
             <span
               v-if="grid"
               class="zlb-pos"
@@ -832,7 +843,11 @@ defineExpose({
               {{ Math.floor(index / grid) + 1 }}/{{ Math.ceil(count / grid) }} ·
               {{ (index % grid) + 1 }}/{{ grid }}
             </span>
-            <span v-else-if="!sideShown" class="zlb-pos" :style="{ minWidth: `${String(count).length * 2 + 3}ch` }">
+            <span
+              v-else-if="!sideShown"
+              class="zlb-pos"
+              :style="{ minWidth: `${String(count).length * 2 + 3}ch` }"
+            >
               {{ count ? index + 1 : 0 }} / {{ count }}
             </span>
           </div>

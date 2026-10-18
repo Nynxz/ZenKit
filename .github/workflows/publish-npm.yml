@@ -1,6 +1,6 @@
 name: publish-npm
 
-# The three published packages. Manual: a version bump is a decision.
+# The four published packages. Manual: a version bump is a decision.
 on:
   # A v* tag (pnpm release) publishes; a manual run is for a dry run or a retry.
   push:
@@ -35,7 +35,7 @@ jobs:
       - name: The tag names the version being published
         if: startsWith(github.ref, 'refs/tags/v')
         run: |
-          for p in ui nodekit client; do
+          for p in ui nodekit client theme; do
             have=$(node -p "require('./packages/$p/package.json').version")
             test "${GITHUB_REF_NAME#v}" = "$have" || { echo "tag $GITHUB_REF_NAME, but $p is $have"; exit 1; }
           done
@@ -53,14 +53,14 @@ jobs:
       - name: Pack
         run: |
           mkdir -p dist-tarballs
-          for p in ui nodekit client; do
+          for p in ui nodekit client theme; do
             (cd "packages/$p" && pnpm pack --pack-destination "$GITHUB_WORKSPACE/dist-tarballs")
           done
           ls -la dist-tarballs
 
       - name: Publish
         run: |
-          for p in ui nodekit client; do
+          for p in ui nodekit client theme; do
             # An absolute path: npm reads a bare `dir/file.tgz` as GitHub shorthand (user/repo).
             tgz=$(ls "$GITHUB_WORKSPACE"/dist-tarballs/nynxz-zenkit-$p-*.tgz)
             if [ "${{ inputs.dry-run }}" = "true" ]; then

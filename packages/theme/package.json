@@ -1,16 +1,39 @@
 {
   "name": "@nynxz/zenkit-theme",
   "version": "0.3.2",
-  "private": true,
   "type": "module",
-  "description": "ZenKit token system \u2014 semantic token packs and the applier.",
+  "description": "ZenKit token system — semantic token packs and the applier.",
   "exports": {
-    ".": "./src/index.ts"
+    ".": {
+      "types": "./dist/index.d.ts",
+      "import": "./dist/index.js"
+    }
   },
   "scripts": {
-    "typecheck": "tsc --noEmit"
+    "build": "vite build && tsc -p tsconfig.build.json",
+    "typecheck": "tsc --noEmit",
+    "prepublishOnly": "pnpm build"
+  },
+  "publishConfig": {
+    "access": "public"
+  },
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/Nynxz/ZenKit.git",
+    "directory": "packages/theme"
+  },
+  "files": [
+    "dist"
+  ],
+  "main": "./dist/index.js",
+  "module": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "peerDependencies": {
+    "@nynxz/zenkit-client": "workspace:^"
   },
   "devDependencies": {
-    "@nynxz/zenkit-client": "workspace:*"
+    "@nynxz/zenkit-client": "workspace:*",
+    "vite": "^6.4.3"
   }
 }

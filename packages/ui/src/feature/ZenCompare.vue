@@ -45,7 +45,9 @@ let area: HTMLElement | null = null
 const tracked = ref(false) // an ancestor drives it: the picture's own events bubble up to that
 const onAreaEnter = () => (hovering.value = true)
 onMounted(() => {
-  area = props.trackClosest ? (root.value?.parentElement?.closest<HTMLElement>(props.trackClosest) ?? null) : null
+  area = props.trackClosest
+    ? (root.value?.parentElement?.closest<HTMLElement>(props.trackClosest) ?? null)
+    : null
   tracked.value = !!area
   area?.addEventListener('pointermove', onMove)
   area?.addEventListener('pointerenter', onAreaEnter)
