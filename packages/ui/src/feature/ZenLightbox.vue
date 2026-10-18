@@ -373,16 +373,40 @@ function go(i: number) {
   if (i < 0 || i >= count.value) return
   emit('update:index', i)
 }
-// The floating chrome fades out while the pointer rests, so it never sits over the picture for
-// long; any movement brings it back.
+// The floating chrome stays off the picture: the top bar shows while the pointer is near the top,
+// the controls while it's near the bottom (both show for a moment on opening, so they're found),
+// and everything fades, cursor too, while the pointer rests. A bar with focus, or with its
+// popover open, stays (CSS).
 const idle = ref(false)
+const nearTop = ref(true)
+const nearBottom = ref(true)
+const NEAR = 120 // px from an edge that counts as near it
 let idleTimer: ReturnType<typeof setTimeout> | undefined
 function wake() {
   idle.value = false
   clearTimeout(idleTimer)
   idleTimer = setTimeout(() => (idle.value = true), 2200)
 }
-onBeforeUnmount(() => clearTimeout(idleTimer))
+let introTimer: ReturnType<typeof setTimeout> | undefined = setTimeout(() => {
+  introTimer = undefined
+  nearTop.value = nearBottom.value = false
+}, 2200)
+function onMainMove(e: PointerEvent) {
+  wake()
+  if (introTimer) return
+  const r = (e.currentTarget as HTMLElement).getBoundingClientRect()
+  const y = e.clientY - r.top
+  nearTop.value = y < NEAR
+  nearBottom.value = y > r.height - Math.max(NEAR, (footEl.value?.offsetHeight ?? 0) + 40)
+}
+function onMainLeave() {
+  if (introTimer) return
+  nearTop.value = nearBottom.value = false
+}
+onBeforeUnmount(() => {
+  clearTimeout(idleTimer)
+  clearTimeout(introTimer)
+})
 
 // Decode the neighbouring pictures ahead of time, so a slide starts the moment you ask for it
 // instead of waiting on the next image to load.
@@ -786,7 +810,12 @@ defineExpose({
         </aside>
       </Transition>
 
-      <div class="zlb-main" :class="{ idle: idle && !inline }" @pointermove="wake">
+      <div
+        class="zlb-main"
+        :class="{ idle: idle && !inline, 'far-top': !inline && !nearTop, 'far-bottom': !inline && !nearBottom }"
+        @pointermove="onMainMove"
+        @pointerleave="onMainLeave"
+      >
         <header v-if="showChrome" class="zlb-top">
           <!-- compact: an ⓘ with the name and details, and the position unless the thumbnails
                sidebar shows it; fixed-width counter, so paging never resizes the bar -->
@@ -1133,13 +1162,20 @@ defineExpose({
   justify-content: center;
   flex-wrap: wrap-reverse;
 }
-.zlb-main.idle .zlb-top {
+.zlb-main.idle .zlb-top,
+.zlb-main.far-top .zlb-top:not(:focus-within) {
   opacity: 0;
   translate: 0 -6px;
 }
-.zlb-main.idle .zlb-bottom {
+.zlb-main.idle .zlb-bottom,
+.zlb-main.far-bottom .zlb-bottom:not(:focus-within, :has(.zlb-caret.on)) {
   opacity: 0;
   translate: 0 6px;
+}
+/* hidden bars don't catch clicks meant for the picture */
+.zlb-main.far-top .zlb-top:not(:focus-within) > *,
+.zlb-main.far-bottom .zlb-bottom:not(:focus-within, :has(.zlb-caret.on)) > * {
+  pointer-events: none;
 }
 .zlb-main.idle {
   cursor: none;
