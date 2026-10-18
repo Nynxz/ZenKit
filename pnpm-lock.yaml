@@ -178,6 +178,19 @@ importers:
         specifier: ^6.3.5
         version: 6.4.3(@types/node@22.20.1)
 
+  plugins/ComfyUI-ZenIntegrations:
+    dependencies:
+      '@nynxz/zenkit-client':
+        specifier: workspace:*
+        version: link:../../packages/client
+    devDependencies:
+      '@nynxz/zenkit-nodekit':
+        specifier: workspace:*
+        version: link:../../packages/nodekit
+      vite:
+        specifier: ^6.3.5
+        version: 6.4.3(@types/node@22.20.1)
+
   plugins/ComfyUI-ZenKit:
     dependencies:
       '@nynxz/zenkit-client':

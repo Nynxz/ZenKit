@@ -1,0 +1,12 @@
+{
+  "extends": "../../tsconfig.plugin.json",
+  "compilerOptions": {
+    "paths": {
+      "@nynxz/zenkit-core": ["../../packages/core/src/index.ts"],
+      "@nynxz/zenkit-client": ["../../packages/client/src/index.ts"],
+      "@nynxz/zenkit-nodekit": ["../../packages/nodekit/src/index.ts"],
+      "@/*": ["./src/*"]
+    }
+  },
+  "include": ["src", "../../packages/client/comfy.d.ts"]
+}

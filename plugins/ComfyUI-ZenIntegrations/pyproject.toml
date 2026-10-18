@@ -1,0 +1,23 @@
+[build-system]
+requires = ["setuptools>=70.0"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "comfyui-zenintegrations"
+version = "0.1.0"
+description = "Zen Integrations — ZenKit panels and job progress for other node packs (LoRA Manager, …), without modifying them. Requires ComfyUI-ZenKit."
+license = { text = "MIT" }
+
+[project.urls]
+Repository = "https://github.com/Nynxz/ZenKit/tree/main/plugins/ComfyUI-ZenIntegrations"
+
+[tool.comfy]
+PublisherId = "nynxz"
+DisplayName = "ComfyUI-ZenIntegrations"
+includes = ["js"]
+
+[tool.zenkit]
+id = "zenintegrations"
+
+[tool.setuptools.package-data]
+"*" = ["*.*"]

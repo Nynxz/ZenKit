@@ -1,0 +1,19 @@
+{
+  "name": "comfyui-zenintegrations",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "description": "Zen Integrations — ZenKit adapters that add panels and job progress to other node packs without modifying them.",
+  "scripts": {
+    "build": "vite build",
+    "dev": "vite build --watch",
+    "typecheck": "tsc --noEmit"
+  },
+  "dependencies": {
+    "@nynxz/zenkit-client": "workspace:*"
+  },
+  "devDependencies": {
+    "vite": "^6.3.5",
+    "@nynxz/zenkit-nodekit": "workspace:*"
+  }
+}
