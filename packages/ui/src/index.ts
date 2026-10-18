@@ -12,6 +12,7 @@
 export { default as ZenWidget } from './layout/ZenWidget.vue'
 export { default as ZenRow } from './layout/ZenRow.vue'
 export { default as ZenField } from './layout/ZenField.vue'
+export { default as ZenTip } from './primitives/ZenTip.vue'
 //   ZenSection  a titled, collapsible block (plain divider for inspectors, bordered card for
 //               settings lists); ZenSections groups them, accordion or independent.
 //   ZenSplit    resizable panes with draggable/keyboard gutters, canvas-zoom aware.

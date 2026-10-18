@@ -7,8 +7,13 @@
 //     <ZenField label="Steps" data-grow><ZenNumber v-model="steps" /></ZenField>
 //   </ZenRow>
 //
+// `tip` puts an ⓘ beside the label that explains the field on hover or focus: help that doesn't
+// cost a line under every control. `hint` stays for the short, always-visible kind.
+//
 // `stack` puts the label above instead of beside — worth it below roughly 140px of width, where
 // an inline label eats more than it explains.
+import ZenTip from '../primitives/ZenTip.vue'
+
 withDefaults(
   defineProps<{
     label?: string
@@ -16,6 +21,8 @@ withDefaults(
     stack?: boolean
     /** Dim helper text under the control. */
     hint?: string
+    /** Help behind an ⓘ beside the label (hover or focus): for anything longer than a few words. */
+    tip?: string
   }>(),
   { stack: false },
 )
@@ -24,7 +31,10 @@ withDefaults(
 <template>
   <div class="zen-field" :class="{ stack }">
     <div class="zf-row">
-      <label v-if="label" class="zf-label">{{ label }}</label>
+      <span v-if="label" class="zf-label-wrap">
+        <label class="zf-label">{{ label }}</label>
+        <ZenTip v-if="tip" :text="tip" :label="`About ${label}`" />
+      </span>
       <div class="zf-control"><slot /></div>
     </div>
     <span v-if="hint" class="zf-hint">{{ hint }}</span>
@@ -51,6 +61,13 @@ withDefaults(
   gap: 3px;
 }
 
+.zf-label-wrap {
+  flex: 0 0 auto;
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  min-width: 0;
+}
 .zf-label {
   flex: 0 0 auto;
   font-size: 11px;
