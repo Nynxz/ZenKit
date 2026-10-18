@@ -5,6 +5,8 @@ import '../lib/motion.css'
 // immersive fullscreen overlay over the theme's background: the picture edge to edge, with a
 // thumbnails sidebar and a title line + toolbar that fade in on movement. The chrome is built from
 // ZenKit's own buttons and surfaces so every theme dresses it like the rest of the UI.
+// A `#side` slot (fullscreen only) docks a panel on the right for the current item — captions,
+// metadata, edit forms; it gets `{ item, index }`.
 import { computed, nextTick, onBeforeUnmount, onMounted, ref, watch, Teleport } from 'vue'
 import ZenIconButton from '../primitives/ZenIconButton.vue'
 import ZenScroll from '../primitives/ZenScroll.vue'
@@ -28,13 +30,20 @@ const props = withDefaults(
     // Built-in chrome: shown unless 'none' (the host drives it via the exposed API — see
     // defineExpose below). 'none' also hides the nav zones. 'top' is accepted for compatibility.
     controls?: 'bottom' | 'top' | 'none'
+    /** Items form a grid this many columns wide (row-major): Left/Right (A/D) stay within the
+     *  row, Up/Down (W/S) move between rows. E.g. a prompt per row, a training step per column.
+     *  The picture gets the whole screen: no thumbnails sidebar, and the counter reads row · column. */
+    grid?: number
+    /** The search box over the thumbnails (filters by label). */
+    searchable?: boolean
   }>(),
-  { inline: false, slideshowMs: 3000, slideshowToEnd: true, controls: 'bottom' },
+  { inline: false, slideshowMs: 3000, slideshowToEnd: true, controls: 'bottom', searchable: true },
 )
 const emit = defineEmits<{ 'update:index': [number]; close: [] }>()
 const showChrome = computed(() => props.controls !== 'none')
 
 const item = computed<LightboxItem | undefined>(() => props.items[props.index])
+const showOverlay = ref(true)
 const count = computed(() => props.items.length)
 
 // A toggleable thumbnail panel — a lightweight "viewer" mode for paging a set.
@@ -236,6 +245,7 @@ onBeforeUnmount(() => clearTimeout(settleTimer))
 // and a full-bleed element would swallow every click in the letterbox.
 const stageEl = ref<HTMLElement | null>(null)
 const stageW = ref(0)
+const stageH = ref(0)
 const natW = ref(0) // intrinsic media size; 0 until it loads
 const natH = ref(0)
 let stageRO: ResizeObserver | null = null
@@ -258,6 +268,7 @@ function measureStage() {
   const cs = getComputedStyle(el)
   const px = (v: string) => parseFloat(v) || 0
   stageW.value = el.clientWidth - px(cs.paddingLeft) - px(cs.paddingRight)
+  stageH.value = el.clientHeight - px(cs.paddingTop) - px(cs.paddingBottom)
   centre = null
 }
 
@@ -386,9 +397,9 @@ watch(
 )
 
 // Which way the media slides when it changes: the way you moved (a loop back to the start counts
-// as moving on).
+// as moving on). In a grid, a move of one row slides up or down.
 // The slideshow always moves forward, even when shuffling to an earlier picture.
-const direction = ref<'next' | 'prev'>('next')
+const direction = ref<'next' | 'prev' | 'up' | 'down'>('next')
 /** The slideshow glides; stepping by hand is quicker, but never a snap. */
 const slideDuration = ref(460)
 let advancing = false
@@ -396,7 +407,9 @@ watch(
   () => props.index,
   (now, before) => {
     direction.value =
-      !advancing && now < before && !(before === count.value - 1 && now === 0) ? 'prev' : 'next'
+      !advancing && props.grid && Math.abs(now - before) === props.grid
+        ? now > before ? 'down' : 'up'
+        : !advancing && now < before && !(before === count.value - 1 && now === 0) ? 'prev' : 'next'
     slideDuration.value = advancing ? 700 : 460
     advancing = false
   },
@@ -592,6 +605,8 @@ function isEditable(t: EventTarget | null): boolean {
 }
 function onKey(e: KeyboardEvent) {
   if (isEditable(e.target)) return
+  // Ctrl/Cmd/Alt combos are the browser's (Ctrl+R reloads, Ctrl+S saves), never a rotate or a step
+  if (e.ctrlKey || e.metaKey || e.altKey) return
   if (mediaControls.value?.onKey(e)) {
     e.preventDefault()
     return
@@ -603,10 +618,24 @@ function onKey(e: KeyboardEvent) {
       else return
       break
     case 'ArrowLeft':
+    case 'a':
+      if (props.grid && props.index % props.grid === 0) return
       go(props.index - 1)
       break
     case 'ArrowRight':
+    case 'd':
+      if (props.grid && (props.index % props.grid === props.grid - 1 || props.index + 1 >= count.value)) return
       go(props.index + 1)
+      break
+    case 'ArrowUp':
+    case 'w':
+      if (!props.grid || props.index - props.grid < 0) return
+      go(props.index - props.grid)
+      break
+    case 'ArrowDown':
+    case 's':
+      if (!props.grid || props.index + props.grid >= count.value) return
+      go(props.index + props.grid)
       break
     case '+':
     case '=':
@@ -620,6 +649,10 @@ function onKey(e: KeyboardEvent) {
       break
     case 'r':
       rotateBy(90)
+      break
+    case 'm':
+      if (!item.value?.overlay) return
+      showOverlay.value = !showOverlay.value
       break
     case 'R':
       rotateBy(-90)
@@ -671,11 +704,11 @@ defineExpose({
     >
       <Transition name="zlb-side">
         <aside
-          v-if="showChrome && !inline && strip && count > 1"
+          v-if="showChrome && !inline && strip && count > 1 && !grid"
           class="zlb-side"
           :style="{ flexBasis: sideWidth + 'px', '--zlb-side-w': sideWidth + 'px' }"
         >
-          <div class="zlb-side-head">
+          <div v-if="searchable" class="zlb-side-head">
             <div class="zlb-search">
               <i class="mdi mdi-magnify" />
               <input v-model="search" placeholder="Search…" spellcheck="false" />
@@ -702,7 +735,7 @@ defineExpose({
                     playsinline
                   />
                   <i v-else-if="t.it.kind === 'audio'" class="mdi mdi-music-note zlb-cell-audio" />
-                  <img v-else :src="t.it.src" loading="lazy" alt="" />
+                  <img v-else :src="t.it.thumb ?? t.it.src" loading="lazy" alt="" />
                   <i v-if="t.it.kind === 'video'" class="mdi mdi-play-circle zlb-cell-badge" />
                   <i
                     v-if="t.it.onWorkflow"
@@ -742,9 +775,17 @@ defineExpose({
 
       <div class="zlb-main" :class="{ idle: idle && !inline }" @pointermove="wake">
         <header v-if="showChrome" class="zlb-top">
-          <div class="zlb-chrome zlb-info">
+          <!-- fixed width, counter first: paging through items never resizes or shifts the bar -->
+          <div class="zlb-chrome zlb-info" :title="[item?.label, item?.meta].filter(Boolean).join('\n')">
+            <span
+              v-if="grid"
+              class="zlb-pos"
+              :style="{ minWidth: `${(String(Math.ceil(count / grid)).length + String(grid).length) * 2 + 7}ch` }"
+              title="←→ / A D along the row · ↑↓ / W S between rows"
+              >{{ Math.floor(index / grid) + 1 }}/{{ Math.ceil(count / grid) }} · {{ (index % grid) + 1 }}/{{ grid }}</span
+            >
+            <span v-else class="zlb-pos" :style="{ minWidth: `${String(count).length * 2 + 3}ch` }">{{ count ? index + 1 : 0 }} / {{ count }}</span>
             <span v-if="item?.label" class="zlb-label">{{ item.label }}</span>
-            <span class="zlb-pos">{{ count ? index + 1 : 0 }} / {{ count }}</span>
             <span v-if="item?.meta" class="zlb-meta">{{ item.meta }}</span>
           </div>
           <span class="zlb-grow" />
@@ -770,6 +811,7 @@ defineExpose({
           :class="{ 'has-mc': item?.kind === 'video' || item?.kind === 'audio' }"
           :style="{
             '--zlb-slide': `${stageW + 48}px`,
+            '--zlb-slide-y': `${stageH + 48}px`,
             '--zlb-slide-ms': `${slideDuration}ms`,
             '--zlb-foot': `${footH ? footH + 8 : 0}px`,
           }"
@@ -808,6 +850,17 @@ defineExpose({
               <i class="mdi mdi-music-circle-outline" />
               <span v-if="item.label" class="zlb-audio-name">{{ item.label }}</span>
               <audio :ref="setMediaEl" :src="item.src" autoplay />
+            </div>
+            <!-- with an overlay the transform goes on a wrapper, so both layers move as one -->
+            <div
+              v-else-if="item?.overlay"
+              :key="`o${index}`"
+              :ref="setViewEl"
+              class="zlb-media zlb-layered"
+              :style="mediaStyle"
+            >
+              <img :src="item.src" draggable="false" alt="" @load="onMediaMeta" />
+              <img v-show="showOverlay" :src="item.overlay" class="zlb-overlay" draggable="false" alt="" />
             </div>
             <img
               v-else-if="item"
@@ -852,7 +905,7 @@ defineExpose({
               :style="{ animationDuration: `${slideMs}ms` }"
             />
             <ZenIconButton
-              v-if="count > 1 && !inline"
+              v-if="count > 1 && !inline && !grid"
               icon="mdi mdi-view-grid-outline"
               title="Thumbnails"
               :active="strip"
@@ -906,6 +959,15 @@ defineExpose({
               </ZenPopover>
             </template>
             <span class="zlb-sep" />
+            <template v-if="item?.overlay">
+              <ZenIconButton
+                icon="mdi mdi-layers-outline"
+                title="Overlay (M)"
+                :active="showOverlay"
+                @click.stop="showOverlay = !showOverlay"
+              />
+              <span class="zlb-sep" />
+            </template>
             <ZenIconButton
               icon="mdi mdi-rotate-left"
               title="Rotate left (Shift+R)"
@@ -943,6 +1005,12 @@ defineExpose({
           </div>
         </footer>
       </div>
+
+      <aside v-if="$slots.side && item && !inline" class="zlb-panel">
+        <ZenScroll class="zlb-panel-scroll">
+          <div class="zlb-panel-body"><slot name="side" :item="item" :index="index" /></div>
+        </ZenScroll>
+      </aside>
     </div>
   </component>
 </template>
@@ -1040,6 +1108,8 @@ defineExpose({
 .zlb-info {
   gap: 10px;
   min-width: 0;
+  width: min(560px, 100%);
+  flex: 0 1 auto;
   height: 38px;
   box-sizing: border-box;
   padding: 0 14px;
@@ -1051,7 +1121,14 @@ defineExpose({
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
-  max-width: 40vw;
+  flex: 0 1 auto;
+  min-width: 0;
+}
+.zlb-meta {
+  flex: 1 1 0;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
 }
 .zlb-pos,
 .zlb-meta,
@@ -1167,11 +1244,17 @@ defineExpose({
   margin-right: calc(-1 * (var(--zlb-side-w, 264px) + 12px));
   opacity: 0;
 }
+/* reduced motion: the OS setting, unless the host forces full motion; or the host's own
+   data-zen-motion="reduce" (see lib/motion.css) */
 @media (prefers-reduced-motion: reduce) {
-  .zlb-side-enter-active,
-  .zlb-side-leave-active {
+  :global(:root:not([data-zen-motion='full'])) .zlb-side-enter-active,
+  :global(:root:not([data-zen-motion='full'])) .zlb-side-leave-active {
     transition: none;
   }
+}
+:global(:root[data-zen-motion='reduce']) .zlb-side-enter-active,
+:global(:root[data-zen-motion='reduce']) .zlb-side-leave-active {
+  transition: none;
 }
 /* the thumbnails: a floating card dressed like the rest of the chrome */
 .zlb-side {
@@ -1309,7 +1392,7 @@ defineExpose({
   font-size: 11px;
   color: #fff;
   background: rgba(0, 0, 0, 0.6);
-  border-radius: 4px;
+  border-radius: max(0px, calc(var(--zen-radius, 7px) - 3px));
   padding: 1px 3px;
 }
 .zlb-side-foot {
@@ -1369,6 +1452,56 @@ defineExpose({
   border-radius: var(--zen-radius, 7px);
   box-shadow: 0 24px 60px -20px rgba(0, 0, 0, 0.55);
   transition: transform var(--zen-dur, 0.2s) linear;
+}
+.zlb-layered {
+  position: relative;
+  overflow: hidden;
+}
+.zlb-layered img {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  display: block;
+  user-select: none;
+}
+.zlb-overlay {
+  mix-blend-mode: multiply;
+  opacity: 0.75;
+  pointer-events: none;
+}
+/* a floating card like the thumbnails strip on the other side */
+.zlb-panel {
+  position: relative;
+  z-index: 5;
+  flex: 0 0 340px;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  margin: 12px 12px 12px 0;
+  overflow: hidden;
+  background: color-mix(in srgb, var(--zen-chrome-bg, var(--zen-surface, #202026)) 94%, transparent);
+  border: 1px solid var(--zen-surface-border, var(--zen-border, #34343c));
+  border-radius: var(--zen-radius-surface, var(--zen-radius, 7px));
+  box-shadow: var(--interface-floating-panel-shadow, 0 6px 18px rgba(0, 0, 0, 0.28));
+  backdrop-filter: blur(12px);
+}
+.zlb-panel-scroll {
+  flex: 1;
+  min-height: 0;
+}
+.zlb-panel-body {
+  padding: 16px;
+}
+@media (max-width: 860px) {
+  .zlb {
+    flex-direction: column;
+  }
+  .zlb-panel {
+    flex: 0 0 auto;
+    max-height: 45%;
+    margin: 0 12px 12px;
+  }
 }
 .zlb-media.steering {
   transition: none;
@@ -1467,12 +1600,26 @@ defineExpose({
 .zlb-slide-next-enter-active,
 .zlb-slide-next-leave-active,
 .zlb-slide-prev-enter-active,
-.zlb-slide-prev-leave-active {
+.zlb-slide-prev-leave-active,
+.zlb-slide-up-enter-active,
+.zlb-slide-up-leave-active,
+.zlb-slide-down-enter-active,
+.zlb-slide-down-leave-active {
   transition: translate var(--zlb-slide-ms, 460ms) cubic-bezier(0.45, 0, 0.2, 1);
 }
 .zlb-slide-next-leave-active,
-.zlb-slide-prev-leave-active {
+.zlb-slide-prev-leave-active,
+.zlb-slide-up-leave-active,
+.zlb-slide-down-leave-active {
   position: absolute;
+}
+.zlb-slide-down-enter-from,
+.zlb-slide-up-leave-to {
+  translate: 0 var(--zlb-slide-y, 100%);
+}
+.zlb-slide-down-leave-to,
+.zlb-slide-up-enter-from {
+  translate: 0 calc(var(--zlb-slide-y, 100%) * -1);
 }
 .zlb-slide-next-enter-from,
 .zlb-slide-prev-leave-to {
@@ -1482,12 +1629,28 @@ defineExpose({
 .zlb-slide-prev-enter-from {
   translate: calc(var(--zlb-slide, 100%) * -1) 0;
 }
+/* reduced motion: the OS setting, unless the host forces full motion; or the host's own
+   data-zen-motion="reduce" (see lib/motion.css) */
 @media (prefers-reduced-motion: reduce) {
-  .zlb-slide-next-enter-active,
-  .zlb-slide-next-leave-active,
-  .zlb-slide-prev-enter-active,
-  .zlb-slide-prev-leave-active {
+  :global(:root:not([data-zen-motion='full'])) .zlb-slide-next-enter-active,
+  :global(:root:not([data-zen-motion='full'])) .zlb-slide-next-leave-active,
+  :global(:root:not([data-zen-motion='full'])) .zlb-slide-prev-enter-active,
+  :global(:root:not([data-zen-motion='full'])) .zlb-slide-prev-leave-active,
+  :global(:root:not([data-zen-motion='full'])) .zlb-slide-up-enter-active,
+  :global(:root:not([data-zen-motion='full'])) .zlb-slide-up-leave-active,
+  :global(:root:not([data-zen-motion='full'])) .zlb-slide-down-enter-active,
+  :global(:root:not([data-zen-motion='full'])) .zlb-slide-down-leave-active {
     transition: none;
   }
+}
+:global(:root[data-zen-motion='reduce']) .zlb-slide-next-enter-active,
+:global(:root[data-zen-motion='reduce']) .zlb-slide-next-leave-active,
+:global(:root[data-zen-motion='reduce']) .zlb-slide-prev-enter-active,
+:global(:root[data-zen-motion='reduce']) .zlb-slide-prev-leave-active,
+:global(:root[data-zen-motion='reduce']) .zlb-slide-up-enter-active,
+:global(:root[data-zen-motion='reduce']) .zlb-slide-up-leave-active,
+:global(:root[data-zen-motion='reduce']) .zlb-slide-down-enter-active,
+:global(:root[data-zen-motion='reduce']) .zlb-slide-down-leave-active {
+  transition: none;
 }
 </style>
