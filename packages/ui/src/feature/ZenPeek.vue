@@ -105,9 +105,11 @@ function stopCustom() {
     console.warn('ZenPeek: a custom peek failed to clean up', err)
   }
 }
-const reduced = () =>
-  typeof window.matchMedia === 'function' &&
-  window.matchMedia('(prefers-reduced-motion: reduce)').matches
+const reduced = () => {
+  const forced = document.documentElement.dataset.zenMotion // the host's setting wins (lib/motion.css)
+  if (forced === 'reduce' || forced === 'full') return forced === 'reduce'
+  return typeof window.matchMedia === 'function' && window.matchMedia('(prefers-reduced-motion: reduce)').matches
+}
 watch(
   () => shown.value?.key,
   () => {
@@ -293,9 +295,14 @@ const caption = computed(() => shown.value && (shown.value.label || shown.value.
     transform: scale(0.97);
   }
 }
+/* reduced motion: the OS setting, unless the host forces full motion; or the host's own
+   data-zen-motion="reduce" (see lib/motion.css) */
 @media (prefers-reduced-motion: reduce) {
-  .zen-peek {
+  :root:not([data-zen-motion='full']) .zen-peek {
     animation: none;
   }
+}
+:root[data-zen-motion='reduce'] .zen-peek {
+  animation: none;
 }
 </style>

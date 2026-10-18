@@ -116,11 +116,17 @@ const vars = computed<Record<string, string> | undefined>(() =>
   opacity: 0.22;
 }
 
+/* reduced motion: the OS setting, unless the host forces full motion; or the host's own
+   data-zen-motion="reduce" (see lib/motion.css) */
 @media (prefers-reduced-motion: reduce) {
-  .mark,
-  .mark::after {
+  :global(:root:not([data-zen-motion='full'])) .mark,
+  :global(:root:not([data-zen-motion='full'])) .mark::after {
     transition: none;
   }
+}
+:global(:root[data-zen-motion='reduce']) .mark,
+:global(:root[data-zen-motion='reduce']) .mark::after {
+  transition: none;
 }
 .zen-dot:focus-visible {
   outline: 2px solid

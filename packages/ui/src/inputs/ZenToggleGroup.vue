@@ -171,10 +171,16 @@ function onKey(e: KeyboardEvent) {
   grid-template-columns: 1fr;
   opacity: 1;
 }
+/* reduced motion: the OS setting, unless the host forces full motion; or the host's own
+   data-zen-motion="reduce" (see lib/motion.css) */
 @media (prefers-reduced-motion: reduce) {
-  .zen-tg.zen-tg-collapse .zen-tg-b,
-  .zen-tg.zen-tg-collapse .zen-tg-l {
+  :global(:root:not([data-zen-motion='full'])) .zen-tg.zen-tg-collapse .zen-tg-b,
+  :global(:root:not([data-zen-motion='full'])) .zen-tg.zen-tg-collapse .zen-tg-l {
     transition: none;
   }
+}
+:global(:root[data-zen-motion='reduce']) .zen-tg.zen-tg-collapse .zen-tg-b,
+:global(:root[data-zen-motion='reduce']) .zen-tg.zen-tg-collapse .zen-tg-l {
+  transition: none;
 }
 </style>
