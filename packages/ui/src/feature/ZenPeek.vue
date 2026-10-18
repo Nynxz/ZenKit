@@ -108,7 +108,10 @@ function stopCustom() {
 const reduced = () => {
   const forced = document.documentElement.dataset.zenMotion // the host's setting wins (lib/motion.css)
   if (forced === 'reduce' || forced === 'full') return forced === 'reduce'
-  return typeof window.matchMedia === 'function' && window.matchMedia('(prefers-reduced-motion: reduce)').matches
+  return (
+    typeof window.matchMedia === 'function' &&
+    window.matchMedia('(prefers-reduced-motion: reduce)').matches
+  )
 }
 watch(
   () => shown.value?.key,

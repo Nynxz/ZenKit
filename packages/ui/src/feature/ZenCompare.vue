@@ -59,7 +59,9 @@ function onKey(e: KeyboardEvent) {
     <img class="zc-after" :src="after" alt="" draggable="false" loading="lazy" />
     <img class="zc-before" :src="before" alt="" draggable="false" loading="lazy" />
     <template v-if="mode === 'slider'">
-      <span class="zc-line" aria-hidden="true"><span class="zc-knob"><i class="mdi mdi-unfold-more-vertical" /></span></span>
+      <span class="zc-line" aria-hidden="true">
+        <span class="zc-knob"><i class="mdi mdi-unfold-more-vertical" /></span>
+      </span>
     </template>
     <span v-if="beforeLabel" class="zc-tag left">{{ beforeLabel }}</span>
     <span v-if="afterLabel" class="zc-tag right">{{ afterLabel }}</span>
@@ -155,7 +157,8 @@ function onKey(e: KeyboardEvent) {
   right: 8px;
 }
 .zen-compare:focus-visible {
-  outline: 2px solid var(--zen-focus-ring, color-mix(in srgb, var(--zen-accent, #6366f1) 60%, transparent));
+  outline: 2px solid
+    var(--zen-focus-ring, color-mix(in srgb, var(--zen-accent, #6366f1) 60%, transparent));
   outline-offset: -2px;
 }
 </style>

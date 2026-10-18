@@ -408,8 +408,12 @@ watch(
   (now, before) => {
     direction.value =
       !advancing && props.grid && Math.abs(now - before) === props.grid
-        ? now > before ? 'down' : 'up'
-        : !advancing && now < before && !(before === count.value - 1 && now === 0) ? 'prev' : 'next'
+        ? now > before
+          ? 'down'
+          : 'up'
+        : !advancing && now < before && !(before === count.value - 1 && now === 0)
+          ? 'prev'
+          : 'next'
     slideDuration.value = advancing ? 700 : 460
     advancing = false
   },
@@ -624,7 +628,11 @@ function onKey(e: KeyboardEvent) {
       break
     case 'ArrowRight':
     case 'd':
-      if (props.grid && (props.index % props.grid === props.grid - 1 || props.index + 1 >= count.value)) return
+      if (
+        props.grid &&
+        (props.index % props.grid === props.grid - 1 || props.index + 1 >= count.value)
+      )
+        return
       go(props.index + 1)
       break
     case 'ArrowUp':
@@ -776,15 +784,24 @@ defineExpose({
       <div class="zlb-main" :class="{ idle: idle && !inline }" @pointermove="wake">
         <header v-if="showChrome" class="zlb-top">
           <!-- fixed width, counter first: paging through items never resizes or shifts the bar -->
-          <div class="zlb-chrome zlb-info" :title="[item?.label, item?.meta].filter(Boolean).join('\n')">
+          <div
+            class="zlb-chrome zlb-info"
+            :title="[item?.label, item?.meta].filter(Boolean).join('\n')"
+          >
             <span
               v-if="grid"
               class="zlb-pos"
-              :style="{ minWidth: `${(String(Math.ceil(count / grid)).length + String(grid).length) * 2 + 7}ch` }"
+              :style="{
+                minWidth: `${(String(Math.ceil(count / grid)).length + String(grid).length) * 2 + 7}ch`,
+              }"
               title="←→ / A D along the row · ↑↓ / W S between rows"
-              >{{ Math.floor(index / grid) + 1 }}/{{ Math.ceil(count / grid) }} · {{ (index % grid) + 1 }}/{{ grid }}</span
             >
-            <span v-else class="zlb-pos" :style="{ minWidth: `${String(count).length * 2 + 3}ch` }">{{ count ? index + 1 : 0 }} / {{ count }}</span>
+              {{ Math.floor(index / grid) + 1 }}/{{ Math.ceil(count / grid) }} ·
+              {{ (index % grid) + 1 }}/{{ grid }}
+            </span>
+            <span v-else class="zlb-pos" :style="{ minWidth: `${String(count).length * 2 + 3}ch` }">
+              {{ count ? index + 1 : 0 }} / {{ count }}
+            </span>
             <span v-if="item?.label" class="zlb-label">{{ item.label }}</span>
             <span v-if="item?.meta" class="zlb-meta">{{ item.meta }}</span>
           </div>
@@ -860,7 +877,13 @@ defineExpose({
               :style="mediaStyle"
             >
               <img :src="item.src" draggable="false" alt="" @load="onMediaMeta" />
-              <img v-show="showOverlay" :src="item.overlay" class="zlb-overlay" draggable="false" alt="" />
+              <img
+                v-show="showOverlay"
+                :src="item.overlay"
+                class="zlb-overlay"
+                draggable="false"
+                alt=""
+              />
             </div>
             <img
               v-else-if="item"
@@ -1480,7 +1503,11 @@ defineExpose({
   flex-direction: column;
   margin: 12px 12px 12px 0;
   overflow: hidden;
-  background: color-mix(in srgb, var(--zen-chrome-bg, var(--zen-surface, #202026)) 94%, transparent);
+  background: color-mix(
+    in srgb,
+    var(--zen-chrome-bg, var(--zen-surface, #202026)) 94%,
+    transparent
+  );
   border: 1px solid var(--zen-surface-border, var(--zen-border, #34343c));
   border-radius: var(--zen-radius-surface, var(--zen-radius, 7px));
   box-shadow: var(--interface-floating-panel-shadow, 0 6px 18px rgba(0, 0, 0, 0.28));
