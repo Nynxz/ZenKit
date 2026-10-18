@@ -11,6 +11,7 @@ import SyncControls from '@/suite/components/SyncControls.vue'
 import { mountHeaderPopover } from '@/suite/lib/headerPopover'
 import ChannelPreview from '@/suite/components/ChannelPreview.vue'
 import { mountNodeControls } from '@/suite/lib/mountControls'
+import { registerBind } from '@/suite/bind/register'
 
 // The panels ZenKit comes with (once ComfyUI-ZenSuite). Registered through the public client
 // API like any plugin's, discoverable in the Start menu, none auto-open.
@@ -64,6 +65,7 @@ const standalone = () => app.extensions.some((e: { name: string }) => e.name ===
 
 export function registerSuite() {
   app.registerExtension(suiteExtension)
+  registerBind()
 }
 
 const suiteExtension = {

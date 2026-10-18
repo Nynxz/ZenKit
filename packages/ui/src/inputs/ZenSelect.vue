@@ -297,7 +297,7 @@ onBeforeUnmount(close)
   background: none;
   border: none;
   color: var(--zen-text, #e5e5ea);
-  border-radius: max(0px, calc(var(--zen-radius, 7px) - 3px));
+  border-radius: var(--zen-radius, 7px);
   white-space: nowrap;
 }
 .zs-opt span {

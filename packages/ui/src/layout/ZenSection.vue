@@ -280,11 +280,18 @@ const bodyId = `${uid}-body`
   padding: 2px 8px 8px;
 }
 
+/* reduced motion: the OS setting, unless the host forces full motion; or the host's own
+   data-zen-motion="reduce" (see lib/motion.css) */
 @media (prefers-reduced-motion: reduce) {
-  .zs-chev,
-  .zs-wrap,
-  .zen-section:not(.open) > .zs-wrap > .zs-clip {
+  :global(:root:not([data-zen-motion='full'])) .zs-chev,
+  :global(:root:not([data-zen-motion='full'])) .zs-wrap,
+  :global(:root:not([data-zen-motion='full'])) .zen-section:not(.open) > .zs-wrap > .zs-clip {
     transition: none;
   }
+}
+:global(:root[data-zen-motion='reduce']) .zs-chev,
+:global(:root[data-zen-motion='reduce']) .zs-wrap,
+:global(:root[data-zen-motion='reduce']) .zen-section:not(.open) > .zs-wrap > .zs-clip {
+  transition: none;
 }
 </style>

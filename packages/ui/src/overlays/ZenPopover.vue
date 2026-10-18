@@ -4,10 +4,12 @@
 // escapes a panel's overflow:hidden), viewport-aware placement with auto-flip, click-away +
 // Escape dismiss, and a token-styled container. Drive it with the #trigger slot (a self-
 // managing button) OR with v-model:open + :anchor (an element, a DOMRect, or an {x,y} point —
-// e.g. a right-click). The default slot is the content and receives { close }.
+// e.g. a right-click). The default slot is the content and receives { close }. It stays on an
+// element anchor as the page or the canvas moves, and closes when that element goes away.
 import '../lib/scrollbar.css'
 import '../lib/surface.css'
 import { computed, nextTick, onBeforeUnmount, ref, watch } from 'vue'
+import { followAnchor, liveRect } from '../lib/followAnchor'
 import { inOtherLayer, openLayer, Z, type Layer } from './layers'
 
 type Placement =
@@ -56,6 +58,14 @@ function rectOf(): DOMRect | null {
   // trigger mode: the anchor wrapper is inline-flex (a real box around the trigger), so its
   // own rect is the trigger's — no fragile firstElementChild / zero-box display:contents.
   return anchorEl.value ? anchorEl.value.getBoundingClientRect() : null
+}
+
+/** The element the panel hangs from: the `anchor` prop when it is one, else the trigger. A point
+ *  or a box has no element, so nothing to follow. */
+function anchorElement(): HTMLElement | null {
+  const a = props.anchor
+  if (a) return a instanceof HTMLElement ? a : null
+  return anchorEl.value
 }
 
 function place() {
@@ -109,7 +119,7 @@ function onDoc(e: PointerEvent) {
   const t = e.target as Node
   if (
     panelEl.value?.contains(t) ||
-    anchorEl.value?.contains(t) ||
+    anchorElement()?.contains(t) ||
     inOtherLayer(e.target, panelEl.value)
   )
     return
@@ -124,7 +134,17 @@ function onReflow() {
   if (isOpen.value) place()
 }
 
+/** A panel opened at a point (a right-click) can't follow anything; a wheel zoom or scroll
+ *  elsewhere puts it away instead of leaving it over content that moved. */
+function onWheel(e: WheelEvent) {
+  if (!panelEl.value?.contains(e.target as Node)) close()
+}
+let stopFollow: (() => void) | null = null
+
 function teardown() {
+  stopFollow?.()
+  stopFollow = null
+  window.removeEventListener('wheel', onWheel, true)
   layer?.release()
   layer = null
   window.removeEventListener('pointerdown', onDoc, true)
@@ -149,6 +169,9 @@ watch(isOpen, (v) => {
     }, 0)
     window.addEventListener('resize', onReflow)
     window.addEventListener('scroll', onReflow, true)
+    const el = anchorElement()
+    if (el) stopFollow = followAnchor(() => liveRect(el), place, close)
+    else window.addEventListener('wheel', onWheel, { capture: true, passive: true })
   })
 })
 onBeforeUnmount(teardown)

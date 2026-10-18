@@ -1,7 +1,11 @@
 /* ZenKit's motion: two durations every transition uses — `--zen-dur-fast` for hover and colour
  * changes, `--zen-dur` for things that move or open. With the system's reduced-motion setting on
  * they drop to 0, so every component stops animating at once. Override them on :root (or any
- * subtree) to retime the whole kit. */
+ * subtree) to retime the whole kit.
+ *
+ * A host app can set its own preference with `data-zen-motion` on <html>: "reduce" stops
+ * motion whatever the OS says, "full" keeps it even when the OS asks for less, absent follows
+ * the OS. Components with their own reduced-motion rules honour it the same way. */
 :root {
   --zen-dur-fast: 0.12s;
   --zen-dur: 0.2s;
@@ -10,5 +14,15 @@
   :root {
     --zen-dur-fast: 0s;
     --zen-dur: 0s;
+  }
+}
+:root[data-zen-motion='reduce'] {
+  --zen-dur-fast: 0s;
+  --zen-dur: 0s;
+}
+@media (prefers-reduced-motion: reduce) {
+  :root[data-zen-motion='full'] {
+    --zen-dur-fast: 0.12s;
+    --zen-dur: 0.2s;
   }
 }

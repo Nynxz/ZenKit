@@ -220,7 +220,7 @@ const props = withDefaults(
   }>(),
   {
     kinds: () => ['image', 'video', 'audio'],
-    multiple: true,
+    multiple: false,
     title: 'Choose media',
     confirmLabel: 'Add',
     subfolder: 'zenkit',

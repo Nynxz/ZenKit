@@ -5,7 +5,7 @@
  *     icon: 'mdi mdi-cog',   // Vue nodes: class on an <i> in the DOM header
  *     text: '\u2699',            // canvas nodes: glyph for the title button
  *     title: 'Settings',
- *     onClick: () => {},
+ *     onClick: (anchor) => {}, // the DOM button (2.0) or the click point (1.0) — a popover anchor
  *   })
  *   cog.destroy()            // in onBeforeUnmount
  *
@@ -22,10 +22,14 @@ export interface NodeHeaderButtonOptions {
   /** Glyph for the Nodes 1.0 canvas title button (default '⚙'). */
   text?: string
   title?: string
-  onClick: () => void
+  /** `anchor` is where to hang a popover: the DOM button on Nodes 2.0, the click point on the
+   *  1.0 canvas, which draws its title buttons and has no element for them. */
+  onClick: (anchor: HeaderButtonAnchor) => void
   /** Background for the active state on the 1.0 canvas button. */
   activeColor?: string
 }
+
+export type HeaderButtonAnchor = HTMLElement | { x: number; y: number }
 
 export interface NodeHeaderButtonHandle {
   destroy(): void
@@ -61,6 +65,7 @@ export function addNodeHeaderButton(
   identity: Identity,
 ): NodeHeaderButtonHandle {
   let active = false
+  let hovered = false
 
   // ── Nodes 2.0: a DOM button pinned to the right of the header ───────────────────────────
   const btn = document.createElement('button')
@@ -93,7 +98,15 @@ export function addNodeHeaderButton(
   btn.addEventListener('pointerup', (e) => e.stopPropagation())
   btn.addEventListener('click', (e) => {
     e.stopPropagation()
-    opts.onClick()
+    opts.onClick(btn)
+  })
+  btn.addEventListener('pointerenter', () => {
+    hovered = true
+    paint()
+  })
+  btn.addEventListener('pointerleave', () => {
+    hovered = false
+    paint()
   })
   // Absorb double-click too, or toggling twice quickly opens litegraph's title rename.
   btn.addEventListener('dblclick', (e) => {
@@ -115,12 +128,25 @@ export function addNodeHeaderButton(
   ensure()
   const interval = window.setInterval(ensure, 500)
 
+  /** Lit (accent, full opacity) while active or hovered; dimmed otherwise. */
+  function paint() {
+    const lit = active || hovered
+    btn.style.opacity = lit ? '1' : '0.6'
+    btn.style.color = lit ? `var(--zen-accent, ${ACCENT})` : 'inherit'
+  }
+
   // ── Nodes 1.0: a litegraph canvas title button ──────────────────────────────────────────
   const lg = node as LiteNode
   const redraw = () => (lg.setDirtyCanvas ?? lg.graph?.setDirtyCanvas)?.(true, true)
   let lgBtn: { bgColor?: string; fgColor?: string } | null = null
+  const pressedAt = { x: 0, y: 0 }
+  const notePress = (e: PointerEvent) => {
+    pressedAt.x = e.clientX
+    pressedAt.y = e.clientY
+  }
   if (typeof lg.addTitleButton === 'function') {
     try {
+      window.addEventListener('pointerdown', notePress, true)
       lgBtn = lg.addTitleButton({
         text: opts.text ?? '⚙',
         name: `${identity.NAMESPACE}-header-btn`,
@@ -130,7 +156,7 @@ export function addNodeHeaderButton(
       const previous = lg.onTitleButtonClick
       lg.onTitleButtonClick = function (this: unknown, button: unknown, canvas: unknown) {
         previous?.call(this, button, canvas)
-        if (button === lgBtn) opts.onClick()
+        if (button === lgBtn) opts.onClick({ ...pressedAt })
       }
     } catch {
       lgBtn = null
@@ -138,8 +164,7 @@ export function addNodeHeaderButton(
   }
 
   const applyActive = () => {
-    btn.style.opacity = active ? '1' : '0.6'
-    btn.style.color = active ? `var(--zen-accent, ${ACCENT})` : 'inherit'
+    paint()
     if (lgBtn) {
       lgBtn.bgColor = active ? (opts.activeColor ?? ACCENT) : LG_IDLE_BG
       redraw()
@@ -149,6 +174,7 @@ export function addNodeHeaderButton(
   return {
     destroy() {
       window.clearInterval(interval)
+      window.removeEventListener('pointerdown', notePress, true)
       btn.remove()
       if (lgBtn && Array.isArray(lg.title_buttons)) {
         const i = lg.title_buttons.indexOf(lgBtn)

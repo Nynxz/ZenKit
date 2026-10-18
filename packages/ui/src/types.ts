@@ -16,6 +16,11 @@ export interface LightboxItem {
   label?: string
   /** Small caption line under the title (e.g. dimensions / size). */
   meta?: string
+  /** Smaller image for the thumbnails sidebar (defaults to `src`). */
+  thumb?: string
+  /** Image laid over the picture (e.g. a training mask), multiplied in; zooms, pans and
+   *  rotates with it. M or the toolbar toggles it. */
+  overlay?: string
   /** If set, the lightbox shows a "Load workflow" button that calls this. */
   onWorkflow?: () => void
 }

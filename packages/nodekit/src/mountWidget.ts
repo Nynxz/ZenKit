@@ -26,6 +26,7 @@
 
 import { createApp, type Component, type App as VueApp } from 'vue'
 import type { Identity } from './identity'
+import { createMirrorHub, type ZenMirror } from './widgetMirror'
 
 export interface DOMWidget {
   name: string
@@ -37,6 +38,8 @@ export interface DOMWidget {
   serializeValue?: () => unknown
   /** ComfyUI's node serializer skips a widget entirely when this is `false`. */
   serialize?: boolean
+  /** Mount another view of this widget elsewhere, kept in step (see widgetMirror.ts). */
+  zenMirror?: ZenMirror
 }
 
 /** The node a widget mounts on: a LiteGraph node, as ComfyUI hands it to an extension. */
@@ -83,6 +86,14 @@ export interface MountOptions {
 }
 
 const live = new WeakMap<DOMWidget, { app: VueApp; ro?: ResizeObserver }>()
+
+function guardControls(el: HTMLElement) {
+  el.addEventListener('pointerdown', (e) => {
+    const target = e.target as HTMLElement | null
+    const hit = target?.closest?.(INTERACTIVE)
+    if (hit && el.contains(hit)) e.stopPropagation()
+  })
+}
 
 /** What counts as "a press here is aimed at a control, not at the node" — see the delegated
  *  pointerdown guard in mountWidget. Covers the native controls plus the ARIA roles the ZenKit
@@ -166,16 +177,22 @@ export function mountWidget(
   // still drags the node. The host still selects/raises from click/focus, so this costs nothing.
   // A component whose drag surface ISN'T a control — a canvas, a wipe handle — opts in by
   // marking it `data-zen-drag`, or keeps its own @pointerdown.stop.
-  if (!opts.dragThrough)
-    container.addEventListener('pointerdown', (e) => {
-      const target = e.target as HTMLElement | null
-      const hit = target?.closest?.(INTERACTIVE)
-      if (hit && container.contains(hit)) e.stopPropagation()
-    })
+  if (!opts.dragThrough) guardControls(container)
 
   const floor = opts.minHeight ?? 40
   const serialize = opts.serialize !== false
   let stored: unknown = opts.defaultValue
+  const mountInto = (target: HTMLElement, as: DOMWidget): VueApp => {
+    const app = createApp(opts.component, { widget: as, node, ...opts.props })
+    app.mount(target)
+    return app
+  }
+  const hub = createMirrorHub(() => {
+    const l = live.get(widget)
+    if (!l) return
+    l.app.unmount()
+    l.app = mountInto(inner, widget)
+  })
   const widget = node.addDOMWidget(opts.widgetName, opts.widgetType, container, {
     // fill: report a fixed floor and let ComfyUI hand the widget the node's spare
     // height (the component fills it). content: grow to fit the rendered content.
@@ -188,7 +205,9 @@ export function mountWidget(
     // the workflow.
     getValue: () => (serialize ? stored : opts.defaultValue),
     setValue: (v: unknown) => {
+      const previous = stored
       stored = v
+      hub.changed(previous, v)
     },
   })
   // Always define serializeValue so ComfyUI never falls back to the live `value`. (The
@@ -201,6 +220,36 @@ export function mountWidget(
   // noise in every saved workflow, and on a subgraph host it is noise against a widget that only
   // exists at runtime.
   if (!serialize) widget.serialize = false
+
+  widget.zenMirror = {
+    fill,
+    mount(el) {
+      const box = document.createElement('div')
+      Object.assign(box.style, {
+        width: '100%',
+        display: 'flex',
+        flexDirection: 'column',
+        boxSizing: 'border-box',
+        ...(fill ? { height: '100%', minHeight: '0', overflow: 'hidden' } : {}),
+      })
+      guardControls(box)
+      el.appendChild(box)
+      const view = {
+        refresh: () => {
+          app.unmount()
+          app = mountInto(box, writer)
+        },
+      }
+      const writer = hub.writerFor(widget, view)
+      let app = mountInto(box, writer)
+      const off = hub.add(view)
+      return () => {
+        off()
+        app.unmount()
+        box.remove()
+      }
+    },
+  }
 
   // What the content needs, not what it was given. `inner` spans a taller node, so its own
   // height is the node's, not the content's — measuring it would ratchet the node (every fit
@@ -262,8 +311,7 @@ export function mountWidget(
 
   Promise.resolve().then(() => {
     try {
-      const app = createApp(opts.component, { widget, node, ...opts.props })
-      app.mount(inner)
+      const app = mountInto(inner, widget)
       // Fill widgets are sized by the node (user-resizable) — don't auto-fit to content.
       let ro: ResizeObserver | undefined
       if (!fill && typeof ResizeObserver !== 'undefined') {

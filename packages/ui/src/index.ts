@@ -12,6 +12,7 @@
 export { default as ZenWidget } from './layout/ZenWidget.vue'
 export { default as ZenRow } from './layout/ZenRow.vue'
 export { default as ZenField } from './layout/ZenField.vue'
+export { default as ZenTip } from './primitives/ZenTip.vue'
 //   ZenSection  a titled, collapsible block (plain divider for inspectors, bordered card for
 //               settings lists); ZenSections groups them, accordion or independent.
 //   ZenSplit    resizable panes with draggable/keyboard gutters, canvas-zoom aware.
@@ -77,6 +78,14 @@ export {
 // The canvas only yields the wheel to a focused `data-capture-wheel` element — this is what
 // makes that focus happen on a PRESS rather than on hover.
 export { useFocusSurface, type FocusSurface, type FocusSurfaceOptions } from './lib/useFocusSurface'
+// Hover-to-focus with the wheel decided per event: scroll whatever scrolls under the pointer,
+// otherwise leave the wheel to the graph. For a node body with panels and lists in it.
+export {
+  useWheelClaim,
+  scrollsUnder,
+  type WheelClaim,
+  type WheelClaimOptions,
+} from './lib/useWheelClaim'
 
 // overlays (anchored, teleported, auto-flipping; hover-intent submenus)
 export { default as ZenPopover } from './overlays/ZenPopover.vue'
@@ -92,6 +101,7 @@ export type { PeekKind, PeekRender, PeekRenderContext } from './feature/peek'
 export type { ContextMenuAction, ContextMenuItem } from './overlays/ZenContextMenu.vue'
 
 // feature
+export { default as ZenCompare } from './feature/ZenCompare.vue'
 export { default as ZenLightbox } from './feature/ZenLightbox.vue'
 export { default as ZenMediaControls } from './feature/ZenMediaControls.vue'
 export { default as ZenStepChart } from './feature/ZenStepChart.vue'
@@ -102,6 +112,31 @@ export type {
   MediaPickerLibrary,
 } from './feature/ZenMediaPicker.vue'
 export { default as ZenTimeline } from './feature/ZenTimeline.vue'
+// ZenBoxCanvas: draw, move and resize boxes over a canvas, and paint a mask inside one. The host
+// owns the boxes and decides what a drawn rect becomes. ZenLayerList: the stack beside it —
+// select, hide, lock, drag to reorder, with pinned rows that never move.
+export { default as ZenBoxCanvas } from './feature/ZenBoxCanvas.vue'
+export type { BoxTool } from './feature/ZenBoxCanvas.vue'
+export { default as ZenLayerList } from './feature/ZenLayerList.vue'
+export type { LayerItem } from './feature/ZenLayerList.vue'
+export {
+  BOX_HANDLES,
+  boundsOf,
+  boxAt,
+  boxesAt,
+  intersects,
+  nextBelow,
+  moveRect,
+  placeRects,
+  resizeRect,
+  scaleWithin,
+  spanRect,
+  type BoxHandle,
+  type BoxRect,
+  type ZenBox,
+} from './lib/boxes'
+export { createHistory, type History, type HistoryOptions } from './lib/history'
+export { insertionIndex, landingTop, rowStride, shiftStyle, sortShift } from './lib/sortable'
 export type {
   TimelineCurve,
   TimelineLevels,

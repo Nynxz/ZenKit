@@ -200,22 +200,23 @@ rows.
 />
 ```
 
-| Prop          | Type                   | Default                | Description                                                                                                       |
-| ------------- | ---------------------- | ---------------------- | ----------------------------------------------------------------------------------------------------------------- |
-| `modelValue`  | `string \| number`     | required               |                                                                                                                   |
-| `items`       | `ComboItem[]`          | required               | `{ value, label?, keywords?, [k]: unknown }`; `label` and `keywords` feed the filter                              |
-| `placeholder` | `string`               | `'Select…'`            |                                                                                                                   |
-| `searchable`  | `boolean`              | `true`                 |                                                                                                                   |
-| `pinned`      | `(string \| number)[]` | —                      | Floated to the top, with a separator                                                                              |
-| `emptyText`   | `string`               | `'No matches'`         |                                                                                                                   |
-| `disabled`    | `boolean`              | `false`                |                                                                                                                   |
-| `size`        | `'sm' \| 'md'`         | `'md'`                 | Control height: `md` 28px, `sm` 24px (`--zen-control-h`, `--zen-control-h-sm`) — the same in every ZenKit control |
-| `menuWidth`   | `number`               | trigger width, min 240 | px                                                                                                                |
-| `itemHeight`  | `number`               | —                      | Set it to virtualise the list (rows must be this tall)                                                            |
-| `grid`        | `boolean`              | `false`                | Show options as cards (never virtualised)                                                                         |
-| `gridMin`     | `number`               | `92`                   | Card minimum width in px                                                                                          |
-| `sorted`      | `boolean`              | `true`                 | Sort by label, pinned first                                                                                       |
-| `pickGuard`   | `(value) => boolean`   | —                      | Return `true` to swallow a pick and keep the menu open                                                            |
+| Prop           | Type                   | Default                | Description                                                                                                       |
+| -------------- | ---------------------- | ---------------------- | ----------------------------------------------------------------------------------------------------------------- |
+| `modelValue`   | `string \| number`     | required               |                                                                                                                   |
+| `items`        | `ComboItem[]`          | required               | `{ value, label?, keywords?, [k]: unknown }`; `label` and `keywords` feed the filter                              |
+| `placeholder`  | `string`               | `'Select…'`            |                                                                                                                   |
+| `searchable`   | `boolean`              | `true`                 |                                                                                                                   |
+| `pinned`       | `(string \| number)[]` | —                      | Floated to the top, with a separator                                                                              |
+| `emptyText`    | `string`               | `'No matches'`         |                                                                                                                   |
+| `disabled`     | `boolean`              | `false`                |                                                                                                                   |
+| `size`         | `'sm' \| 'md'`         | `'md'`                 | Control height: `md` 28px, `sm` 24px (`--zen-control-h`, `--zen-control-h-sm`) — the same in every ZenKit control |
+| `menuWidth`    | `number`               | trigger width, min 240 | px                                                                                                                |
+| `menuMinWidth` | `number`               | 240                    | px; the narrowest a menu that follows the trigger gets                                                            |
+| `itemHeight`   | `number`               | —                      | Set it to virtualise the list (rows must be this tall)                                                            |
+| `grid`         | `boolean`              | `false`                | Show options as cards (never virtualised)                                                                         |
+| `gridMin`      | `number`               | `92`                   | Card minimum width in px                                                                                          |
+| `sorted`       | `boolean`              | `true`                 | Sort by label, pinned first                                                                                       |
+| `pickGuard`    | `(value) => boolean`   | —                      | Return `true` to swallow a pick and keep the menu open                                                            |
 
 | Event               | Payload            | Description                                                                    |
 | ------------------- | ------------------ | ------------------------------------------------------------------------------ |

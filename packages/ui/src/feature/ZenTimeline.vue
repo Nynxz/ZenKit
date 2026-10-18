@@ -550,6 +550,10 @@ const props = withDefaults(
      *  longer). Shown when zoomed in or while an end is dragged; fitted, the timeline's end sits
      *  at the right edge. Nothing is drawn there. */
     tail?: number
+    /** Editing keeps the scale: a change of length while fitted pins the zoom where it was instead
+     *  of refitting (which resizes every other clip on screen), and a shorter timeline leaves room
+     *  after its end. Fit again by setting `zoom` to 0. */
+    holdScale?: boolean
     tracks: TimelineTrack[]
     selected?: string | string[] | null
     snap?: number
@@ -709,7 +713,19 @@ const fit = computed(() => Math.max(4, (viewWidth.value - PAD * 2) / Math.max(pr
 /** The scale held while a clip's end is dragged: the timeline grows under the drag, and a fitted
  *  scale shrinking with it would move the pointer's time on, growing it faster and faster. */
 const heldScale = ref<number | null>(null)
-const pps = computed(() => heldScale.value ?? Math.max(zoom.value, fit.value))
+const pps = computed(
+  () =>
+    heldScale.value ??
+    (props.holdScale && zoom.value > 0 ? zoom.value : Math.max(zoom.value, fit.value)),
+)
+watch(
+  () => props.duration,
+  (now, was) => {
+    if (!props.holdScale || zoom.value > 0 || heldScale.value !== null) return
+    if (!(was > 0) || now === was || !viewWidth.value) return
+    zoom.value = Math.max(4, (viewWidth.value - PAD * 2) / Math.max(was, 0.1))
+  },
+)
 const fitted = computed(() => heldScale.value === null && pps.value <= fit.value + 0.01)
 const contentWidth = computed(() =>
   Math.max(viewWidth.value, (fitted.value ? props.duration : span.value) * pps.value + PAD * 2),
@@ -1363,7 +1379,11 @@ function startResize(
       const at = snapEdge(t, together, ev, track)
       emit('move', item.id, track.id, edge === 'start' ? { start: at } : { end: at })
     },
-    () => (heldScale.value = null),
+    () => {
+      if (props.holdScale && zoom.value === 0 && heldScale.value !== null)
+        zoom.value = heldScale.value
+      heldScale.value = null
+    },
     outward,
   )
 }
@@ -1402,7 +1422,8 @@ function onWheel(e: WheelEvent): void {
   // Smooth in the wheel's movement: a mouse notch (~100px) is about 25%, a trackpad's small steps
   // a little each.
   const factor = Math.exp(-Math.max(-300, Math.min(300, wheelPx(e, e.deltaY))) * 0.0025)
-  const next = Math.min(Math.max(from.pps * factor, fit.value), 2000)
+  const least = props.holdScale ? Math.min(fit.value, from.pps) : fit.value
+  const next = Math.min(Math.max(from.pps * factor, least), 2000)
   zooming = { pps: next, scroll: PAD + at * next - local }
   if (zoomFrame) return
   zoomFrame = requestAnimationFrame(async () => {

@@ -8,6 +8,8 @@ import '../lib/motion.css'
 import { computed, nextTick, onBeforeUnmount, ref, useSlots, watch } from 'vue'
 import type { ComboItem } from '../types'
 import { inOtherLayer, openLayer, Z, type Layer } from '../overlays/layers'
+import ZenPeek from '../feature/ZenPeek.vue'
+import { followAnchor, liveRect } from '../lib/followAnchor'
 import '../lib/scrollbar.css'
 import '../lib/surface.css'
 
@@ -24,6 +26,8 @@ const props = withDefaults(
     /** `sm` 24px, `md` (default) 28px — the shared control heights. */
     size?: 'sm' | 'md'
     menuWidth?: number
+    /** Narrowest the menu gets when it follows the trigger's width (no `menuWidth`). */
+    menuMinWidth?: number
     itemHeight?: number
     /** Render the menu options as a responsive grid (cards) instead of a list. */
     grid?: boolean
@@ -128,7 +132,7 @@ function place() {
   const r = trig.getBoundingClientRect()
   const vw = window.innerWidth
   const vh = window.innerHeight
-  const want = props.menuWidth ?? Math.max(r.width, 240)
+  const want = props.menuWidth ?? Math.max(r.width, props.menuMinWidth ?? 240)
   const width = Math.round(Math.min(want, vw - 16))
   let left = r.left
   if (left + width > vw - 8) left = vw - width - 8
@@ -186,11 +190,19 @@ function openMenu() {
     window.addEventListener('pointerdown', onDoc, true)
     window.addEventListener('scroll', onOutsideScroll, true)
     window.addEventListener('resize', place)
+    stopFollow = followAnchor(
+      () => liveRect(root.value?.querySelector('.zc-trigger')),
+      place,
+      close,
+    )
   })
 }
+let stopFollow: (() => void) | null = null
 function close() {
   if (!open.value) return
   open.value = false
+  stopFollow?.()
+  stopFollow = null
   layer?.release()
   layer = null
   window.removeEventListener('pointerdown', onDoc, true)
@@ -380,6 +392,7 @@ onBeforeUnmount(close)
         </div>
 
         <div v-if="$slots.footer" class="zc-footer"><slot name="footer" :close="close" /></div>
+        <ZenPeek />
       </div>
     </Teleport>
   </div>

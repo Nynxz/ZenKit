@@ -84,11 +84,12 @@ hover.
 | -------- | ----------------------------------------------------------- |
 | `select` | Clicked (not emitted when disabled or for submenu triggers) |
 
-| Slot      | Description                      |
-| --------- | -------------------------------- |
-| default   | Label                            |
-| `hint`    | Right-aligned hint (plain items) |
-| `submenu` | Flyout content                   |
+| Slot      | Description                                   |
+| --------- | --------------------------------------------- |
+| default   | Label                                         |
+| `lead`    | Before the icon — a `ZenDot` for a toggle row |
+| `hint`    | Right-aligned hint (plain items)              |
+| `submenu` | Flyout content                                |
 
 ## ZenMenuSeparator
 
@@ -137,6 +138,7 @@ const items: ContextMenuItem[] = [
 | `hint`     | `string?`    | Right-aligned                              |
 | `danger`   | `boolean?`   |                                            |
 | `disabled` | `boolean?`   |                                            |
+| `keepOpen` | `boolean?`   | Stay open after `run`, for toggles         |
 | `run`      | `() => void` | Called on click, after the menu has closed |
 
 Exposed: `show(e: MouseEvent, opts?: { clear?: DOMRect })`, `close()`. No events or slots. The menu
