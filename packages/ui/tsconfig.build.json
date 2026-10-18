@@ -7,5 +7,7 @@
     "outDir": "dist",
     "rootDir": "src"
   },
-  "include": ["src"]
+  "include": ["src"],
+  // theme.ts re-exports a private package; the build emits its declarations into dist/theme
+  "exclude": ["src/theme.ts"]
 }

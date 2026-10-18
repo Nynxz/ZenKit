@@ -92,9 +92,6 @@ importers:
       '@nynxz/zenkit-client':
         specifier: workspace:*
         version: link:../client
-      vite:
-        specifier: ^6.4.3
-        version: 6.4.3(@types/node@22.20.1)
 
   packages/ui:
     dependencies:
@@ -102,6 +99,12 @@ importers:
         specifier: ^3.5.0
         version: 3.5.42(typescript@5.9.3)
     devDependencies:
+      '@nynxz/zenkit-client':
+        specifier: workspace:*
+        version: link:../client
+      '@nynxz/zenkit-theme':
+        specifier: workspace:*
+        version: link:../theme
       '@vitejs/plugin-vue':
         specifier: ^5.2.4
         version: 5.2.4(vite@6.4.3(@types/node@22.20.1))(vue@3.5.42(typescript@5.9.3))

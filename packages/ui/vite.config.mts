@@ -36,13 +36,18 @@ export default defineConfig({
     cssCodeSplit: false,
     sourcemap: true,
     lib: {
-      entry: fileURLToPath(new URL('./src/index.ts', import.meta.url)),
+      // `theme` is the /theme subpath: the token engine, bundled from the private zenkit-theme
+      entry: {
+        index: fileURLToPath(new URL('./src/index.ts', import.meta.url)),
+        theme: fileURLToPath(new URL('./src/theme.ts', import.meta.url)),
+      },
       formats: ['es'],
-      fileName: () => 'index.js',
+      fileName: (_format, name) => `${name}.js`,
     },
     rollupOptions: {
-      // Vue is the consumer's (and ComfyUI's) — never bundle a second copy.
-      external: ['vue'],
+      // Vue is the consumer's (and ComfyUI's) — never bundle a second copy. zenkit-client is
+      // only imported for types by the theme engine, but never bundle a published sibling.
+      external: ['vue', '@nynxz/zenkit-client'],
       output: { assetFileNames: 'zenkit-ui.[ext]' },
     },
   },

@@ -9,19 +9,26 @@
       "import": "./dist/index.js"
     },
     "./style.css": "./dist/zenkit-ui.css",
-    "./comfy-bridge.css": "./dist/comfy-bridge.css"
+    "./comfy-bridge.css": "./dist/comfy-bridge.css",
+    "./theme": {
+      "types": "./dist/theme.d.ts",
+      "import": "./dist/theme.js"
+    }
   },
   "scripts": {
-    "build": "vite build && vue-tsc -p tsconfig.build.json",
+    "build": "vite build && vue-tsc -p tsconfig.build.json && tsc -p ../theme/tsconfig.build.json --outDir dist/theme && node -e \"require('fs').writeFileSync('dist/theme.d.ts', \\\"export * from './theme/index'\\n\\\")\"",
     "typecheck": "vue-tsc --noEmit",
     "prepublishOnly": "pnpm build"
   },
   "peerDependencies": {
-    "vue": "^3.5.0"
+    "vue": "^3.5.0",
+    "@nynxz/zenkit-client": "workspace:^"
   },
   "devDependencies": {
     "@vitejs/plugin-vue": "^5.2.4",
-    "vite": "^6.4.3"
+    "vite": "^6.4.3",
+    "@nynxz/zenkit-theme": "workspace:*",
+    "@nynxz/zenkit-client": "workspace:*"
   },
   "license": "MIT",
   "repository": {
@@ -40,5 +47,10 @@
   ],
   "publishConfig": {
     "access": "public"
+  },
+  "peerDependenciesMeta": {
+    "@nynxz/zenkit-client": {
+      "optional": true
+    }
   }
 }
