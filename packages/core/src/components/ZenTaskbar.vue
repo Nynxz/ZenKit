@@ -407,6 +407,94 @@ watch(overflowCount, (n) => {
   if (!n) closeOverflow()
 })
 
+// --- widget overflow: widgets can't shrink, so once the open-panels strip is down to its floor
+// the ones that still don't fit fold into a popup behind a chevron, leftmost first, the way a
+// system tray does. Each is teleported there rather than remounted, so it keeps its state.
+const widgetsEl = ref<HTMLElement | null>(null)
+const hiddenWidgets = ref(0)
+const WIDGET_OVF_ID = 'zen-tb-widget-ovf'
+const WIDGET_GAP = 10 // .tb-widgets gap
+const CHEVRON = 26 // .tb-wovf width
+// Each widget's last inline width: once hidden it can't be measured in the bar, and this is
+// what tells whether it would fit back.
+const widgetWidths = new Map<string, number>()
+function measureWidgets() {
+  const bar = root.value
+  const strip = tasksEl.value
+  if (!bar || !strip) return
+  const list = widgets.value
+  for (const el of widgetsEl.value?.querySelectorAll<HTMLElement>(':scope > [data-widget-id]') ??
+    [])
+    widgetWidths.set(el.dataset.widgetId!, el.offsetWidth)
+
+  const k = Math.min(hiddenWidgets.value, list.length)
+  if (bar.scrollWidth > bar.clientWidth) {
+    if (k < list.length) hiddenWidgets.value = k + 1
+  } else if (k > 0) {
+    // What the strip has beyond its floor, plus the chevron's room once the last one returns.
+    const slack =
+      strip.clientWidth - (tasks.value.length ? CHIP : 0) + (k === 1 ? CHEVRON + WIDGET_GAP : 0)
+    const width = widgetWidths.get(list[k - 1].id)
+    hiddenWidgets.value = width !== undefined && width + WIDGET_GAP <= slack ? k - 1 : k
+  }
+}
+// One step per layout pass, re-run until it settles: hiding one widget changes what the rest need.
+watch(hiddenWidgets, (n) => {
+  if (!n) closeWidgetOverflow()
+  nextTick(measureWidgets)
+})
+watch(
+  () => [
+    widgets.value.length,
+    tasks.value.length,
+    appChips.value.length,
+    ws.list.length,
+    bottomDocked.value.length,
+  ],
+  () => nextTick(measureWidgets),
+)
+let widgetsRO: ResizeObserver | null = null
+onMounted(() => {
+  measureWidgets()
+  if (typeof ResizeObserver === 'undefined') return
+  widgetsRO = new ResizeObserver(() => measureWidgets())
+  for (const el of [root.value, tasksEl.value, widgetsEl.value]) if (el) widgetsRO.observe(el)
+})
+onBeforeUnmount(() => {
+  widgetsRO?.disconnect()
+  widgetsRO = null
+  closeWidgetOverflow()
+})
+
+const wOvfOpen = ref(false)
+const wOvfStyle = ref<Record<string, string>>({})
+function onWidgetOvfDoc(e: PointerEvent) {
+  if ((e.target as Element | null)?.closest?.(`#${WIDGET_OVF_ID}, .tb-wovf`)) return
+  closeWidgetOverflow()
+}
+function openWidgetOverflow() {
+  const chip = widgetsEl.value?.querySelector('.tb-wovf') as HTMLElement | null
+  if (chip) {
+    const r = chip.getBoundingClientRect()
+    const right = window.innerWidth - r.right + 'px'
+    wOvfStyle.value =
+      store.state.taskbarPos === 'top'
+        ? { right, top: r.bottom + 8 + 'px' }
+        : { right, bottom: window.innerHeight - r.top + 8 + 'px' }
+  }
+  wOvfOpen.value = true
+  setTimeout(() => window.addEventListener('pointerdown', onWidgetOvfDoc, true), 0)
+}
+function closeWidgetOverflow() {
+  if (!wOvfOpen.value) return
+  wOvfOpen.value = false
+  window.removeEventListener('pointerdown', onWidgetOvfDoc, true)
+}
+function toggleWidgetOverflow() {
+  if (wOvfOpen.value) closeWidgetOverflow()
+  else openWidgetOverflow()
+}
+
 // Registered launchers, grouped by plugin, filtered by the menu search.
 const q = ref('')
 const groups = computed(() => {
@@ -789,8 +877,28 @@ function openTaskFromOverflow(p: Parameters<typeof taskClick>[0]) {
     </div>
 
     <!-- unified right-side strip: all widgets (canvas controls, VRAM, hide, …) share one gap -->
-    <div v-if="widgets.length" class="tb-widgets">
-      <TaskbarWidgetMount v-for="w in widgets" :key="w.id" :widget="w" />
+    <div v-if="widgets.length" ref="widgetsEl" class="tb-widgets">
+      <button
+        v-if="hiddenWidgets"
+        class="tb-wovf"
+        :class="{ on: wOvfOpen }"
+        :title="hiddenWidgets + ' more widget' + (hiddenWidgets > 1 ? 's' : '')"
+        @click.stop="toggleWidgetOverflow"
+      >
+        <i
+          class="mdi"
+          :class="store.state.taskbarPos === 'top' ? 'mdi-chevron-down' : 'mdi-chevron-up'"
+        />
+      </button>
+      <Teleport
+        v-for="(w, i) in widgets"
+        :key="w.id"
+        :to="'#' + WIDGET_OVF_ID"
+        :disabled="i >= hiddenWidgets"
+        defer
+      >
+        <TaskbarWidgetMount :widget="w" :data-widget-id="w.id" />
+      </Teleport>
     </div>
 
     <Teleport to="body">
@@ -914,6 +1022,16 @@ function openTaskFromOverflow(p: Parameters<typeof taskClick>[0]) {
           </div>
         </div>
       </div>
+    </Teleport>
+
+    <!-- overflow tray: the widgets that didn't fit. Always present (v-show) as their teleport target. -->
+    <Teleport to="body">
+      <div
+        v-show="wOvfOpen && hiddenWidgets"
+        :id="WIDGET_OVF_ID"
+        class="tb-ovfmenu tb-wovfmenu"
+        :style="wOvfStyle"
+      />
     </Teleport>
 
     <!-- overflow list: the open panels that didn't fit in the strip -->
@@ -1231,6 +1349,39 @@ img.tb-logo {
 }
 .tb-widgets:not(:empty) {
   border-left: 1px solid var(--zen-border, #3a3a44);
+}
+/* The widget tray's toggle: its width is CHEVRON in the script. */
+.tb-wovf {
+  flex: none;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 26px;
+  height: 100%;
+  padding: 0;
+  border: none;
+  border-radius: var(--zen-radius, 6px);
+  background: transparent;
+  color: var(--zen-muted, #9aa0aa);
+  font-size: 15px;
+  cursor: pointer;
+}
+.tb-wovf:hover {
+  background: color-mix(in srgb, var(--zen-text, #e5e5ea) 8%, transparent);
+  color: var(--zen-text, #e5e5ea);
+}
+.tb-wovf.on {
+  color: var(--zen-accent, #3b82f6);
+}
+/* In the tray each widget keeps the bar's row height, one per line. */
+.tb-wovfmenu {
+  min-width: 0;
+  max-width: none;
+  gap: 4px;
+  padding: 6px 8px;
+}
+.tb-wovfmenu > .tb-widget {
+  height: 26px;
 }
 
 /* overflow list popup (open panels that didn't fit) */
