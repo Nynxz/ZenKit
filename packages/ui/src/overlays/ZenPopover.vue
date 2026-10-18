@@ -188,6 +188,7 @@ defineExpose({ open: show, close, toggle })
       ref="panelEl"
       data-zen-layer
       class="zen-pop zen-surface zen-scroll"
+      :class="{ 'zen-pop-tooltip': role === 'tooltip' }"
       :style="[panelStyle, { zIndex: z, visibility: ready ? 'visible' : 'hidden' }]"
       :role="role"
     >
@@ -197,6 +198,10 @@ defineExpose({ open: show, close, toggle })
 </template>
 
 <style scoped>
+/* a tooltip only shows: the pointer passes through it, so it never holds itself open */
+.zen-pop-tooltip {
+  pointer-events: none;
+}
 .zen-pop-anchor {
   display: inline-flex;
 }
