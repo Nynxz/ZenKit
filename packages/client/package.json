@@ -1,6 +1,6 @@
 {
   "name": "@nynxz/zenkit-client",
-  "version": "0.3.2",
+  "version": "0.4.0",
   "type": "module",
   "description": "Typed consumer SDK — graceful degradation when ZenKit is absent.",
   "exports": {
