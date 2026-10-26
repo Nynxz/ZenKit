@@ -192,7 +192,9 @@ test('workspace drag cancellation restores its original workspace and clears a q
     'packages/core/src/components/ZenWorkspace.vue',
     {
       '@nynxz/zenkit-ui': mockModule(`export { default as ZenResizeHandle } from '${handleUrl}'
-      export const ZenIcon = { render: () => null }`),
+      export const ZenIcon = { render: () => null }
+      export const ZenButton = { render: () => null }
+      export const ZenIconButton = { render: () => null }`),
       '../panelStore': storeUrl,
       '../tiling': mockModule('export const taskbarFloats = () => false'),
       '../workspaces': mockModule(`export const ws = globalThis.workspaceResizeTest.ws;
@@ -200,6 +202,9 @@ test('workspace drag cancellation restores its original workspace and clears a q
       export const setRatio = globalThis.workspaceResizeTest.setRatio;
       export const commitLayout = globalThis.workspaceResizeTest.commitLayout;
       export const waitingTiles = [];
+      export const awayTiles = [];
+      export const bringBack = () => {};
+      export const dropPlaceholder = () => {};
       export const clampTileRatio = ratio => Math.min(0.8, Math.max(0.2, ratio));`),
     },
   )

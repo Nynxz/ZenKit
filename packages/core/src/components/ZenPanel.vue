@@ -19,6 +19,7 @@
     :data-zen-tiled="tiled || undefined"
     :data-zen-active="isActive"
     :data-zen-interacting="isActive && store.state.interacting"
+    @pointerdown.capture="onAltGrab"
     @pointerdown="onPointerDown"
   >
     <!-- .body (below) is shared across dock<->float so content isn't re-mounted -->
@@ -185,6 +186,10 @@
           <i class="mdi mdi-dock-window" />
           Float (leave {{ home?.name }})
         </button>
+        <button v-if="awayFrom" @click="act(() => bringBack(panel.id))">
+          <i class="mdi mdi-view-dashboard-outline" />
+          Back to its tile in {{ awayFrom.name }}
+        </button>
         <button
           v-for="w in wsState.list.filter((x) => x.id !== home?.id)"
           :key="w.id"
@@ -249,15 +254,17 @@
 <script setup lang="ts">
 import { computed, inject, nextTick, onBeforeUnmount, onMounted, ref } from 'vue'
 import { ZenIcon } from '@nynxz/zenkit-ui'
-import { STORE_KEY, snapZoneFor, type Panel, type PanelStore } from '../panelStore'
+import { dockZ, STORE_KEY, snapZoneFor, type Panel, type PanelStore } from '../panelStore'
 import type { Rect } from '../types'
 import { dockDropFor } from '../dockDrop'
 import { startDockTabDrag } from '../dockDrag'
 import { detachPanel } from '../detach'
 import {
   appCoversGraph,
+  bringBack,
   createWorkspace,
   dropAt,
+  placeholderHome,
   tilePanel,
   tileRectOf,
   untile,
@@ -265,6 +272,7 @@ import {
   ws as wsState,
 } from '../workspaces'
 import type { TileTarget } from '../tiling/engine'
+import { clearMove, coveringBoxes } from '../uncover'
 
 const props = defineProps<{ panel: Panel }>()
 const store = inject(STORE_KEY) as PanelStore
@@ -273,7 +281,10 @@ const HANDLES = ['n', 's', 'e', 'w', 'ne', 'nw', 'se', 'sw'] as const
 const bodyRef = ref<HTMLElement | null>(null)
 const rootRef = ref<HTMLElement | null>(null)
 let contentRO: ResizeObserver | null = null
-const DOCK_Z = 6 // docked panels sit on a fixed layer beneath floating panels (z 21+)
+// A panel being dragged rides over everything in its layer, docks included, so it stays in sight
+// on its way into one.
+const DRAG_Z = 50010
+const lifted = ref(false)
 
 const folded = computed(() => props.panel.status === 'folded')
 const minimized = computed(() => props.panel.status === 'minimized')
@@ -283,9 +294,11 @@ const isFloatFold = computed(() => folded.value && !docked.value)
 // detach a floating panel into its own OS window (desktop native window / browser popup)
 const canDetach = computed(() => !docked.value && !props.panel.inSidebar)
 // A docked panel only shows when it's the active tab of an expanded zone.
+// Lives where the user is (the graph or the workspace on screen), or shows everywhere.
+const here = computed(() => ops.isHere(props.panel))
 const dockVisible = computed(() => {
   const side = props.panel.dockSide
-  if (!side) return false
+  if (!side || !here.value) return false
   const z = store.state.docks[side]
   return z.active === props.panel.id && !z.collapsed
 })
@@ -295,6 +308,8 @@ const TILE_Z = 3
 const home = computed(() => workspaceOf(props.panel.id))
 const tileRect = computed(() => (home.value ? tileRectOf(props.panel.id) : null))
 const tiled = computed(() => tileRect.value !== null)
+// Stepped out of a tile, which waits for it as a placeholder.
+const awayFrom = computed(() => placeholderHome(props.panel.id))
 function floatOut() {
   const p = props.panel
   untile(p.id)
@@ -312,7 +327,8 @@ const isWindow = (p: Panel) =>
   !p.inSidebar &&
   p.frame !== 'none' &&
   p.status === 'open' &&
-  !p.id.startsWith('zenkit:')
+  !p.id.startsWith('zenkit:') &&
+  ops.isHere(p)
 const isActive = computed(() => {
   if (store.state.panelsHidden || !isWindow(props.panel)) return false
   let top = props.panel
@@ -330,7 +346,7 @@ const zpStyle = computed(() => {
       top: p.y + 'px',
       width: Math.max(0, p.w) + 'px',
       height: Math.max(0, p.h) + 'px',
-      zIndex: DOCK_Z,
+      zIndex: dockZ(store.state.list, p.dockSide),
       display: minimized.value || !dockVisible.value ? 'none' : 'flex',
     }
   }
@@ -366,13 +382,21 @@ const zpStyle = computed(() => {
     top: top + 'px',
     width: p.w + 'px',
     height: isFloatFold.value ? foldH + 'px' : p.h + 'px',
-    zIndex: p.z,
-    display: minimized.value || store.state.panelsHidden ? 'none' : 'flex',
+    zIndex: lifted.value ? DRAG_Z : p.z,
+    display: minimized.value || store.state.panelsHidden || !here.value ? 'none' : 'flex',
   }
 })
 
+// Alt-drag moves a floating panel from anywhere on it, header hidden or covered. Caught on the
+// way down, so the panel's content never sees the press.
+function onAltGrab(e: PointerEvent) {
+  if (!e.altKey || e.button !== 0 || docked.value) return
+  e.stopPropagation()
+  startDrag(e)
+}
+
 function onPointerDown(e: PointerEvent) {
-  if (!docked.value) ops.front(props.panel.id) // docked panels stay out of the z-race
+  ops.front(props.panel.id)
   // bare panels have no header — drag them by any element the consumer marks `.zen-grip`
   if (bare.value && (e.target as Element | null)?.closest?.('.zen-grip')) startDrag(e)
 }
@@ -596,6 +620,7 @@ function startDrag(e: PointerEvent) {
     if (!moving) {
       if (Math.hypot(m.clientX - sx, m.clientY - sy) < DRAG_THRESHOLD) return
       moving = true
+      lifted.value = true
       beginInteract('grabbing')
       // Pulling a maximized, snapped or tiled panel free restores its float size, keeping the
       // same point of the title bar under the pointer — as a desktop OS does.
@@ -636,6 +661,8 @@ function startDrag(e: PointerEvent) {
     window.removeEventListener('pointerup', onUp, true)
     window.removeEventListener('pointercancel', onCancel)
     if (!moving) return
+    lifted.value = false
+    let floated = false
     // Drag onto ComfyUI's sidebar (or the left edge) → pin into it; the right edge or the
     // taskbar → a ZenKit dock.
     if (!commit) {
@@ -644,11 +671,15 @@ function startDrag(e: PointerEvent) {
     } else if (tileTarget) tilePanel(p.id, tileTarget)
     else if (store.state.dockDrop) ops.dropInto(p.id, store.state.dockDrop)
     else if (store.state.snap) ops.applySnap(p.id, store.state.snap)
-    else ops.setRect(p.id, {}, true)
+    else {
+      ops.setRect(p.id, {}, true)
+      floated = true
+    }
     store.state.snap = null
     store.state.dockDrop = null
     wsState.preview = null
     endInteract()
+    if (floated) void comeOutFromUnder()
   }
   const onUp = () => finish(true)
   const onCancel = () => finish(false)
@@ -656,6 +687,24 @@ function startDrag(e: PointerEvent) {
   window.addEventListener('pointermove', onMove, true)
   window.addEventListener('pointerup', onUp, true)
   window.addEventListener('pointercancel', onCancel)
+}
+
+// Dropped with its title bar under ComfyUI's chrome: step out, a piece at a time (moving out from
+// under the sidebar can land it under a top-row control). Read once the drag shield is gone.
+async function comeOutFromUnder() {
+  for (let tries = 0; tries < 3; tries++) {
+    await nextTick()
+    const el = rootRef.value
+    if (!el || tiled.value || docked.value) return
+    const r = el.getBoundingClientRect()
+    const panel = { x: r.left, y: r.top, w: r.width, h: r.height }
+    const barY = props.panel.headerPos === 'bottom' ? r.bottom - HEADER_PX : r.top
+    const strip = { x: r.left, y: barY, w: r.width, h: HEADER_PX }
+    const box = coveringBoxes(strip)[0]
+    const move = box && clearMove(panel, strip, box, { w: innerWidth, h: innerHeight })
+    if (!move) return
+    ops.setRect(props.panel.id, { x: props.panel.x + move.dx, y: props.panel.y + move.dy }, true)
+  }
 }
 
 function startResize(e: PointerEvent, h: (typeof HANDLES)[number]) {

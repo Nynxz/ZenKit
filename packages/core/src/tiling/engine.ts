@@ -76,6 +76,15 @@ export function removeTile(tree: TileNode | null, id: Id): TileNode | null {
   return a === tree.a && b === tree.b ? tree : { ...tree, a, b }
 }
 
+/** Give the tile `from` the id `to`, in place: same position and share. */
+export function renameTile(tree: TileNode | null, from: Id, to: Id): TileNode | null {
+  if (!tree) return null
+  if (tree.type === 'leaf') return tree.id === from ? { type: 'leaf', id: to } : tree
+  const a = renameTile(tree.a, from, to)!
+  const b = renameTile(tree.b, from, to)!
+  return a === tree.a && b === tree.b ? tree : { ...tree, a, b }
+}
+
 export function setTileRatio(
   tree: TileNode | null,
   path: TilePath,

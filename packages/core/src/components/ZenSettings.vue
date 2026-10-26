@@ -208,6 +208,19 @@ onBeforeUnmount(() => offLog?.())
           @update:model-value="(v) => store.setTaskbarFloating(!!v)"
         />
       </div>
+      <div class="zse-set">
+        <div>
+          <span class="zse-slbl">Auto-hide taskbar</span>
+          <small>
+            it slides off its edge and takes no space; move the pointer to that edge to bring it
+            back
+          </small>
+        </div>
+        <ZenSwitch
+          :model-value="store.state.taskbarAutohide"
+          @update:model-value="(v) => store.setTaskbarAutohide(!!v)"
+        />
+      </div>
 
       <!-- white-label the taskbar's Start button -->
       <div class="zse-brand">
@@ -309,6 +322,18 @@ onBeforeUnmount(() => offLog?.())
         <ZenSwitch
           :model-value="appStore.state.urlSync"
           @update:model-value="(v) => appStore.setUrlSync(v)"
+        />
+      </div>
+      <div class="zse-set">
+        <div>
+          <span class="zse-slbl">Hide app mode button</span>
+          <small>
+            removes the App half of ComfyUI's Graph / App switch; its shortcut still switches
+          </small>
+        </div>
+        <ZenSwitch
+          :model-value="store.state.hideAppModeButton"
+          @update:model-value="(v) => store.setHideAppModeButton(v)"
         />
       </div>
       <div class="zse-set">

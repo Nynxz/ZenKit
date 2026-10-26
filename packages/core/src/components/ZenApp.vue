@@ -28,7 +28,12 @@ const surfaceStyle = computed(() => {
   if (t && t !== 'hidden')
     return { left: t.x + 'px', top: t.y + 'px', width: t.w + 'px', height: t.h + 'px', zIndex: 3 }
   return panels.state.taskbarPos === 'top'
-    ? { left: '0', right: '0', top: panels.state.topbarH + TASKBAR_H + 'px', bottom: '0' }
+    ? {
+        left: '0',
+        right: '0',
+        top: panels.state.topbarH + (panels.state.taskbarAutohide ? 0 : TASKBAR_H) + 'px',
+        bottom: '0',
+      }
     : { left: '0', right: '0', top: '0', bottom: taskbarFootprint(panels) + 'px' }
 })
 const tiled = computed(() => !!tile.value)

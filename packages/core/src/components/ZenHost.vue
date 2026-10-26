@@ -1,31 +1,42 @@
 <template>
   <div class="zen-host">
-    <!-- pointer trap so the cursor can't hit the graph or another panel during drag/resize -->
-    <div
-      v-if="store.state.interacting"
-      class="shield"
-      :style="{ cursor: store.state.interactCursor || 'default' }"
-    />
-    <div v-if="store.state.snap" class="snapprev" :style="snapStyle" />
-    <!-- highlights the side a dragged panel would dock into -->
-    <div v-if="dockDropStyle" class="dockprev" :style="dockDropStyle" />
     <!-- full-screen apps (cover the graph + graph-edge chrome; panels/toasts/taskbar stay above),
          or apps tiled in a workspace (in their tile). One surface per running app that has been
          shown; each shows itself while it is active or its workspace is, and stays mounted,
          hidden, otherwise. An app shown before its plugin registers gets an empty surface. -->
-    <ZenApp v-for="key in appStore.state.mounted" :key="key" :app-key="key" />
-    <ZenApp
-      v-if="
-        appStore.state.active.app && !appStore.state.mounted.includes(appStore.state.active.app)
-      "
-      :key="'pending:' + appStore.state.active.app"
-      :app-key="appStore.state.active.app"
-    />
-    <!-- the active workspace: covers the graph and tiles panels; null = the graph itself -->
-    <ZenWorkspace v-if="ws.active" />
-    <ZenPanel v-for="p in hostPanels" :key="p.id" :panel="p" />
-    <ZenDock />
-    <ZenTaskbar />
+    <!-- over ComfyUI's sidebars, menus and top bar while an app, a workspace or a maximized panel
+         is on screen, or the panels were used more recently than ComfyUI's chrome; under them
+         otherwise. Only the layer's z changes, so no panel is remounted (an iframe or video in
+         one keeps playing) -->
+    <div
+      class="zen-layer zen-panels"
+      :style="{ zIndex: covered || inFront === 'panels' ? COVER_Z : UNDER_COMFY_Z }"
+    >
+      <div v-if="store.state.snap" class="snapprev" :style="snapStyle" />
+      <!-- highlights the side a dragged panel would dock into -->
+      <div v-if="dockDropStyle" class="dockprev" :style="dockDropStyle" />
+      <ZenApp v-for="key in appStore.state.mounted" :key="key" :app-key="key" />
+      <ZenApp
+        v-if="
+          appStore.state.active.app && !appStore.state.mounted.includes(appStore.state.active.app)
+        "
+        :key="'pending:' + appStore.state.active.app"
+        :app-key="appStore.state.active.app"
+      />
+      <!-- the active workspace: covers the graph and tiles panels; null = the graph itself -->
+      <ZenWorkspace v-if="ws.active" />
+      <ZenPanel v-for="p in hostPanels" :key="p.id" :panel="p" />
+      <ZenDock />
+    </div>
+    <div class="zen-layer" :style="{ zIndex: COVER_Z + 1 }">
+      <ZenTaskbar />
+      <!-- pointer trap so the cursor can't hit the graph or another panel during drag/resize -->
+      <div
+        v-if="store.state.interacting"
+        class="shield"
+        :style="{ cursor: store.state.interactCursor || 'default' }"
+      />
+    </div>
   </div>
 </template>
 
@@ -40,11 +51,31 @@ import { STORE_KEY, type PanelStore } from '../panelStore'
 import { APP_STORE_KEY, type AppStore } from '../appStore'
 import { dockBounds, RAIL } from '../tiling'
 import { sidebarRail } from '../dockDrop'
-import { ws } from '../workspaces'
+import { tileRectOf, ws } from '../workspaces'
+import { inFront } from '../stacking'
 
 const store = inject(STORE_KEY) as PanelStore
 const appStore = inject(APP_STORE_KEY) as AppStore
 const hostPanels = computed(() => store.state.list.filter((p) => !p.inSidebar))
+
+// ComfyUI's sidebar, bottom and side panels share one overlay at z 999; its top bar, menus and
+// dialogs sit higher still.
+const COVER_Z = 1500
+const UNDER_COMFY_Z = 998
+// A maximized panel on screen takes the whole window, over ComfyUI's chrome as an app does.
+const maximizedShown = computed(
+  () =>
+    !store.state.panelsHidden &&
+    hostPanels.value.some(
+      (p) =>
+        p.maximized &&
+        p.status === 'open' &&
+        !p.dockSide &&
+        store._ops.isHere(p) &&
+        tileRectOf(p.id) !== 'hidden',
+    ),
+)
+const covered = computed(() => !!appStore.state.active.app || !!ws.active || maximizedShown.value)
 
 // computeDockLayout reads window size (non-reactive) — bump on resize.
 const vpTick = ref(0)
@@ -94,13 +125,16 @@ const dockDropStyle = computed(() => {
 </script>
 
 <style scoped>
+/* no stacking context of its own: each layer stacks against ComfyUI's directly */
 .zen-host {
+  display: contents;
+}
+.zen-layer {
   position: fixed;
   inset: 0;
-  z-index: 1500;
   pointer-events: none;
 }
-.zen-host > * {
+.zen-layer > * {
   pointer-events: auto;
 }
 /* over everything, the dragged panel included: mid-drag the pointer must never reach another
@@ -126,7 +160,7 @@ const dockDropStyle = computed(() => {
 .dockprev {
   position: fixed;
   pointer-events: none;
-  z-index: 9;
+  z-index: 50003;
   box-sizing: border-box;
   border-radius: var(--zen-radius-surface, var(--zen-radius, 10px));
   background: color-mix(in srgb, var(--zen-accent, #3b82f6) 14%, transparent);

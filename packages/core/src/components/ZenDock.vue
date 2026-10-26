@@ -1,7 +1,13 @@
 <template>
   <!-- One tab rail per docked side; click toggles/switches, drag undocks. -->
   <template v-for="zone in zones" :key="zone.side">
-    <div v-if="zone.rail" class="rail" :class="'side-' + zone.side" :style="rectStyle(zone.rail)">
+    <div
+      v-if="zone.rail"
+      class="rail"
+      :class="'side-' + zone.side"
+      :style="{ ...rectStyle(zone.rail), zIndex: zoneZ(zone) }"
+      @pointerdown.capture="raise(zone)"
+    >
       <div class="tabs" :class="zone.side === 'bottom' ? 'horiz' : 'vert'">
         <button
           v-for="m in zone.members"
@@ -27,7 +33,8 @@
       :value="zone.side === 'bottom' ? zone.body.h : zone.body.w"
       :min="zone.side === 'bottom' ? 160 : 220"
       :value-text="`${zone.side === 'bottom' ? zone.body.h : zone.body.w}px`"
-      :style="resizeStyle(zone)"
+      :style="{ ...resizeStyle(zone), zIndex: zoneZ(zone) }"
+      @pointerdown.capture="raise(zone)"
       @pointerenter="store.state.dockEdgeLit = zone.side"
       @pointerleave="!store.state.interacting && (store.state.dockEdgeLit = null)"
       @drag-start="startResize($event, zone)"
@@ -74,7 +81,7 @@
 <script setup lang="ts">
 import { computed, inject, onBeforeUnmount, onMounted, ref } from 'vue'
 import { ZenIcon, ZenResizeHandle } from '@nynxz/zenkit-ui'
-import { STORE_KEY, type Panel, type PanelStore } from '../panelStore'
+import { dockZ, STORE_KEY, type Panel, type PanelStore } from '../panelStore'
 import { computeDockLayout, dockLayout, dockLayoutVersion, type ZoneLayout } from '../tiling'
 import { startDockTabDrag } from '../dockDrag'
 import { detachPanel } from '../detach'
@@ -108,6 +115,13 @@ const zones = computed<ZoneLayout[]>(() => {
     .map((s) => layout[s])
     .filter((z) => z.rail || z.body)
 })
+
+// The rail and grip stack with their dock's panels (and, rendered after them, just over them).
+const zoneZ = (zone: ZoneLayout) => dockZ(store.state.list, zone.side)
+function raise(zone: ZoneLayout) {
+  const id = zone.activeId ?? zone.members[0]?.id
+  if (id) store._ops.front(id)
+}
 
 const rectStyle = (r: Rect | null) =>
   r ? { left: r.x + 'px', top: r.y + 'px', width: r.w + 'px', height: r.h + 'px' } : {}

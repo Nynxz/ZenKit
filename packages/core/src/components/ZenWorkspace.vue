@@ -77,6 +77,38 @@
       <span class="zws-wait-title">{{ t.title }}</span>
     </div>
   </div>
+  <!-- A tile a panel stepped out of (opened on the graph or in another workspace): it waits here
+       until the panel is brought back. -->
+  <div
+    v-for="t in awayTiles"
+    :key="'away:' + t.id"
+    class="zws-wait zws-away"
+    :style="px(t.rect)"
+    :data-zen-away="t.id"
+  >
+    <div class="zws-wait-bar">
+      <ZenIcon class="zws-wait-icon" :icon="t.icon" />
+      <span class="zws-wait-title">{{ t.title }}</span>
+      <ZenIconButton
+        class="zws-away-x"
+        icon="mdi mdi-close"
+        size="sm"
+        title="Remove this tile"
+        @click="dropPlaceholder(t.id)"
+      />
+    </div>
+    <div class="zws-away-body">
+      <span>{{ t.open ? 'Open outside this workspace' : 'Closed' }}</span>
+      <ZenButton
+        variant="primary"
+        size="sm"
+        icon="mdi mdi-arrow-collapse-down"
+        @click="bringBack(t.id)"
+      >
+        {{ t.open ? 'Bring back' : 'Open here' }}
+      </ZenButton>
+    </div>
+  </div>
   <div v-if="ws.preview" class="zws-preview" :style="px(ws.preview)" />
 </template>
 
@@ -85,13 +117,16 @@
 // tiles (drag to resize, double-click to even out), and previews where a dragged panel would tile.
 // The tiled panels themselves are ordinary ZenPanels placed by their tile rect.
 import { computed, inject, ref } from 'vue'
-import { ZenIcon, ZenResizeHandle } from '@nynxz/zenkit-ui'
+import { ZenButton, ZenIcon, ZenIconButton, ZenResizeHandle } from '@nynxz/zenkit-ui'
 import { STORE_KEY, type PanelStore } from '../panelStore'
 import { taskbarFloats } from '../tiling'
 import type { Rect } from '../types'
 import {
+  awayTiles,
+  bringBack,
   clampTileRatio,
   commitLayout,
+  dropPlaceholder,
   setRatio,
   waitingTiles,
   ws,
@@ -286,6 +321,19 @@ kbd {
   letter-spacing: 0.003em;
   white-space: nowrap;
   text-overflow: ellipsis;
+}
+.zws-away-x {
+  margin-left: auto;
+}
+.zws-away-body {
+  display: flex;
+  flex: 1;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 10px;
+  color: var(--zen-text-muted, #9a9aa6);
+  font-size: 12px;
 }
 .zws-gutter {
   position: fixed;

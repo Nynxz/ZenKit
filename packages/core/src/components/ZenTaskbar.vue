@@ -228,14 +228,7 @@ const windowed = computed(() =>
     (p) => !p.id.startsWith('zenkit:') && !p.dockSide && !p.inSidebar && p.frame !== 'none',
   ),
 )
-const tasks = computed(() =>
-  ops.sortByTaskOrder(
-    windowed.value.filter((p) => {
-      const home = workspaceOf(p.id)
-      return !home || home.id === ws.active
-    }),
-  ),
-)
+const tasks = computed(() => ops.sortByTaskOrder(windowed.value.filter((p) => ops.isHere(p))))
 /** The current workflow's workspaces come first, then the global ones. */
 const wfName = computed(() => currentWorkflowName())
 const ownWs = computed(() => ws.list.filter((w) => w.scope === 'workflow'))
@@ -697,6 +690,90 @@ const tbStyle = computed(() => {
   const g = canvasGutter() + 'px'
   return { height: TASKBAR_H + 'px', bottom: g, top: 'auto', left: g, right: g }
 })
+// --- auto-hide: off its edge until the pointer reaches it -------------------------------------
+// Decided by where the pointer is, not what is under it: the bar comes out when the pointer is
+// within EDGE px of its edge, stays while the pointer is within PAD of it (or one of its menus,
+// or any popover opened from it, is open), and slides away HIDE_DELAY after it leaves.
+const AH_EDGE = 4
+const AH_PAD = 24
+const AH_HIDE_DELAY = 420
+const autohide = computed(() => store.state.taskbarAutohide)
+const revealed = ref(false)
+const nearEdge = ref(false)
+const holding = computed(
+  () => menuOpen.value || ovfOpen.value || wOvfOpen.value || ctxOpen.value || wsListOpen.value,
+)
+let ahTimer = 0
+let ahFrame = 0
+let ahLast: PointerEvent | null = null
+function ahHideSoon() {
+  if (ahTimer || !revealed.value) return
+  ahTimer = window.setTimeout(function check() {
+    // A popover from the bar (a widget's, the Start menu) keeps it out while it's open.
+    if (holding.value || document.querySelector('[data-zen-layer]')) {
+      ahTimer = window.setTimeout(check, AH_HIDE_DELAY)
+      return
+    }
+    ahTimer = 0
+    if (!ahLast || !ahOver(ahLast.clientX, ahLast.clientY)) revealed.value = false
+  }, AH_HIDE_DELAY)
+}
+function ahOver(x: number, y: number): boolean {
+  const r = root.value?.getBoundingClientRect()
+  if (!r) return false
+  // Measured where it rests: hidden, it is translated off its edge.
+  const top = store.state.taskbarPos === 'top' ? store.state.topbarH : window.innerHeight - r.height
+  return (
+    x >= r.left - AH_PAD &&
+    x <= r.right + AH_PAD &&
+    y >= top - AH_PAD &&
+    y <= top + r.height + AH_PAD
+  )
+}
+function ahDecide() {
+  ahFrame = 0
+  if (!ahLast) return
+  const y = ahLast.clientY
+  const atEdge =
+    store.state.taskbarPos === 'top'
+      ? y <= store.state.topbarH + AH_EDGE
+      : y >= window.innerHeight - AH_EDGE
+  nearEdge.value = atEdge
+  if (revealed.value) {
+    if (atEdge || ahOver(ahLast.clientX, y)) {
+      clearTimeout(ahTimer)
+      ahTimer = 0
+    } else ahHideSoon()
+  } else if (atEdge) revealed.value = true
+}
+function ahMove(e: PointerEvent) {
+  ahLast = e
+  if (!ahFrame) ahFrame = requestAnimationFrame(ahDecide)
+}
+function ahLeave() {
+  nearEdge.value = false
+  ahHideSoon()
+}
+function ahStart() {
+  document.addEventListener('pointermove', ahMove, { capture: true, passive: true })
+  document.documentElement.addEventListener('pointerleave', ahLeave)
+}
+function ahStop() {
+  clearTimeout(ahTimer)
+  ahTimer = 0
+  cancelAnimationFrame(ahFrame)
+  document.removeEventListener('pointermove', ahMove, { capture: true })
+  document.documentElement.removeEventListener('pointerleave', ahLeave)
+  revealed.value = false
+  nearEdge.value = false
+}
+watch(autohide, (on) => (on ? ahStart() : ahStop()), { immediate: true })
+watch(holding, (h) => {
+  if (h && autohide.value) revealed.value = true
+  else if (!h) ahHideSoon()
+})
+onBeforeUnmount(ahStop)
+
 // Named rather than inlined in the template: Prettier's `semi: false` strips the separator from a
 // multi-statement inline handler, and Vue cannot parse newline-separated statements there.
 function openTaskFromOverflow(p: Parameters<typeof taskClick>[0]) {
@@ -710,7 +787,7 @@ function openTaskFromOverflow(p: Parameters<typeof taskClick>[0]) {
     ref="root"
     class="tb"
     data-zen-taskbar
-    :class="['pos-' + store.state.taskbarPos, { floating }]"
+    :class="['pos-' + store.state.taskbarPos, { floating, autohide, revealed }]"
     :style="tbStyle"
   >
     <button
@@ -1082,6 +1159,13 @@ function openTaskFromOverflow(p: Parameters<typeof taskClick>[0]) {
         >
           Bring to front
         </ZenMenuItem>
+        <ZenMenuItem
+          v-if="ctxPanel && !workspaceOf(ctxPanel.id)"
+          icon="mdi mdi-image-filter-center-focus"
+          @select="runOnCtx(ops.center)"
+        >
+          Bring to center
+        </ZenMenuItem>
         <ZenMenuItem icon="mdi mdi-window-minimize" @select="runOnCtx(ops.minimize)">
           Minimize
         </ZenMenuItem>
@@ -1109,9 +1193,62 @@ function openTaskFromOverflow(p: Parameters<typeof taskClick>[0]) {
       <ZenMenuItem icon="mdi mdi-close" danger @select="runOnCtx(ops.close)">Close</ZenMenuItem>
     </ZenPopover>
   </div>
+  <!-- Where the hidden bar is: a small pill at its edge, lit when the pointer is there. -->
+  <div
+    v-if="autohide && !revealed"
+    class="tb-edge"
+    :class="['pos-' + store.state.taskbarPos, { near: nearEdge }]"
+    :style="store.state.taskbarPos === 'top' ? { top: store.state.topbarH + 'px' } : undefined"
+  />
 </template>
 
 <style scoped>
+.tb.autohide {
+  transition:
+    transform 0.26s cubic-bezier(0.4, 0, 0.2, 1),
+    opacity 0.2s ease;
+}
+.tb.autohide.pos-bottom:not(.revealed) {
+  transform: translateY(calc(100% + 2px));
+  opacity: 0;
+  pointer-events: none;
+}
+.tb.autohide.pos-top:not(.revealed) {
+  transform: translateY(calc(-100% - 2px));
+  opacity: 0;
+  pointer-events: none;
+}
+.tb.autohide.revealed {
+  box-shadow: 0 -6px 24px rgba(0, 0, 0, 0.35);
+}
+.tb-edge {
+  position: fixed;
+  left: 50%;
+  z-index: 99998;
+  width: 64px;
+  height: 4px;
+  margin-left: -32px;
+  border-radius: 4px;
+  background: var(--zen-border, #3a3a44);
+  opacity: 0.5;
+  pointer-events: none;
+  transition:
+    opacity 0.2s ease,
+    width 0.2s ease,
+    background 0.2s ease;
+}
+.tb-edge.pos-bottom {
+  bottom: 2px;
+}
+.tb-edge.pos-top {
+  margin-top: 2px;
+}
+.tb-edge.near {
+  width: 110px;
+  margin-left: -55px;
+  background: var(--zen-accent, #3b82f6);
+  opacity: 1;
+}
 .tb {
   position: fixed;
   left: 0;

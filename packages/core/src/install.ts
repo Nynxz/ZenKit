@@ -38,6 +38,7 @@ import zenkitLogo from './brand/zenkit.svg'
 
 // The runtime's version is core's package version, so it can't drift from what ships.
 import { version as ZENKIT_VERSION } from '../package.json'
+import { trackFront } from './stacking'
 
 export { ZENKIT_VERSION }
 
@@ -84,6 +85,7 @@ export function installZenKit(opts: InstallOptions = {}): ZenKitApi {
   installWorkspaceKeys()
   startTiling(store)
   startSidebar(store, bus) // host pinned panels in ComfyUI's native sidebar (no-op if unavailable)
+  trackFront(bus, (id) => !!store._ops.get(id)?.inSidebar)
 
   registerBuiltinTaskbarWidgets(store, appStore)
   registerInboxWidget()

@@ -149,6 +149,8 @@ export interface ZenPanelDef extends Omit<PanelSpec, 'id' | 'instanceOf'> {
   id: string
   /** Allow multiple live instances (the Start menu shows open-new + an instance list). */
   multi?: boolean
+  /** Can be open in several places at once, each with its own copy (see PanelRegistration). */
+  copies?: boolean
   /** Hide from the Start menu; opened only programmatically (popup/action-spawned). */
   spawnOnly?: boolean
   /** Icon for the sidebar-tab fallback when ZenKit is absent (defaults to `icon`). */
@@ -235,7 +237,7 @@ export interface ZenPluginHandle {
 }
 
 function specOf(p: ZenPanelDef, instanceId?: string): PanelSpec {
-  const { id, multi, spawnOnly, sidebarIcon, open, ...spec } = p
+  const { id, multi, copies, spawnOnly, sidebarIcon, open, ...spec } = p
   return multi ? { ...spec, id: instanceId, instanceOf: id } : { ...spec, id }
 }
 
@@ -373,6 +375,7 @@ export async function registerZenPlugin(def: ZenPluginDef): Promise<ZenPluginHan
           title: p.title,
           icon: p.icon,
           multi: p.multi,
+          copies: p.copies,
           spawnOnly: p.spawnOnly,
           persist: p.persist,
           render: p.render,

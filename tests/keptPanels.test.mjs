@@ -181,6 +181,9 @@ async function workspacesWith({ nodes = {}, loading = false, ls = storage() } = 
       front: () => {},
       unpinSidebar: () => {},
       setDock: () => {},
+      enterPlace: () => {},
+      setPlace: () => {},
+      movePlace: () => {},
     },
   }
   const apps = {

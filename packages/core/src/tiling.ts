@@ -235,11 +235,16 @@ export const freeArea = shallowRef<{ x: number; y: number; w: number; h: number;
 
 /** A floating taskbar is an inset card over the canvas; only the bottom one can float. */
 export function taskbarFloats(store: PanelStore): boolean {
-  return store.state.taskbarFloating && store.state.taskbarPos === 'bottom'
+  return (
+    store.state.taskbarFloating &&
+    store.state.taskbarPos === 'bottom' &&
+    !store.state.taskbarAutohide
+  )
 }
 /** How far up from the window's bottom edge the taskbar reaches (to its top edge). */
 export function taskbarFootprint(store: PanelStore): number {
-  if (store.state.taskbarPos !== 'bottom') return 0
+  // Hidden away, it takes no space: it comes in over whatever is at the edge.
+  if (store.state.taskbarPos !== 'bottom' || store.state.taskbarAutohide) return 0
   return taskbarFloats(store) ? TASKBAR_H + canvasGutter() : TASKBAR_H
 }
 
@@ -336,13 +341,14 @@ export function startTiling(store: PanelStore) {
     if (store.state.sidebarAvailable)
       for (const p of store._ops.dockMembers('left')) store._ops.setDock(p.id, 'left')
     const tbTop = store.state.taskbarPos === 'top'
-    reserveTop(store, tbTop ? TASKBAR_H : 0) // before measuring, so topbarHeight() is current
+    const hides = store.state.taskbarAutohide
+    reserveTop(store, tbTop && !hides ? TASKBAR_H : 0) // before measuring, so topbarHeight() is current
     // An embedded taskbar is the only thing that takes space from the canvas, and only once.
     // A floating one sits over the canvas; ComfyUI's chrome is padded clear of it instead.
     const floats = taskbarFloats(store)
     const underBar = floats ? TASKBAR_H + canvasGutter() : 0
     let resized = setFloatingBarInset(underBar)
-    resized = reserve('bottom', tbTop || floats ? 0 : TASKBAR_H) || resized
+    resized = reserve('bottom', tbTop || floats || hides ? 0 : TASKBAR_H) || resized
     resized = reserve('left', 0) || resized
     resized = reserve('right', 0) || resized
     if (resized) nudgeCanvas()
@@ -405,7 +411,19 @@ export function startTiling(store: PanelStore) {
         .filter((x) => x.dockSide)
         .map((x) => `${x.id}:${x.dockSide}:${x.status}:${x.dockOrder}`)
         .join(',')
-      return d + '#' + p + '#' + store.state.taskbarPos + ':' + store.state.taskbarFloating
+      return (
+        d +
+        '#' +
+        p +
+        '#' +
+        store.state.place +
+        '#' +
+        store.state.taskbarPos +
+        ':' +
+        store.state.taskbarFloating +
+        ':' +
+        store.state.taskbarAutohide
+      )
     },
     scheduleRecompute,
     { immediate: true },

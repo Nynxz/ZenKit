@@ -12,6 +12,7 @@ export function createChrome(store: PanelStore, appStore: AppStore): ZenKitApi['
   const get = (): ChromeSettings => ({
     taskbarPos: store.state.taskbarPos,
     floatingTaskbar: store.state.taskbarFloating,
+    taskbarAutohide: store.state.taskbarAutohide,
     absorbComfyButtons: store.state.absorbComfyButtons,
     absorbCanvasControls: isWidgetOn(CANVAS_CONTROLS_WIDGET),
     appUrlSync: appStore.state.urlSync,
@@ -25,6 +26,7 @@ export function createChrome(store: PanelStore, appStore: AppStore): ZenKitApi['
     if (patch.taskbarPos === 'top' || patch.taskbarPos === 'bottom')
       store.setTaskbarPos(patch.taskbarPos)
     if (on(patch.floatingTaskbar)) store.setTaskbarFloating(patch.floatingTaskbar!)
+    if (on(patch.taskbarAutohide)) store.setTaskbarAutohide(patch.taskbarAutohide!)
     if (on(patch.absorbComfyButtons)) store.setAbsorbComfyButtons(patch.absorbComfyButtons!)
     if (on(patch.absorbCanvasControls))
       setWidgetOn(CANVAS_CONTROLS_WIDGET, patch.absorbCanvasControls!)

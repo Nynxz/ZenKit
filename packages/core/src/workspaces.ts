@@ -44,6 +44,7 @@ import {
   insertTile,
   layoutTiles,
   removeTile,
+  renameTile,
   resolveRect,
   setTileRatio,
   type SplitAxis,
@@ -128,6 +129,12 @@ const byId = (id: string | null) => ws.list.find((w) => w.id === id)
 export function attachWorkspaces(store: PanelStore, appStore: AppStore) {
   panels = store
   apps = appStore
+  // The workspace on screen (or the graph) is the place whose panels show.
+  watch(
+    () => ws.active,
+    (place) => store._ops.enterPlace(place),
+    { immediate: true, flush: 'sync' },
+  )
   appStore.setTiles({
     has: (key) => isTiled(appTileId(key)),
     reveal: (key) => {
@@ -417,7 +424,7 @@ function canReopen(id: string): boolean {
   if (!panels) return false
   const hash = id.indexOf('#')
   const reg = panels.state.registry.find(
-    (r) => r.id === id || (hash > 0 && r.multi && r.id === id.slice(0, hash)),
+    (r) => r.id === id || (hash > 0 && (r.multi || r.copies) && r.id === id.slice(0, hash)),
   )
   return !!reg && !reg.spawnOnly && (!reg.plugin || panels.pluginEnabled(reg.plugin))
 }
@@ -532,6 +539,75 @@ export function workspaceOf(panelId: string): Workspace | null {
 }
 export const isTiled = (panelId: string) => workspaceOf(panelId) !== null
 
+// --- stepping out of a tile -----------------------------------------------------------------------
+// A panel exists once, so a tiled one opened somewhere else (the graph, another workspace) steps
+// out of its tile and floats there, an ordinary floating panel from then on. Its tile stays,
+// renamed to a placeholder that offers to bring it back; nothing moves it back by itself.
+
+const AWAY = 'zen-away@'
+const awayId = (panelId: string) => AWAY + panelId
+const awayPanelOf = (tileId: string) => (tileId.startsWith(AWAY) ? tileId.slice(AWAY.length) : null)
+
+/** Take a tiled panel out of its tile, leaving a placeholder there. */
+export function stepOut(panelId: string) {
+  let changed = false
+  for (const w of ws.list)
+    if (hasTile(w.tree, panelId)) {
+      w.tree = renameTile(w.tree, panelId, awayId(panelId))
+      changed = true
+    }
+  if (changed) commitLayout()
+}
+/** The workspace holding a placeholder for `panelId`, if it stepped out of one. */
+export const placeholderHome = (panelId: string): Workspace | null =>
+  ws.list.find((w) => hasTile(w.tree, awayId(panelId))) ?? null
+/** Put a panel back in the tile it stepped out of (reopening it if it was closed) and show it. */
+export function bringBack(panelId: string) {
+  const home = placeholderHome(panelId)
+  if (!home) return
+  for (const w of ws.list) if (w !== home) w.tree = removeTile(w.tree, awayId(panelId))
+  home.tree = renameTile(home.tree, awayId(panelId), panelId)
+  panels?._ops.setPlace(panelId, home.id)
+  revealTile(panelId)
+}
+/** Remove the placeholder a panel left, closing up its tile. */
+export function dropPlaceholder(panelId: string) {
+  if (removeEverywhere(awayId(panelId))) commitLayout()
+}
+
+export interface AwayTile {
+  /** The panel that stepped out. */
+  id: string
+  title: string
+  icon: string
+  /** Still open (floating or minimized), rather than closed. */
+  open: boolean
+  rect: Rect
+}
+/** The active workspace's placeholders, with their rects, for ZenWorkspace to draw. */
+export const awayTiles = computed<AwayTile[]>(() => {
+  const w = byId(ws.active)
+  if (!w) return []
+  const { tiles } = wsLayout.value
+  return leafIds(w.tree).flatMap((tileId) => {
+    const id = awayPanelOf(tileId)
+    const rect = tiles.get(tileId)
+    if (!id || !rect) return []
+    const p = panels?._ops.get(id)
+    const reg = panels?.state.registry.find((r) => r.id === id || id.startsWith(r.id + '#'))
+    const meta = kept.get(id)
+    return [
+      {
+        id,
+        title: p?.title ?? reg?.title ?? meta?.title ?? id,
+        icon: p?.icon ?? reg?.icon ?? meta?.icon ?? KEPT_ICON,
+        open: !!p,
+        rect,
+      },
+    ]
+  })
+})
+
 // --- switching -----------------------------------------------------------------------------------
 
 /** Show a workspace (or the graph with null) as the user's choice: remembered in the workflow. */
@@ -615,6 +691,7 @@ export function removeWorkspace(id: string) {
   if (!w) return
   ws.list = ws.list.filter((x) => x !== w)
   for (const p of leafIds(w.tree)) unkeep(p)
+  panels?._ops.movePlace(id, null)
   if (ws.active === id) show(null)
   if (ws.last === id) ws.last = ws.list[0]?.id ?? null
   commitLayout()
@@ -638,9 +715,11 @@ export function tilePanel(panelId: string, target?: TileTarget, workspaceId?: st
   const into = byId(id)
   if (!into) return
   removeEverywhere(panelId)
+  removeEverywhere(awayId(panelId))
   into.tree = insertTile(into.tree, panelId, target ?? { kind: 'edge', side: 'right' })
   const p = panels?._ops.get(panelId)
   if (p) {
+    panels!._ops.setPlace(panelId, id)
     if (p.inSidebar) panels!._ops.unpinSidebar(panelId)
     if (p.dockSide) panels!._ops.setDock(panelId, null)
     if (p.status !== 'open') panels!._ops.restore(panelId)
@@ -693,6 +772,7 @@ export const tileGap = () => freeArea.value.g
 /** Whether a tile takes space: its panel is open (not minimized), or kept — closed while it waits
  *  to reopen there, so its rect is held for it and the other tiles don't reflow when it does. */
 const shown = (id: string) => {
+  if (awayPanelOf(id)) return true
   const appKey = appKeyOf(id)
   if (appKey) return !!apps?.regOf(appKey)
   const p = panels?._ops.get(id)

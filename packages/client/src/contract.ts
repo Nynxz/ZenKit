@@ -130,6 +130,9 @@ export interface PanelRegistration {
   version?: string
   /** Allow multiple live instances (default false = singleton). */
   multi?: boolean
+  /** Can be open in several places at once (the graph and each workspace get their own copy,
+   *  rendered separately). Default false: the one panel moves to where it is opened. */
+  copies?: boolean
   /** Hide from the Start menu; opened only programmatically. */
   spawnOnly?: boolean
   /** Persist + restore geometry/state (default true). */
@@ -730,6 +733,8 @@ export interface ChromeSettings {
   /** The bottom taskbar as an inset, rounded card over the canvas instead of an embedded strip.
    *  Only the bottom taskbar floats; on top it is ignored. */
   floatingTaskbar: boolean
+  /** Slide the taskbar off its edge, taking no space, until the pointer reaches that edge. */
+  taskbarAutohide: boolean
   /** Hide ComfyUI's sidebar-bottom buttons and list them in the Start menu instead. */
   absorbComfyButtons: boolean
   /** Show ComfyUI's canvas controls in the taskbar (the `zenkit:canvas-controls` widget). */
