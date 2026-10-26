@@ -47,6 +47,11 @@ else:
     except Exception as e:  # noqa: BLE001 - optional; never block loading
         print(f"[ZenKit] built-in panels' nodes and routes failed to load: {e}")
         _SUITE_NODES = []
+    # The Memory panel's routes (suite/memory_api.py): its snapshots and per-model unload.
+    try:
+        from .suite import memory_api  # noqa: F401
+    except Exception as e:  # noqa: BLE001 - optional; never block loading
+        print(f"[ZenKit] memory route failed to load: {e}")
 
 
 class ZenKitExtension(ComfyExtension):

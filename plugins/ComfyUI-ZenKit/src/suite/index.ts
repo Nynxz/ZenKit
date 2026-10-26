@@ -2,11 +2,19 @@ import { app } from '@comfy/app'
 import { version } from '../../package.json'
 // The family tile from docs/assets/render/brand.mjs; the build inlines it as a data URI.
 import logo from './logo.svg'
-import { getZenKit, mountVue, registerZenPlugin, type ZenPanelDef } from '@nynxz/zenkit-client'
+import {
+  getZenKit,
+  mountVue,
+  registerZenPlugin,
+  type TaskbarWidget,
+  type ZenPanelDef,
+} from '@nynxz/zenkit-client'
 import { viewerCapabilities } from '@/suite/lib/viewerCapabilities'
 import MediaViewer from '@/suite/components/MediaViewer.vue'
 import AssetBrowser from '@/suite/components/AssetBrowser.vue'
 import TimerPanel from '@/suite/components/TimerPanel.vue'
+import MemoryPanel from '@/suite/components/MemoryPanel.vue'
+import MemoryWidget from '@/suite/components/MemoryWidget.vue'
 import SyncControls from '@/suite/components/SyncControls.vue'
 import { mountHeaderPopover } from '@/suite/lib/headerPopover'
 import ChannelPreview from '@/suite/components/ChannelPreview.vue'
@@ -48,6 +56,26 @@ const PANELS: ZenPanelDef[] = [
     minWidth: 260,
     minHeight: 300,
   },
+  {
+    id: 'zensuite:memory',
+    title: 'Memory',
+    icon: 'mdi mdi-memory',
+    render: mountVue(MemoryPanel),
+    width: 400,
+    height: 620,
+    minWidth: 300,
+    minHeight: 280,
+  },
+]
+
+const WIDGETS: TaskbarWidget[] = [
+  {
+    id: 'memory-meter',
+    label: 'Memory meter',
+    icon: 'mdi mdi-memory',
+    order: 80,
+    render: mountVue(MemoryWidget),
+  },
 ]
 
 // Hide a widget on both ComfyUI renderers (1.0 reads `.hidden`, Vue 2.0 reads
@@ -75,7 +103,7 @@ const suiteExtension = {
     {
       id: SHOW_PANELS,
       category: ['ZenKit', 'Panels', 'Built-in panels'],
-      name: 'Built-in panels (Media Viewer, Asset Browser, Timer)',
+      name: 'Built-in panels (Media Viewer, Asset Browser, Timer, Memory)',
       tooltip: 'Offer the panels ZenKit comes with in the Start menu. Takes effect on reload.',
       type: 'boolean',
       defaultValue: true,
@@ -95,6 +123,7 @@ const suiteExtension = {
       version,
       logo,
       panels: PANELS,
+      taskbarWidgets: WIDGETS,
       capabilities: viewerCapabilities(() => getZenKit()!),
     })
   },
