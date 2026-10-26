@@ -291,7 +291,8 @@ registerSlotLink(spec: { on: { node: string; input?: string; output?: string }; 
 ```
 
 It waits for ZenKit with the client's `whenZen`: as long as installing takes once the host has
-announced itself (`window.ZenKitPending`), otherwise up to 6 s. It resolves to an unregister
+announced itself (`window.ZenKitPending`) or the server says ComfyUI-ZenKit is installed, at once
+when the server says it isn't, otherwise up to 6 s. It resolves to an unregister
 function, a no-op one without ZenKit.
 
 ## mountWidget

@@ -72,9 +72,28 @@ export const ZEN_CONNECT_TIMEOUT = 6000
 // `getZenKit()` and `ZenKitPending` checks come first.
 let _absent = false
 
-/** Resolve ZenKit when ready. When the host has announced itself (`window.ZenKitPending`)
- *  this waits as long as installing takes; otherwise it gives up with null after `timeout`.
- *  Once one call has given up, later calls resolve null immediately. */
+/** ms to wait for ZenKit once the server says it is installed: long enough for a heavy boot, short
+ *  enough that a host script that never ran doesn't hang its plugins forever. */
+export const ZEN_INSTALLED_TIMEOUT = 60000
+
+// A route only ComfyUI-ZenKit serves, so its answer says whether the runtime is coming.
+const ZEN_PROBE_URL = '/zenkit/themes'
+
+let _installed: Promise<boolean | null> | null = null
+
+/** Whether the server has ComfyUI-ZenKit: from its route, asked once; null when it can't be asked. */
+function zenInstalled(): Promise<boolean | null> {
+  _installed ??= fetch(ZEN_PROBE_URL, { method: 'HEAD', credentials: 'include' })
+    .then((r) => (r.ok ? true : r.status === 404 ? false : null))
+    .catch(() => null)
+  return _installed
+}
+
+/** Resolve ZenKit when ready. When the host has announced itself (`window.ZenKitPending`) this
+ *  waits as long as installing takes. Otherwise it asks the server whether ZenKit is installed:
+ *  if so it waits up to `ZEN_INSTALLED_TIMEOUT`, if not it resolves null at once, and if the
+ *  server can't be asked it gives up with null after `timeout`. Once one call has given up,
+ *  later calls resolve null immediately. */
 export function whenZen(timeout = ZEN_CONNECT_TIMEOUT): Promise<ZenKitApi | null> {
   const now = getZenKit()
   if (now) return now.ready ?? Promise.resolve(now)
@@ -87,9 +106,11 @@ export function whenZen(timeout = ZEN_CONNECT_TIMEOUT): Promise<ZenKitApi | null
   if (_absent) return Promise.resolve(null)
   return new Promise((resolve) => {
     let done = false
+    let timer: ReturnType<typeof setTimeout> | undefined
     const finish = (v: ZenKitApi | null) => {
       if (done) return
       done = true
+      clearTimeout(timer)
       window.removeEventListener('zen:ready', onReady)
       if (!v) {
         _absent = true
@@ -99,7 +120,13 @@ export function whenZen(timeout = ZEN_CONNECT_TIMEOUT): Promise<ZenKitApi | null
     }
     const onReady = () => finish(getZenKit())
     window.addEventListener('zen:ready', onReady)
-    setTimeout(() => finish(getZenKit()), timeout)
+    timer = setTimeout(() => finish(getZenKit()), timeout)
+    void zenInstalled().then((installed) => {
+      if (installed === null || done) return
+      clearTimeout(timer)
+      if (installed) timer = setTimeout(() => finish(getZenKit()), ZEN_INSTALLED_TIMEOUT)
+      else finish(getZenKit())
+    })
   })
 }
 

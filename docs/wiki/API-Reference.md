@@ -257,12 +257,12 @@ absent.
 
 ### Detection
 
-| Export                | Signature                                          | Notes                                                                                                                            |
-| --------------------- | -------------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------- |
-| `getZenKit`           | `() => ZenKitApi \| null`                          | Synchronous                                                                                                                      |
-| `hasZenKit`           | `() => boolean`                                    |                                                                                                                                  |
-| `whenZen`             | `(timeout?: number) => Promise<ZenKitApi \| null>` | Waits as long as installing takes once `window.ZenKitPending` is set. After one call has timed out, later calls resolve at once. |
-| `ZEN_CONNECT_TIMEOUT` | `6000`                                             |                                                                                                                                  |
+| Export                | Signature                                          | Notes                                                                                                                                                                                         |
+| --------------------- | -------------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `getZenKit`           | `() => ZenKitApi \| null`                          | Synchronous                                                                                                                                                                                   |
+| `hasZenKit`           | `() => boolean`                                    |                                                                                                                                                                                               |
+| `whenZen`             | `(timeout?: number) => Promise<ZenKitApi \| null>` | Waits as long as installing takes once `window.ZenKitPending` is set, or the server serves `/zenkit/themes`; null at once on a 404. After one call has given up, later calls resolve at once. |
+| `ZEN_CONNECT_TIMEOUT` | `6000`                                             |                                                                                                                                                                                               |
 
 ### Registration
 

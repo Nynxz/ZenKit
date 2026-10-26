@@ -35,12 +35,13 @@ app.registerExtension({
 
 ## Detecting the runtime
 
-| Export                | Returns                      | Notes                                              |
-| --------------------- | ---------------------------- | -------------------------------------------------- |
-| `getZenKit()`         | `ZenKitApi \| null`          | Synchronous. Null until the runtime has installed. |
-| `hasZenKit()`         | `boolean`                    | `getZenKit() != null`.                             |
-| `whenZen(timeout?)`   | `Promise<ZenKitApi \| null>` | Use this. See below.                               |
-| `ZEN_CONNECT_TIMEOUT` | `6000`                       | Default `timeout` in ms.                           |
+| Export                  | Returns                      | Notes                                                      |
+| ----------------------- | ---------------------------- | ---------------------------------------------------------- |
+| `getZenKit()`           | `ZenKitApi \| null`          | Synchronous. Null until the runtime has installed.         |
+| `hasZenKit()`           | `boolean`                    | `getZenKit() != null`.                                     |
+| `whenZen(timeout?)`     | `Promise<ZenKitApi \| null>` | Use this. See below.                                       |
+| `ZEN_CONNECT_TIMEOUT`   | `6000`                       | Default `timeout` in ms.                                   |
+| `ZEN_INSTALLED_TIMEOUT` | `60000`                      | How long to wait once the server says ZenKit is installed. |
 
 `whenZen` resolves:
 
@@ -48,13 +49,16 @@ app.registerExtension({
 | ------------------------------------------------------------------------------------- | ----------------------------------------------------------------------------------- |
 | `window.ZenKit` already set                                                           | its `ready` promise (the API)                                                       |
 | `window.ZenKitPending` is true (the host script has loaded, runtime still installing) | waits for the `zen:ready` window event, with **no** timeout                         |
-| Neither                                                                               | waits up to `timeout` ms for `zen:ready`, then resolves `null` and logs one warning |
+| Neither, and the server serves ComfyUI-ZenKit's `/zenkit/themes`                      | waits for `zen:ready`, up to `ZEN_INSTALLED_TIMEOUT` (60 s)                         |
+| Neither, and that route is a 404                                                      | resolves `null` at once and logs one warning                                        |
+| Neither, and the server can't be asked                                                | waits up to `timeout` ms for `zen:ready`, then resolves `null` and logs one warning |
 | An earlier call already timed out (and neither of the above has changed since)        | resolves `null` at once                                                             |
 | The host's install threw                                                              | the host clears `ZenKitPending` and fires `zen:ready`, so this resolves `null`      |
 
 ComfyUI-ZenKit sets `window.ZenKitPending = true` the moment its script runs, before it fetches
-themes and installs. That is what makes load order irrelevant: a plugin whose `setup()` runs first
-just waits.
+themes and installs. A plugin whose `setup()` runs before that script still waits rather than timing out: `whenZen`
+asks the server (`HEAD /zenkit/themes`) whether ComfyUI-ZenKit is installed, so load order and a
+slow boot don't matter.
 
 You can listen for the event yourself:
 
