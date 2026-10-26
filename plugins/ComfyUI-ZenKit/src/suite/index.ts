@@ -36,6 +36,7 @@ const PANELS: ZenPanelDef[] = [
     height: 660,
     minWidth: 460,
     minHeight: 320,
+    copies: true,
   },
   {
     id: 'zensuite:timer',

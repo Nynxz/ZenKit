@@ -28,6 +28,16 @@ export interface TimerState {
   startedAt: number | null
   endedAt: number | null
   lastTotal: number | null // wall-clock ms of the most recent finished run
+  workflow: string // the workflow on screen when the run started
+  runId: string // the prompt id when ComfyUI gave one
+}
+/** A run that just finished, for whoever keeps them. */
+export interface FinishedRun {
+  id: string
+  workflow: string
+  status: 'done' | 'error'
+  total: number
+  rows: NodeTiming[]
 }
 
 const now = () => performance.now()
@@ -81,13 +91,21 @@ function resolve(id: string): Resolved {
   }
 }
 
-export function createTimer() {
+function activeWorkflowName(): string {
+  const w = (app as any).extensionManager?.workflow?.activeWorkflow
+  const name = typeof w?.filename === 'string' ? w.filename : ''
+  return name.replace(/\.json$/i, '') || 'Unsaved workflow'
+}
+
+export function createTimer(onFinished?: (run: FinishedRun) => void) {
   const state = reactive<TimerState>({
     rows: [],
     status: 'idle',
     startedAt: null,
     endedAt: null,
     lastTotal: null,
+    workflow: '',
+    runId: '',
   })
   let current: NodeTiming | null = null
 
@@ -99,20 +117,31 @@ export function createTimer() {
     }
     current = null
   }
-  function reset() {
+  function reset(id?: string) {
     state.rows = []
     state.status = 'running'
     state.startedAt = now()
     state.endedAt = null
+    state.workflow = activeWorkflowName()
     current = null
+    state.runId = id || `run-${Date.now()}`
   }
-  function endRun(status: RunStatus, t: number) {
+  function endRun(status: 'done' | 'error', t: number) {
     state.status = status
     state.endedAt = t
-    if (state.startedAt != null) state.lastTotal = t - state.startedAt
+    if (state.startedAt == null) return
+    state.lastTotal = t - state.startedAt
+    if (state.rows.length)
+      onFinished?.({
+        id: state.runId,
+        workflow: state.workflow,
+        status,
+        total: state.lastTotal,
+        rows: state.rows,
+      })
   }
 
-  const onStart = () => reset()
+  const onStart = (e: any) => reset(e?.detail?.prompt_id)
   const onCached = (e: any) => {
     const nodes: any[] = e?.detail?.nodes || []
     const t = now()
@@ -155,7 +184,8 @@ export function createTimer() {
       group,
     }
     state.rows.push(row)
-    current = row
+    // Through the reactive array, so finishing it (end, duration, status) updates what reads it.
+    current = state.rows[state.rows.length - 1]
   }
   const onProgress = (e: any) => {
     if (!current) return
@@ -163,6 +193,7 @@ export function createTimer() {
     if (d && typeof d.value === 'number') current.progress = { value: d.value, max: d.max || 0 }
   }
   const onError = () => {
+    if (state.status !== 'running') return
     const t = now()
     if (current) current.status = 'error'
     finishCurrent(t)
@@ -180,6 +211,7 @@ export function createTimer() {
     ['executing', onExecuting],
     ['progress', onProgress],
     ['execution_error', onError],
+    ['execution_interrupted', onError],
     ['execution_success', onSuccess],
   ]
   for (const [ev, fn] of handlers) (api as any).addEventListener(ev, fn)
