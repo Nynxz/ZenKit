@@ -17,6 +17,8 @@ export { viewUrl } from './viewUrl'
 // The drag data ZenKit's own media sources set (its Media Viewer, Asset Browser): drops into
 // ComfyUI, another ZenKit surface or another app take it as that file.
 export { setMediaDragData, setMediaListDragData } from '../../client/src/index'
+// The drag format's name, for a drop target that reads the drag itself (a plugin's own refs).
+export { ZEN_MEDIA_MIME } from './zenkit'
 export {
   hasMediaDrop,
   mediaKind,
@@ -49,7 +51,7 @@ export {
 } from './zenPanel'
 export { registerZenApp, type ZenAppEntry } from './zenApp'
 export { useAppLocation, type AppContext, type AppLocation, type AppRouter } from './zenkit'
-export { highlightNode, revealNode } from './highlightNode'
+export { goToNode, highlightNode, revealNode } from './highlightNode'
 export { registerZenCapability, type ZenCapability } from './zenCapability'
 
 // The identity-bound helpers (registerNodes, mountWidget, addNodeHeaderButton, …) come from

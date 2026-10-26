@@ -107,3 +107,48 @@ export function revealNode(id: string | number): boolean {
   else canvas.centerOnNode?.(node)
   return true
 }
+
+interface GraphLike {
+  getNodeById?(id: string | number): (CanvasNode & { subgraph?: GraphLike }) | null
+}
+/** The node an execution id names ("12", or "5:12" for node 12 inside subgraph node 5), with
+ *  the graph it sits in, found from the root graph whatever the canvas shows. */
+function nodeAt(executionId: string): { node: CanvasNode; graph: GraphLike } | null {
+  let graph: GraphLike | undefined = app.rootGraph ?? app.graph
+  const path = executionId.split(':')
+  for (const [i, seg] of path.entries()) {
+    const node: (CanvasNode & { subgraph?: GraphLike }) | null =
+      graph?.getNodeById?.(Number(seg)) ?? graph?.getNodeById?.(seg) ?? null
+    if (!node) return null
+    if (i === path.length - 1) return { node, graph: graph! }
+    graph = node.subgraph
+  }
+  return null
+}
+// The canvas lays out a graph it was just given over a frame or two; a background tab gets no
+// frames, so a timeout stands in.
+const nextFrame = () =>
+  new Promise<void>((resolve) => {
+    const timer = window.setTimeout(resolve, 100)
+    requestAnimationFrame(() => {
+      window.clearTimeout(timer)
+      resolve()
+    })
+  })
+
+/** Go to the node an execution id names: open the (sub)graph it is in, select it and bring it
+ *  into view. False when there's no such node. */
+export async function goToNode(executionId: string): Promise<boolean> {
+  const found = nodeAt(executionId)
+  const canvas = app.canvas
+  if (!found || !canvas) return false
+  if (canvas.graph !== found.graph) {
+    canvas.setGraph(found.graph)
+    await nextFrame()
+    await nextFrame()
+  }
+  canvas.selectNode?.(found.node)
+  if (canvas.animateToBounds) canvas.animateToBounds(boundsOf(found.node), { zoom: 0.6 })
+  else canvas.centerOnNode?.(found.node)
+  return true
+}
