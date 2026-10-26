@@ -763,7 +763,7 @@ class Host {
   private state: unknown = null
   private started = false
   /** `onCanvas`: over the bare graph canvas (not a node, panel or widget) — the only place the
-   *  grid reacts to the pointer, so the only place moving it is worth a redraw. */
+   *  ambient pulse runs. The grid follows the pointer everywhere, over nodes and panels too. */
   private ptr = { x: 0, y: 0, over: false, onCanvas: false }
   private saved: { bg?: unknown; clear?: unknown } = {}
   // Cursor-follow state (see setBackgroundFollow* below). Defaults keep the classic snap look;
@@ -804,7 +804,9 @@ class Host {
       this.ptr.onCanvas = e.target === lgCanvas()?.canvas
     }
     window.addEventListener('pointermove', move, { capture: true, passive: true })
-    window.addEventListener('pointerleave', () => (this.ptr.over = false), true)
+    // On the page's root, not captured on window: captured, it fires each time the pointer leaves
+    // any element (onto a node, say) and drops the glow until the next move.
+    document.documentElement.addEventListener('pointerleave', () => (this.ptr.over = false))
     window.addEventListener('resize', () => this.resize())
     // The layers paint in the theme's colours, and a still frame is never repainted (see due), so
     // a theme switch must ask for one — or a light theme keeps the dark field and vignette.
@@ -1034,7 +1036,7 @@ class Host {
 
   /** Whether this frame should draw. A full-screen redraw every frame of a background that isn't
    *  changing cost more than anything else on the page (and kept the graph recompositing under
-   *  every panel), so: full rate while something moves — the pointer over the graph, a pan or
+   *  every panel), so: full rate while something moves — the pointer, over a node or panel too, a pan or
    *  zoom, a resize, a fading trail — and for a moment after; otherwise only the slow ambient
    *  pulse is left, which reads the same at a few frames a second. With ComfyUI's "Disable
    *  animations" on, it barely redraws when nothing changes. */
@@ -1042,7 +1044,7 @@ class Host {
   private busyUntil = 0
   private due(lg: LGCanvas, now: number): boolean {
     const off = lg.ds?.offset ?? [0, 0]
-    const pointer = this.ptr.onCanvas ? `${this.ptr.x},${this.ptr.y}` : 'away'
+    const pointer = this.ptr.over ? `${this.ptr.x},${this.ptr.y}` : 'away'
     // The graph's id too: switching workflows must repaint even when the new view matches.
     const sig = `${lg.graph?.id},${off[0]},${off[1]},${lg.ds?.scale},${lg.canvas.width},${lg.canvas.height},${pointer}`
     if (sig !== this.lastSig) {
