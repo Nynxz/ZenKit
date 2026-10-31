@@ -37,6 +37,8 @@ withDefaults(
   justify-content: center;
   gap: 7px;
   cursor: pointer;
+  /* a control, not text: a drag across the page doesn't paint its label with the selection */
+  user-select: none;
   font-family: inherit;
   font-size: 12px;
   font-weight: 600;
