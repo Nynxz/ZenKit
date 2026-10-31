@@ -3,7 +3,9 @@
 //   mode="slider"   a divider follows the pointer: `before` left of it, `after` right
 //                   (keyboard: ←/→ while focused); rests at `rest` (0–1) when the pointer leaves
 //   mode="dissolve" `before`, crossfading to `after` while hovered
-// Labels are optional corner tags. The frame keeps the images' box (object-fit: cover).
+// Labels are optional corner tags. The images fill the frame, cropped (`fit="cover"`), or show
+// whole and letterboxed (`fit="contain"`): two pictures of another shape than the frame then
+// still line up.
 // `track-closest` (a selector) lets the nearest matching ancestor — a card around it — drive the
 // divider too: past the picture's edge it pins to that side, and it rests only when the pointer
 // leaves that ancestor.
@@ -23,8 +25,10 @@ const props = withDefaults(
     alt?: string
     /** a selector: the closest ancestor matching it also moves the divider (see above) */
     trackClosest?: string
+    /** the images cropped to fill the frame, or whole and letterboxed */
+    fit?: 'cover' | 'contain'
   }>(),
-  { mode: 'slider', rest: 0.5, alt: '' },
+  { mode: 'slider', rest: 0.5, alt: '', fit: 'cover' },
 )
 
 const split = ref<number | null>(null)
@@ -69,7 +73,7 @@ function onKey(e: KeyboardEvent) {
   <div
     ref="root"
     class="zen-compare"
-    :class="[mode, { hovering, moving: split !== null }]"
+    :class="[mode, { hovering, moving: split !== null, contain: fit === 'contain' }]"
     :style="{ '--split': `${at * 100}%` }"
     :tabindex="mode === 'slider' ? 0 : undefined"
     role="img"
@@ -110,6 +114,9 @@ function onKey(e: KeyboardEvent) {
   object-fit: cover;
   display: block;
   pointer-events: none;
+}
+.zen-compare.contain img {
+  object-fit: contain;
 }
 .slider .zc-before {
   clip-path: inset(0 calc(100% - var(--split)) 0 0);
