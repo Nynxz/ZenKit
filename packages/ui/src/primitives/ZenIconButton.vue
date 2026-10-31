@@ -74,7 +74,14 @@ const attrs = useAttrs()
   opacity: 0.4;
   cursor: default;
 }
+/* the glyph centred in the button: on a 'normal' line it sits on the text baseline, a pixel or two
+   high (the magnifiers 2px) */
 .zen-iconbtn .mdi {
   font-size: 16px;
+  line-height: 1;
+}
+.zen-iconbtn .mdi::before {
+  display: block;
+  line-height: 1;
 }
 </style>

@@ -23,6 +23,7 @@ Visibility is mount/unmount: there is no `open` prop.
 | `slideshowMs`    | `number`                      | `3000`     | Inline only; the overlay remembers its own speed                                            |
 | `slideshowToEnd` | `boolean`                     | `true`     | Inline only: videos and audio play to the end before advancing                              |
 | `controls`       | `'bottom' \| 'top' \| 'none'` | `'bottom'` | `'none'` also hides the nav zones; `'top'` behaves like `'bottom'` (kept for compatibility) |
+| `thumbFit`       | `'cover' \| 'contain'`        | —          | The thumbnails cropped to fill or shown whole; `v-model:thumbFit` shares it with the host   |
 
 `LightboxItem`:
 
@@ -34,17 +35,19 @@ Visibility is mount/unmount: there is no `open` prop.
 | `meta`       | `string`                        | Caption (dimensions, size)                   |
 | `onWorkflow` | `() => void`                    | Shows a "Load workflow" button that calls it |
 
-| Event          | Payload  |
-| -------------- | -------- |
-| `update:index` | `number` |
-| `close`        | —        |
+| Event             | Payload                |
+| ----------------- | ---------------------- |
+| `update:index`    | `number`               |
+| `update:thumbFit` | `'cover' \| 'contain'` |
+| `close`           | —                      |
 
 Exposed: `zoom`, `rot`, `playing` (refs), `zoomIn()`, `zoomOut()`, `reset()`, `rotate(deg)`,
 `togglePlay()`, `prev()`, `next()`.
 
 In overlay mode it handles Escape, ←/→, `+`/`=`/`-`, `0`, `r`/`R`, Space and the ZenMediaControls
 keys. Remembers the strip state and slideshow settings in `localStorage`
-(`zenkit.lightbox.strip`, `zenkit.lightbox.slideshow`).
+(`zenkit.lightbox.strip`, `zenkit.lightbox.slideshow`), and the thumbnails' fit when `thumbFit`
+isn't bound (`zenkit.lightbox.fit`; the strip's footer toggles it).
 
 In a ZenKit plugin you usually want the shared viewer instead (`openViewer` in
 `@nynxz/zenkit-client`, see [Channels and media](Channels-and-Media.md)).
