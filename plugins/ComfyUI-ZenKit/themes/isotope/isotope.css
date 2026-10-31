@@ -1,0 +1,30 @@
+/* Isotope: titles in condensed caps, labels in mono, lime selection. */
+
+.page-head h1,
+.crumb {
+  font-family: 'Isotope Display', 'Big Shoulders Display', var(--font-sans);
+  font-size: 28px;
+  font-weight: 800;
+  line-height: 1;
+  letter-spacing: 0.01em;
+  text-transform: uppercase;
+}
+
+.eyebrow {
+  font-family: var(--font-mono);
+  font-weight: 500;
+  letter-spacing: 0.08em;
+}
+
+/* ZenKit panels inside ComfyUI */
+.zenkit-panel-title {
+  font-family: 'Isotope Display', 'Big Shoulders Display', var(--font-sans) !important;
+  font-weight: 800 !important;
+  letter-spacing: 0.02em !important;
+  text-transform: uppercase !important;
+}
+
+::selection {
+  background: #d7ff3b;
+  color: #0b0b0c;
+}
