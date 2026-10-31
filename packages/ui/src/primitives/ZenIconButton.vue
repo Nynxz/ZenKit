@@ -45,6 +45,8 @@ const attrs = useAttrs()
   background: none;
   color: var(--zen-muted, #9aa0aa);
   cursor: pointer;
+  /* a control, not text: a drag across the page doesn't paint it with the selection */
+  user-select: none;
   transition:
     background var(--zen-dur-fast, 0.12s) ease,
     color var(--zen-dur-fast, 0.12s) ease;
