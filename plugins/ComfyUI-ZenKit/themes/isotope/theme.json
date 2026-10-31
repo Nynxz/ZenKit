@@ -1,20 +1,20 @@
 {
-  "id": "acid-proof",
-  "name": "Acid Proof",
+  "id": "isotope",
+  "name": "Isotope",
   "description": "A darkroom proof sheet: ink black, warm paper text, an acid-lime accent, condensed caps for titles and mono labels.",
   "modes": [
     "dark"
   ],
   "css": [
     "fonts.css",
-    "acid-proof.css"
+    "isotope.css"
   ],
   "tokens": {
     "dark": {
       "--radius": "4px",
       "--bg-dots": "accent",
-      "--font-sans": "'Acid Proof Sans', 'Inter Tight', 'Inter', system-ui, sans-serif",
-      "--font-mono": "'Acid Proof Mono', 'JetBrains Mono', ui-monospace, monospace",
+      "--font-sans": "'Isotope Sans', 'Inter Tight', 'Inter', system-ui, sans-serif",
+      "--font-mono": "'Isotope Mono', 'JetBrains Mono', ui-monospace, monospace",
       "--background": "#0b0b0c",
       "--foreground": "#f2eee6",
       "--card": "#141416",

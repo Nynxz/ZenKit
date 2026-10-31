@@ -1,8 +1,8 @@
-/* Acid Proof: titles in condensed caps, labels in mono, lime selection. */
+/* Isotope: titles in condensed caps, labels in mono, lime selection. */
 
 .page-head h1,
 .crumb {
-  font-family: 'Acid Proof Display', 'Big Shoulders Display', var(--font-sans);
+  font-family: 'Isotope Display', 'Big Shoulders Display', var(--font-sans);
   font-size: 28px;
   font-weight: 800;
   line-height: 1;
@@ -18,7 +18,7 @@
 
 /* ZenKit panels inside ComfyUI */
 .zenkit-panel-title {
-  font-family: 'Acid Proof Display', 'Big Shoulders Display', var(--font-sans) !important;
+  font-family: 'Isotope Display', 'Big Shoulders Display', var(--font-sans) !important;
   font-weight: 800 !important;
   letter-spacing: 0.02em !important;
   text-transform: uppercase !important;
