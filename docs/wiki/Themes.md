@@ -68,7 +68,8 @@ pack can set only a few.
 `--border` `--input` `--ring` `--radius`
 
 Optional extras that ZenKit reads: `--warning`, `--success`, `--info`, `--font-mono`,
-`--comfy-menu-bg`. Any other custom property in a pack (e.g. `--sidebar-*`, or your own) is written
+`--comfy-menu-bg`, and `--bg-dots` (`rainbow`, `accent` or `mono`: the canvas grid's dot colour
+when the user leaves Dot colour on "From the theme"; rainbow without it). Any other custom property in a pack (e.g. `--sidebar-*`, or your own) is written
 to the page too, so pack CSS can use it.
 
 ## Theme API
