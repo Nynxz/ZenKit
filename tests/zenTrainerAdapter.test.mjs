@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict'
 import test from 'node:test'
-import { sourceModule } from './source.mjs'
+import { mockModule, sourceModule, sourceUrl } from './source.mjs'
 
 const routes = () =>
   sourceModule('plugins/ComfyUI-ZenIntegrations/src/adapters/zenTrainer/routes.ts')
@@ -50,4 +50,65 @@ test('a restored panel path must be a ZenTrainer page, not its API or elsewhere'
   ])
     assert.equal(isZenTrainerPath(path), false, path)
   for (const value of [undefined, null, 7, {}]) assert.equal(isZenTrainerPath(value), false)
+})
+
+// connectZenTrainer with its boundaries stood in: which addresses it probes, in what order, and
+// what it registers. `up` holds the origins that answer.
+async function discover({ up = [], address = '', here = 'http://192.168.1.5:8188/' } = {}) {
+  const tried = []
+  const registered = []
+  globalThis.__zt = { tried, registered, up: new Set(up), address }
+  globalThis.location = new URL(here)
+  const index = await sourceModule(
+    'plugins/ComfyUI-ZenIntegrations/src/adapters/zenTrainer/index.ts',
+    {
+      '@comfy/app': mockModule(
+        'export const app = { extensionManager: { setting: { get: () => globalThis.__zt.address } } }',
+      ),
+      '@nynxz/zenkit-client': mockModule(
+        'export async function registerZenPlugin(p) { globalThis.__zt.registered.push(p) }',
+      ),
+      './logo': mockModule("export const ZT_ICON = ''; export const ZT_LOGO = ''"),
+      './panel': mockModule(
+        'export const mountZenTrainer = (url) => ({ url })\n' +
+          'export async function reachable(url) { globalThis.__zt.tried.push(url.href); return globalThis.__zt.up.has(url.origin) }',
+      ),
+      './routes': await sourceUrl(
+        'plugins/ComfyUI-ZenIntegrations/src/adapters/zenTrainer/routes.ts',
+      ),
+    },
+  )
+  await index.connectZenTrainer()
+  return { tried, at: registered[0]?.panels[0].render.url.href ?? null }
+}
+
+test('discovery: this ComfyUI first, then the standalone port on this host, then loopback', async () => {
+  const local = 'http://192.168.1.5:8188/zentrainer/'
+  const host = 'http://192.168.1.5:8189/zentrainer/'
+  const loop = 'http://127.0.0.1:8189/zentrainer/'
+  assert.deepEqual(await discover({ up: ['http://192.168.1.5:8188'] }), {
+    tried: [local],
+    at: local,
+  })
+  assert.deepEqual(await discover({ up: ['http://192.168.1.5:8189'] }), {
+    tried: [local, host],
+    at: host,
+  })
+  assert.deepEqual(await discover({ up: ['http://127.0.0.1:8189'] }), {
+    tried: [local, host, loop],
+    at: loop,
+  })
+  assert.deepEqual(await discover(), { tried: [local, host, loop], at: null })
+  // opened on loopback itself: the standalone candidate isn't tried twice
+  assert.deepEqual(await discover({ here: 'http://127.0.0.1:8188/' }), {
+    tried: ['http://127.0.0.1:8188/zentrainer/', loop],
+    at: null,
+  })
+})
+
+test('discovery: a set address is used as it is, without probing', async () => {
+  assert.deepEqual(await discover({ address: '8190' }), {
+    tried: [],
+    at: 'http://192.168.1.5:8190/zentrainer/',
+  })
 })

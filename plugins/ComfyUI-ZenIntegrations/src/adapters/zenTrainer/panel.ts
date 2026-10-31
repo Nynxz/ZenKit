@@ -29,6 +29,20 @@ function startUrl(app: URL, ctx?: PanelContext): string {
   return isZenTrainerPath(saved) ? new URL(saved, app.origin).href : app.href
 }
 
+/** Remember the page the frame shows. Its router moves between pages without a new load, so this
+ *  runs on each load and once more when the panel goes. */
+function rememberPath(frame: HTMLIFrameElement, ctx?: PanelContext): void {
+  if (!ctx) return
+  try {
+    const win = frame.contentWindow
+    if (!win) return
+    const path = win.location.pathname + win.location.search
+    if (isZenTrainerPath(path)) ctx.setState({ path })
+  } catch {
+    /* another origin, or a torn-down frame */
+  }
+}
+
 function frameFor(app: URL, ctx?: PanelContext): HTMLIFrameElement {
   const frame = document.createElement('iframe')
   frame.src = startUrl(app, ctx)
@@ -36,17 +50,7 @@ function frameFor(app: URL, ctx?: PanelContext): HTMLIFrameElement {
   frame.style.cssText =
     'display:block;width:100%;height:100%;border:0;background:var(--zen-surface,#1b1e24)'
   frame.allow = 'clipboard-read; clipboard-write; fullscreen'
-  frame.addEventListener('load', () => {
-    if (!ctx) return
-    try {
-      const win = frame.contentWindow
-      if (!win) return
-      const path = win.location.pathname + win.location.search
-      if (isZenTrainerPath(path)) ctx.setState({ path })
-    } catch {
-      /* another origin, or a torn-down frame */
-    }
-  })
+  frame.addEventListener('load', () => rememberPath(frame, ctx))
   return frame
 }
 
@@ -74,14 +78,17 @@ export function mountZenTrainer(app: URL) {
     el.style.height = '100%'
     el.style.overflow = 'hidden'
     let gone = false
+    let frame: HTMLIFrameElement | null = null
     const show = async () => {
       const up = await reachable(app)
       if (gone) return
-      el.replaceChildren(up ? frameFor(app, ctx) : notRunning(app, () => void show()))
+      frame = up ? frameFor(app, ctx) : null
+      el.replaceChildren(frame ?? notRunning(app, () => void show()))
     }
     void show()
     return () => {
       gone = true
+      if (frame) rememberPath(frame, ctx)
       el.replaceChildren()
     }
   }
