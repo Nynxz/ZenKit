@@ -44,8 +44,7 @@ function pieceOf(hit: Element): Element {
   return el
 }
 /** Passing things a panel shouldn't move for: toasts and alerts. */
-const transient = (el: Element) =>
-  !!el.closest('[role="alert"], [role="status"], [class*="toast"]')
+const transient = (el: Element) => !!el.closest('[role="alert"], [role="status"], [class*="toast"]')
 
 /** What sits on top of the title bar `strip`, apart from ZenKit's own layers: one box per piece. */
 export function coveringBoxes(strip: Rect): Rect[] {
