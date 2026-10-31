@@ -23,12 +23,26 @@ test('the address setting resolves to the app root, origin only', async () => {
 
 test('a restored panel path must be a ZenTrainer page, not its API or elsewhere', async () => {
   const { isZenTrainerPath } = await routes()
-  for (const path of ['/zentrainer/', '/zentrainer/runs/abc?tab=loss', '/zentrainer/datasets/x#y'])
+  for (const path of [
+    '/zentrainer/',
+    '/zentrainer/runs/abc?tab=loss',
+    '/zentrainer/datasets/x#y',
+    '/zentrainer/datasets/a..b',
+    '/zentrainer/datasets/my%20set',
+  ])
     assert.equal(isZenTrainerPath(path), true, path)
   for (const path of [
     '/zentrainer',
     '/zentrainer/api/runs',
     '/zentrainer/../settings',
+    // encoded and other spellings of a parent segment, which the URL parser resolves too
+    '/zentrainer/%2e%2e/settings',
+    '/zentrainer/%2E%2E/',
+    '/zentrainer/.%2e/settings',
+    '/zentrainer/runs/%2e%2e/%2e%2e/settings',
+    '/zentrainer/..',
+    '/zentrainer/%61pi/runs',
+    '/zentrainer/%E0%A4%A',
     '/loras',
     '//evil.com/zentrainer/',
     'https://evil.com/zentrainer/',

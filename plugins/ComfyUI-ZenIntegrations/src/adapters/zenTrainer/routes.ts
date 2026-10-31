@@ -31,6 +31,24 @@ export function appUrl(setting: unknown, here: URL): URL | null {
 export function isZenTrainerPath(path: unknown): path is string {
   if (typeof path !== 'string') return false
   if (!path.startsWith(ZT_BASE) || path.startsWith('//')) return false
-  const pathname = path.split(/[?#]/)[0]!
-  return !pathname.startsWith(`${ZT_BASE}api/`) && !pathname.includes('/../')
+  // Judge the path the iframe will actually load: the URL parser resolves dot segments, %2e%2e
+  // and backslashes included, so `/zentrainer/%2e%2e/x` is `/x`. The API test also looks at the
+  // decoded form (`%61pi` is `api` to the server).
+  let pathname: string
+  try {
+    pathname = new URL(path, 'http://zentrainer.invalid').pathname
+  } catch {
+    return false
+  }
+  let decoded: string
+  try {
+    decoded = decodeURIComponent(pathname)
+  } catch {
+    return false
+  }
+  return (
+    pathname.startsWith(ZT_BASE) &&
+    !pathname.startsWith(`${ZT_BASE}api/`) &&
+    !decoded.startsWith(`${ZT_BASE}api/`)
+  )
 }
