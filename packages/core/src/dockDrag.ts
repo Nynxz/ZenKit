@@ -88,6 +88,14 @@ export function startDockTabDrag(
     ops.setRect(id, {}, true)
     endInteract(store)
   }
+  // The shield only goes up once the panel comes out; until then the pointer can cross an
+  // iframe (the panel pinned beside the rail), which would take its events. Capturing it on the
+  // pressed tab keeps them here. Lost on its own if the tab leaves the DOM, by then shielded.
+  try {
+    ;(e.target as Element | null)?.setPointerCapture?.(e.pointerId)
+  } catch {
+    /* a synthetic or already-released pointer */
+  }
   // Capture phase: the graph canvas stops pointer events from bubbling, so a drag released
   // or moved over it would otherwise never reach these.
   window.addEventListener('pointermove', onMove, true)
