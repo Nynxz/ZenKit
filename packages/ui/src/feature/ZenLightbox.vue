@@ -37,10 +37,18 @@ const props = withDefaults(
     grid?: number
     /** The search box over the thumbnails (filters by label). */
     searchable?: boolean
+    /** How the thumbnails fill their squares: 'cover' crops to fill, 'contain' shows each whole.
+     *  Bind with v-model:thumbFit to share it with the host (a grid's own setting); unbound, the
+     *  footer's toggle is remembered per browser like the panel itself. */
+    thumbFit?: 'cover' | 'contain'
   }>(),
   { inline: false, slideshowMs: 3000, slideshowToEnd: true, controls: 'bottom', searchable: true },
 )
-const emit = defineEmits<{ 'update:index': [number]; close: [] }>()
+const emit = defineEmits<{
+  'update:index': [number]
+  'update:thumbFit': ['cover' | 'contain']
+  close: []
+}>()
 const showChrome = computed(() => props.controls !== 'none')
 
 const item = computed<LightboxItem | undefined>(() => props.items[props.index])
@@ -65,6 +73,29 @@ watch(strip, (v) => {
     /* storage may be unavailable */
   }
 })
+// the thumbnails' fit: the host's when it binds it, else the last pick in this browser
+const FIT_KEY = 'zenkit.lightbox.fit'
+function loadFit(): 'cover' | 'contain' {
+  try {
+    return localStorage.getItem(FIT_KEY) === 'contain' ? 'contain' : 'cover'
+  } catch {
+    return 'cover'
+  }
+}
+const ownFit = ref(loadFit())
+const thumbFitNow = computed(() => props.thumbFit ?? ownFit.value)
+function toggleThumbFit() {
+  const next = thumbFitNow.value === 'cover' ? 'contain' : 'cover'
+  emit('update:thumbFit', next)
+  // a bound host keeps its own setting; only an unbound lightbox remembers it for the browser
+  if (props.thumbFit !== undefined) return
+  ownFit.value = next
+  try {
+    localStorage.setItem(FIT_KEY, next)
+  } catch {
+    /* storage may be unavailable */
+  }
+}
 // --- virtualized thumbnail grid (search + zoom; only visible rows render) ----------------
 // Each entry keeps its ORIGINAL index `i` so click → go(i) and highlight track props.index
 // regardless of search filtering.
@@ -92,7 +123,7 @@ function onSideScroll(e: Event) {
 function measureSide() {
   const el = scrollDiv()
   if (el) {
-    sideW.value = Math.max(40, el.clientWidth - 20) // minus 10px padding each side
+    sideW.value = Math.max(40, el.clientWidth - 28) // minus the 14px padding each side
     sideH.value = el.clientHeight
   }
 }
@@ -755,7 +786,11 @@ defineExpose({
           </div>
           <ZenScroll ref="sideScroll" class="zlb-tscroll" overlay @scroll="onSideScroll">
             <div class="zlb-tpad" :style="{ height: tTotalH + 'px' }">
-              <div class="zlb-grid" :style="tGridStyle">
+              <div
+                class="zlb-grid"
+                :class="{ contain: thumbFitNow === 'contain' }"
+                :style="tGridStyle"
+              >
                 <button
                   v-for="t in tVisible"
                   :key="t.i"
@@ -795,6 +830,15 @@ defineExpose({
               icon="mdi mdi-magnify-plus-outline"
               title="Larger thumbnails"
               @click.stop="zoomThumbs(1)"
+            />
+            <ZenIconButton
+              :icon="thumbFitNow === 'cover' ? 'mdi mdi-crop' : 'mdi mdi-fit-to-page-outline'"
+              :title="
+                thumbFitNow === 'cover'
+                  ? 'Cropped to fill: click to show each picture whole'
+                  : 'Each picture whole: click to crop them to fill'
+              "
+              @click.stop="toggleThumbFit"
             />
             <span class="zlb-grow" />
             <span
@@ -1108,6 +1152,9 @@ defineExpose({
   z-index: 100300;
   display: flex;
   overflow: hidden;
+  /* pictures and controls: a drag across them doesn't paint the text highlight (the side panel's
+     text still selects) */
+  user-select: none;
   background: color-mix(in srgb, var(--zen-bg, #1a1a1f) 92%, transparent);
   backdrop-filter: blur(6px);
   font-family: var(--p-font-family, system-ui, sans-serif);
@@ -1256,6 +1303,9 @@ defineExpose({
   }
 }
 .zlb-caret {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
   width: 18px;
   height: 30px;
   margin-left: -2px;
@@ -1265,6 +1315,14 @@ defineExpose({
   background: none;
   border: 1px solid transparent;
   border-radius: var(--zen-radius, 7px);
+}
+/* the chevron centred, as in ZenIconButton */
+.zlb-caret .mdi {
+  line-height: 1;
+}
+.zlb-caret .mdi::before {
+  display: block;
+  line-height: 1;
 }
 .zlb-caret:hover,
 .zlb-caret.on {
@@ -1417,8 +1475,19 @@ defineExpose({
   flex: 1;
   min-height: 0;
 }
+/* even room either side of the pictures; the right side holds a slimmer scrollbar clear of them
+   (sideW subtracts this padding: change both together) */
 .zlb-tscroll :deep(.zen-scroll-viewport) {
-  padding: 10px;
+  padding: 10px 14px;
+}
+.zlb-tscroll :deep(.zen-scroll-thumb) {
+  width: 4px;
+  right: 4px;
+}
+.zlb-tscroll :deep(.zen-scroll-track:hover .zen-scroll-thumb),
+.zlb-tscroll :deep(.zen-scroll-thumb:active) {
+  width: 6px;
+  right: 3px;
 }
 .zlb-tpad {
   position: relative;
@@ -1448,6 +1517,10 @@ defineExpose({
   height: 100%;
   object-fit: cover;
   display: block;
+}
+.zlb-grid.contain .zlb-cell img,
+.zlb-grid.contain .zlb-cell video {
+  object-fit: contain;
 }
 .zlb-cell-audio {
   display: flex;
@@ -1571,6 +1644,7 @@ defineExpose({
 }
 /* a floating card like the thumbnails strip on the other side */
 .zlb-panel {
+  user-select: text;
   position: relative;
   z-index: 5;
   flex: 0 0 340px;
