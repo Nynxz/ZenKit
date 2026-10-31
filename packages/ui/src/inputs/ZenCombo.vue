@@ -391,7 +391,11 @@ onBeforeUnmount(close)
           <div v-if="!filtered.length" class="zc-empty">{{ emptyText }}</div>
         </div>
 
-        <div v-if="$slots.footer" class="zc-footer"><slot name="footer" :close="close" /></div>
+        <!-- moving on to the footer clears the hovered option (Enter then picks nothing; an arrow
+             key starts again from the top) -->
+        <div v-if="$slots.footer" class="zc-footer" @mouseenter="active = -1">
+          <slot name="footer" :close="close" />
+        </div>
         <ZenPeek />
       </div>
     </Teleport>
