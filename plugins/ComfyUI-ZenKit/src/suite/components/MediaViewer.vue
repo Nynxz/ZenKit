@@ -58,6 +58,8 @@ const names = computed(() => Object.keys(byName.value))
 
 // Not following any channel: the viewer shows only what is dropped or sent into it.
 const NO_FEED = '\u0000none'
+// A compare side showing what was dropped on it, not a channel.
+const DROPPED = '\u0000dropped'
 /** The channel this viewer follows ('$last' for the most recent on any), or null for none. */
 const feedOf = (): string | null => (chan.value === NO_FEED ? null : chan.value.trim() || '$last')
 
@@ -66,7 +68,8 @@ const feedOf = (): string | null => (chan.value === NO_FEED ? null : chan.value.
 // free-form typing, and no arbitrary preset names.
 const chanOptions = computed(() => {
   const set = new Set<string>(names.value)
-  for (const v of [chan.value, chanA.value, chanB.value]) if (v && v !== NO_FEED) set.add(v)
+  for (const v of [chan.value, chanA.value, chanB.value])
+    if (v && v !== NO_FEED && v !== DROPPED) set.add(v)
   return [
     { value: '', label: '✦ Most recent' },
     { value: NO_FEED, label: '⊘ Only what is sent here' },
@@ -109,29 +112,36 @@ const selectedN = ref<number | null>(
 
 // Compare: a side shows a channel, or what was dropped on it (its picker then reads DROPPED).
 type Side = 'A' | 'B'
-const DROPPED = '\u0000dropped'
 const pinned = ref<Record<Side, ChannelImage | null>>({
   A: isSavedItem(saved.pinA) ? saved.pinA : null,
   B: isSavedItem(saved.pinB) ? saved.pinB : null,
 })
+// a local file dropped last session isn't kept (its blob: url died with the page): that side
+// follows the most recent again rather than showing a picker with nothing to pick
+if (chanA.value === DROPPED && !pinned.value.A) chanA.value = ''
+if (chanB.value === DROPPED && !pinned.value.B) chanB.value = ''
 
 watch(
   [mode, chan, chanA, chanB, pinned, showThumbs, slideMs, slideToEnd, full, history, selectedN],
   () => {
     const kept = history.value.filter((it) => !it.url.startsWith('blob:'))
     const keep = (it: ChannelImage | null) => (it && !it.url.startsWith('blob:') ? it : null)
+    const pinA = keep(pinned.value.A)
+    const pinB = keep(pinned.value.B)
+    // a side showing a file that isn't kept comes back following the most recent
+    const sideChan = (v: string, pin: ChannelImage | null) => (v === DROPPED && !pin ? '' : v)
     props.ctx?.setState({
       mode: mode.value,
       chan: chan.value,
-      chanA: chanA.value,
-      chanB: chanB.value,
+      chanA: sideChan(chanA.value, pinA),
+      chanB: sideChan(chanB.value, pinB),
       showThumbs: showThumbs.value,
       slideMs: slideMs.value,
       slideToEnd: slideToEnd.value,
       full: full.value,
       history: kept.map(({ n: _n, ...it }) => it),
-      pinA: keep(pinned.value.A),
-      pinB: keep(pinned.value.B),
+      pinA,
+      pinB,
       selected: Math.max(
         0,
         kept.findIndex((it) => it.n === selectedN.value),
@@ -544,7 +554,11 @@ const chanOf = (side: Side) => (side === 'A' ? chanA : chanB)
 /** Show `img` on `side`, releasing the file a previous drop there held. */
 function pin(side: Side, img: ChannelImage) {
   const old = pinned.value[side]
-  if (old && old.url !== img.url && !history.value.some((h) => h.url === old.url)) forget(old)
+  const inUse = (url: string) =>
+    url === img.url ||
+    pinned.value[side === 'A' ? 'B' : 'A']?.url === url ||
+    history.value.some((h) => h.url === url)
+  if (old && !inUse(old.url)) forget(old)
   pinned.value = { ...pinned.value, [side]: img }
   chanOf(side).value = DROPPED
 }
