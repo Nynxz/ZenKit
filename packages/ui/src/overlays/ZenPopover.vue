@@ -130,7 +130,10 @@ const z = ref<number>(Z.popover)
 function onKey(e: KeyboardEvent) {
   if (layer?.escape(e)) close()
 }
-function onReflow() {
+/** The page scrolled or resized: keep the panel on its anchor. Scrolling inside the panel moves
+ *  neither, and placing reads layout, which mid-scroll stalls the page. */
+function onReflow(e: Event) {
+  if (e.target instanceof Node && panelEl.value?.contains(e.target)) return
   if (isOpen.value) place()
 }
 
@@ -140,6 +143,9 @@ function onWheel(e: WheelEvent) {
   if (!panelEl.value?.contains(e.target as Node)) close()
 }
 let stopFollow: (() => void) | null = null
+/** Bumped at every open, close and unmount: an open's setup runs a tick later, and must not start
+ *  listeners for a panel that closed (or went away) in the meantime. */
+let generation = 0
 
 function teardown() {
   stopFollow?.()
@@ -153,6 +159,7 @@ function teardown() {
   window.removeEventListener('scroll', onReflow, true)
 }
 watch(isOpen, (v) => {
+  const opened = ++generation
   if (!v) {
     teardown()
     return
@@ -161,20 +168,31 @@ watch(isOpen, (v) => {
   layer ??= openLayer(Z.popover)
   z.value = layer.z
   nextTick(() => {
+    if (opened !== generation || !isOpen.value) return
     place()
     // defer the dismiss listeners a tick so the opening click doesn't immediately close it
     setTimeout(() => {
+      if (opened !== generation) return
       window.addEventListener('pointerdown', onDoc, true)
       window.addEventListener('keydown', onKey, true)
     }, 0)
     window.addEventListener('resize', onReflow)
     window.addEventListener('scroll', onReflow, true)
     const el = anchorElement()
-    if (el) stopFollow = followAnchor(() => liveRect(el), place, close)
+    if (el)
+      stopFollow = followAnchor(
+        () => liveRect(el),
+        place,
+        close,
+        () => panelEl.value,
+      )
     else window.addEventListener('wheel', onWheel, { capture: true, passive: true })
   })
 })
-onBeforeUnmount(teardown)
+onBeforeUnmount(() => {
+  generation++
+  teardown()
+})
 defineExpose({ open: show, close, toggle })
 </script>
 

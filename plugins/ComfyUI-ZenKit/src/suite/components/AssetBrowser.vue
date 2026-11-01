@@ -348,7 +348,10 @@ const asc = ref(false)
 const GAP = 8
 const CHROME = 0 // image fills the tile edge-to-edge → tile height == width (square); the 1px
 // border is inside (border-box) and GAP separates tiles. No extra chrome.
-const OVERSCAN = 3
+/** Rows render in blocks of this many, one spare block either side, and the slice moves a block
+ *  at a time: tiles change every few rows scrolled rather than at every row, and each change
+ *  restyles the page, which on ComfyUI's page is what made scrolling stutter. */
+const BLOCK = 3
 const cardW = ref(120) // min card width; cards grow to fill the row
 const scrollEl = ref<HTMLElement | null>(null)
 const scrollTop = ref(0)
@@ -502,10 +505,14 @@ const cellW = computed(() => Math.max(48, (availW.value - (cols.value - 1) * GAP
 const rowH = computed(() => cellW.value + CHROME + GAP)
 const totalRows = computed(() => Math.ceil(filtered.value.length / cols.value))
 const totalH = computed(() => Math.max(0, totalRows.value * rowH.value - GAP))
-const startRow = computed(() => Math.max(0, Math.floor(scrollTop.value / rowH.value) - OVERSCAN))
-const endRow = computed(() =>
-  Math.min(totalRows.value, Math.ceil((scrollTop.value + viewportH.value) / rowH.value) + OVERSCAN),
-)
+const startRow = computed(() => {
+  const first = Math.floor(scrollTop.value / rowH.value)
+  return Math.max(0, (Math.floor(first / BLOCK) - 1) * BLOCK)
+})
+const endRow = computed(() => {
+  const last = Math.ceil((scrollTop.value + viewportH.value) / rowH.value)
+  return Math.min(totalRows.value, (Math.ceil(last / BLOCK) + 1) * BLOCK)
+})
 const visible = computed(() =>
   filtered.value.slice(startRow.value * cols.value, endRow.value * cols.value),
 )
@@ -1173,6 +1180,11 @@ function openSelectedThenClose() {
   overflow-y: auto;
   overflow-x: hidden;
   padding: 8px;
+  /* tiles come and go as it scrolls; anchoring would answer each change by moving the scroll */
+  overflow-anchor: none;
+  /* its own compositor layer: without it, Chrome repainted the grid and re-layered the whole
+     page at every scroll step, which on ComfyUI's page took longer than a frame */
+  will-change: scroll-position;
 }
 .ob-pad {
   position: relative;

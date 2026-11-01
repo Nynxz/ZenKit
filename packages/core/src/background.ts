@@ -789,6 +789,13 @@ class Host {
   private finish: Required<BackgroundFinish> = { ...FINISH_OFF }
   private fxOpacity = 1 // effect-layer strength, 0–1 (see setEffectIntensity)
   private raf = 0
+  /** The surface's on-screen box, kept between frames: reading it makes the browser bring the
+   *  page's styles up to date, and done every frame while a list scrolled, that cost whole frames
+   *  on ComfyUI's page. Read again when the surface resizes, the window does, or a second on. */
+  private box: { el: Element; rect: DOMRect; at: number } | null = null
+  private boxWatch: ResizeObserver | null = null
+  private boxWatched: Element | null = null
+  private readonly dropBox = () => (this.box = null)
   private last = 0
   private active: ZenBackground | null = null
   private state: unknown = null
@@ -925,6 +932,26 @@ class Host {
     this.stack = null
     this.layer = null
     this.finishEl = null
+    this.boxWatch?.disconnect()
+    this.boxWatch = null
+    this.boxWatched = null
+    this.box = null
+    window.removeEventListener('resize', this.dropBox)
+  }
+
+  private surfaceBox(el: Element, now: number): DOMRect {
+    if (this.box?.el === el && now - this.box.at < 1000) return this.box.rect
+    // watched apart from the cached box: the observer's first report (as it starts watching)
+    // drops the box, which mustn't make the same element look new and start another observer
+    if (this.boxWatched !== el) {
+      this.boxWatch?.disconnect()
+      this.boxWatch = new ResizeObserver(this.dropBox)
+      this.boxWatch.observe(el)
+      this.boxWatched = el
+      window.addEventListener('resize', this.dropBox)
+    }
+    this.box = { el, rect: el.getBoundingClientRect(), at: now }
+    return this.box.rect
   }
 
   private initEffects(ctx: BackgroundContext) {
@@ -1099,7 +1126,7 @@ class Host {
     const c = this.layer!
     const off = surface.ds?.offset || [0, 0]
     const scale = surface.ds?.scale ?? 1
-    const r = surface.el.getBoundingClientRect()
+    const r = this.surfaceBox(surface.el, now)
     // Device pixels per CSS pixel for the graph canvas. We derive this from the canvas itself
     // (backing-store width ÷ CSS width) rather than reading window.devicePixelRatio, because
     // browser page zoom shifts devicePixelRatio independently of LiteGraph's backing store — so
