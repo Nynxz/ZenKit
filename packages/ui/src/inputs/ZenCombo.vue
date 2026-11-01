@@ -259,13 +259,16 @@ let keyNav = false
 function hover(index: number) {
   if (!keyNav) active.value = index
 }
-/** A real pointer move hands the highlight back to the pointer, to the row it's over now: it may
- *  move within that row and never enter another. */
+/** A real pointer move hands the highlight back to the pointer, to what it's over now (it may
+ *  move within that and never enter anything else): a row, or the footer, which holds none. */
 function onPointerMove(e: PointerEvent) {
   if (!keyNav) return
   keyNav = false
-  const row = (e.target as Element | null)?.closest?.('[data-index]') as HTMLElement | null
+  const target = e.target as Element | null
+  // an option row's own index, never one a custom option slot carries inside it
+  const row = target?.closest?.('.zc-opt[data-index]') as HTMLElement | null
   if (row) active.value = Number(row.dataset.index)
+  else if (target?.closest?.('.zc-footer')) active.value = -1
 }
 function onKey(e: KeyboardEvent) {
   emit('key', e)
