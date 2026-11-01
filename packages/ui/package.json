@@ -1,6 +1,6 @@
 {
   "name": "@nynxz/zenkit-ui",
-  "version": "0.5.0",
+  "version": "0.5.1",
   "type": "module",
   "description": "Shared Vue components for ZenKit, styled over the theme token system.",
   "exports": {
