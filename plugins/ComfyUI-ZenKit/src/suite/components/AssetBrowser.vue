@@ -104,7 +104,7 @@
           :storage-key="`zensuite.assets.open.${root}`"
         />
       </aside>
-      <div class="ob-scroll" :class="{ scrolling }" ref="scrollEl" @scroll="onScroll">
+      <div class="ob-scroll" ref="scrollEl" @scroll="onScroll">
         <ZenEmpty v-if="!filtered.length" class="empty">
           {{ loading ? 'scanning ' + root + '…' : 'no ' + root + ' assets found' }}
         </ZenEmpty>
@@ -352,11 +352,6 @@ const CHROME = 0 // image fills the tile edge-to-edge → tile height == width (
  *  at a time: tiles change every few rows scrolled rather than at every row, and each change
  *  restyles the page, which on ComfyUI's page is what made scrolling stutter. */
 const BLOCK = 3
-/** Tiles don't light up under the pointer while the grid scrolls, until it's been still this
- *  long, ms: each tile sliding under a still pointer otherwise lit its hover border, a restyle. */
-const SCROLL_SETTLE = 150
-const scrolling = ref(false)
-let settleTimer: ReturnType<typeof setTimeout> | undefined
 const cardW = ref(120) // min card width; cards grow to fill the row
 const scrollEl = ref<HTMLElement | null>(null)
 const scrollTop = ref(0)
@@ -365,9 +360,6 @@ const viewportH = ref(600)
 let ro: ResizeObserver | null = null
 function onScroll() {
   if (scrollEl.value) scrollTop.value = scrollEl.value.scrollTop
-  scrolling.value = true
-  clearTimeout(settleTimer)
-  settleTimer = setTimeout(() => (scrolling.value = false), SCROLL_SETTLE)
 }
 function measure() {
   if (scrollEl.value) {
@@ -390,7 +382,6 @@ const scanPct = computed(() => {
   return s && s.total ? Math.min(100, Math.round((s.current / s.total) * 100)) : 0
 })
 onBeforeUnmount(() => {
-  clearTimeout(settleTimer)
   stopOutputs?.()
   if (reconcileTimer) clearTimeout(reconcileTimer)
   ro?.disconnect()
@@ -1214,7 +1205,7 @@ function openSelectedThenClose() {
   border-radius: var(--zen-radius, 8px);
   font-family: inherit;
 }
-.ob-scroll:not(.scrolling) .tile:hover {
+.tile:hover {
   border-color: var(--zen-accent, #3b82f6);
 }
 .tile.sel {

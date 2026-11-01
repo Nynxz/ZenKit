@@ -61,16 +61,11 @@ const emit = defineEmits<{
  *  a block at a time: rows change every few rows scrolled, not at every row. Each change makes
  *  the page restyle, which on a page as big as ComfyUI's is what made scrolling stutter. */
 const BLOCK = 8
-/** The highlight stays put while the list scrolls, until it's been still this long, ms: each row
- *  sliding under a still pointer otherwise moved it, another restyle. */
-const SCROLL_SETTLE = 150
 const slots = useSlots()
 const open = ref(false)
 const query = ref('')
 const active = ref(0)
 const scrollTop = ref(0)
-const scrolling = ref(false)
-let settleTimer: ReturnType<typeof setTimeout> | undefined
 const viewportH = ref(240)
 const listMaxH = ref(240)
 const root = ref<HTMLElement | null>(null)
@@ -182,9 +177,6 @@ function onOutsideScroll(e: Event) {
 }
 function onScroll(e: Event) {
   scrollTop.value = (e.target as HTMLElement).scrollTop
-  scrolling.value = true
-  clearTimeout(settleTimer)
-  settleTimer = setTimeout(() => (scrolling.value = false), SCROLL_SETTLE)
 }
 function openMenu() {
   if (props.disabled) return
@@ -285,10 +277,7 @@ watch(
     if (open.value) resetScroll()
   },
 )
-onBeforeUnmount(() => {
-  clearTimeout(settleTimer)
-  close()
-})
+onBeforeUnmount(close)
 </script>
 
 <template>
@@ -342,7 +331,6 @@ onBeforeUnmount(() => {
         <div
           ref="listRef"
           class="zc-list zen-scroll"
-          :class="{ scrolling }"
           :style="{ maxHeight: listMaxH + 'px' }"
           @scroll="onScroll"
         >
@@ -366,7 +354,7 @@ onBeforeUnmount(() => {
                   sel: w.item.value === modelValue,
                   pinned: pinnedSet.has(w.item.value),
                 }"
-                @mouseenter="scrolling || (active = w.index)"
+                @mouseenter="active = w.index"
                 @click="pick(w.item.value)"
               >
                 <slot

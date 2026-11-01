@@ -105,11 +105,6 @@ const T_GAP = 7
  *  moves a block at a time: thumbnails change every few rows scrolled rather than at every row,
  *  and each change restyles the page, which inside ComfyUI is what made scrolling stutter. */
 const T_BLOCK = 3
-/** Thumbnails don't light up under the pointer while the sidebar scrolls, until it's been still
- *  this long, ms: each one sliding under a still pointer otherwise lit its hover style. */
-const SIDE_SETTLE = 150
-const sideScrolling = ref(false)
-let sideSettle: ReturnType<typeof setTimeout> | undefined
 const tileW = ref(92) // min tile width; tiles grow to fill the row
 const sideWidth = ref(264) // panel width — user-resizable via the drag handle
 const sideScroll = ref<{ viewport: HTMLElement | null } | null>(null) // the ZenScroll component ref
@@ -127,11 +122,7 @@ const scrollDiv = (): HTMLElement | null => sideScroll.value?.viewport ?? null
 
 function onSideScroll(e: Event) {
   sideScrollTop.value = (e.target as HTMLElement).scrollTop
-  sideScrolling.value = true
-  clearTimeout(sideSettle)
-  sideSettle = setTimeout(() => (sideScrolling.value = false), SIDE_SETTLE)
 }
-onBeforeUnmount(() => clearTimeout(sideSettle))
 function measureSide() {
   const el = scrollDiv()
   if (el) {
@@ -795,13 +786,7 @@ defineExpose({
               <input v-model="search" placeholder="Search…" spellcheck="false" />
             </div>
           </div>
-          <ZenScroll
-            ref="sideScroll"
-            class="zlb-tscroll"
-            :class="{ scrolling: sideScrolling }"
-            overlay
-            @scroll="onSideScroll"
-          >
+          <ZenScroll ref="sideScroll" class="zlb-tscroll" overlay @scroll="onSideScroll">
             <div class="zlb-tpad" :style="{ height: tTotalH + 'px' }">
               <div
                 class="zlb-grid"
@@ -1559,7 +1544,7 @@ defineExpose({
   text-shadow: 0 1px 3px rgba(0, 0, 0, 0.8);
   pointer-events: none;
 }
-.zlb-tscroll:not(.scrolling) .zlb-cell:hover {
+.zlb-cell:hover {
   border-color: var(--zen-accent, #6366f1);
 }
 .zlb-cell.on {
