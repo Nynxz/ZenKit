@@ -1224,9 +1224,11 @@ export function createPanelStore(bus: ZenBus) {
 
         /* the opened panel → a glassy rounded card, inset on all sides by ComfyUI's own
            --spacing unit (pt-1 / 4px) so the gap matches the rest of the UI and the card
-           floats free of every edge. height:100% minus top+bottom inset so the bottom
-           rounding doesn't overflow. overflow-y-auto kept (clips to the corners). */
+           floats free of every edge. Its size is ComfyUI's 100% minus the inset on both sides,
+           so neither the bottom nor the far side overflows the wrapper (which clips it: the
+           border and rounding would be cut off). overflow-y-auto kept (clips to the corners). */
         body.zen-inset-sb [data-panel]:not(.separated-panel) .sidebar-content-container {
+          width: calc(100% - (var(--spacing, 0.25rem) * 2)) !important;
           height: calc(100% - (var(--spacing, 0.25rem) * 2)) !important;
           margin: var(--spacing, 0.25rem) !important;
           border-radius: var(--zen-radius, 12px);
@@ -1262,9 +1264,11 @@ export function createPanelStore(bus: ZenBus) {
            Mirror for left/right-docked. */
         body.zen-inset-sb .side-bar-panel:not(.separated-panel):has(+ [data-resize-handle]) .sidebar-content-container {
           margin-right: 0 !important;
+          width: calc(100% - var(--spacing, 0.25rem)) !important;
         }
         body.zen-inset-sb [data-resize-handle] + .side-bar-panel:not(.separated-panel) .sidebar-content-container {
           margin-left: 0 !important;
+          width: calc(100% - var(--spacing, 0.25rem)) !important;
         }
 
         /* Leave ComfyUI's icon rail / toolbar buttons ALONE — the restyle is only the
