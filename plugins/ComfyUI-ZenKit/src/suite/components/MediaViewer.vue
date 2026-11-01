@@ -669,7 +669,7 @@ function startDrag(e: PointerEvent) {
 
         <!-- compare-mode controls -->
         <template v-else>
-          <label class="pick">
+          <label class="pick side">
             <ZenSelect
               :model-value="chanA"
               :options="sideOptions('A')"
@@ -680,7 +680,7 @@ function startDrag(e: PointerEvent) {
           <button class="tb cmp-swap" title="Swap the two sides" @click="swap">
             <i class="mdi mdi-swap-horizontal" />
           </button>
-          <label class="pick">
+          <label class="pick side">
             <ZenSelect
               :model-value="chanB"
               :options="sideOptions('B')"
@@ -688,10 +688,6 @@ function startDrag(e: PointerEvent) {
               @update:model-value="(v) => (chanB = String(v))"
             />
           </label>
-          <span class="grow" />
-          <span class="seen">
-            {{ names.length ? names.length + ' channel(s)' : 'no channels yet' }}
-          </span>
         </template>
       </div>
     </Transition>
@@ -942,7 +938,10 @@ function startDrag(e: PointerEvent) {
   padding: 5px 8px;
   font-size: 12px;
   border-bottom: 1px solid var(--zen-border, rgba(255, 255, 255, 0.08));
-  flex-wrap: wrap;
+}
+/* one row however narrow: the buttons keep their size, the channel pickers give way */
+.mv-head > * {
+  flex-shrink: 0;
 }
 .grow {
   flex: 1;
@@ -954,6 +953,15 @@ function startDrag(e: PointerEvent) {
   background: var(--zen-border, rgba(255, 255, 255, 0.1));
 }
 
+.mv-head > .pick {
+  flex: 0 1 auto;
+  min-width: 0;
+}
+/* compare: the two sides share what's left */
+.mv-head > .pick.side {
+  flex: 1 1 0;
+  max-width: 220px;
+}
 .pick {
   display: inline-flex;
   align-items: center;
@@ -971,7 +979,8 @@ function startDrag(e: PointerEvent) {
   opacity: 0.7;
 }
 .pick :deep(.zen-select) {
-  min-width: 120px;
+  flex: 1 1 auto;
+  min-width: 64px;
 }
 .pick :deep(.zs-trigger) {
   width: 100%;
@@ -989,11 +998,6 @@ function startDrag(e: PointerEvent) {
 .cin:focus {
   outline: none;
   border-color: var(--zen-accent, #3b82f6);
-}
-.seen {
-  font-size: 11px;
-  color: var(--zen-muted, #9aa0aa);
-  white-space: nowrap;
 }
 
 .tb {
