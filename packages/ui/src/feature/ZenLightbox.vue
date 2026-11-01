@@ -101,7 +101,15 @@ function toggleThumbFit() {
 // regardless of search filtering.
 const search = ref('')
 const T_GAP = 7
-const T_OVERSCAN = 3
+/** The sidebar's rows render in blocks of this many, one spare block either side, and the slice
+ *  moves a block at a time: thumbnails change every few rows scrolled rather than at every row,
+ *  and each change restyles the page, which inside ComfyUI is what made scrolling stutter. */
+const T_BLOCK = 3
+/** Thumbnails stop answering the pointer while the sidebar scrolls, until it's been still this
+ *  long, ms: each one sliding under a still pointer otherwise lit its hover style. */
+const SIDE_SETTLE = 150
+const sideScrolling = ref(false)
+let sideSettle: ReturnType<typeof setTimeout> | undefined
 const tileW = ref(92) // min tile width; tiles grow to fill the row
 const sideWidth = ref(264) // panel width — user-resizable via the drag handle
 const sideScroll = ref<{ viewport: HTMLElement | null } | null>(null) // the ZenScroll component ref
@@ -119,7 +127,11 @@ const scrollDiv = (): HTMLElement | null => sideScroll.value?.viewport ?? null
 
 function onSideScroll(e: Event) {
   sideScrollTop.value = (e.target as HTMLElement).scrollTop
+  sideScrolling.value = true
+  clearTimeout(sideSettle)
+  sideSettle = setTimeout(() => (sideScrolling.value = false), SIDE_SETTLE)
 }
+onBeforeUnmount(() => clearTimeout(sideSettle))
 function measureSide() {
   const el = scrollDiv()
   if (el) {
@@ -168,15 +180,14 @@ const tCellW = computed(() => (sideW.value - (tCols.value - 1) * T_GAP) / tCols.
 const tRowH = computed(() => tCellW.value + T_GAP) // square tiles
 const tTotalRows = computed(() => Math.ceil(thumbs.value.length / tCols.value))
 const tTotalH = computed(() => Math.max(0, tTotalRows.value * tRowH.value - T_GAP))
-const tStartRow = computed(() =>
-  Math.max(0, Math.floor(sideScrollTop.value / tRowH.value) - T_OVERSCAN),
-)
-const tEndRow = computed(() =>
-  Math.min(
-    tTotalRows.value,
-    Math.ceil((sideScrollTop.value + sideH.value) / tRowH.value) + T_OVERSCAN,
-  ),
-)
+const tStartRow = computed(() => {
+  const first = Math.floor(sideScrollTop.value / tRowH.value)
+  return Math.max(0, (Math.floor(first / T_BLOCK) - 1) * T_BLOCK)
+})
+const tEndRow = computed(() => {
+  const last = Math.ceil((sideScrollTop.value + sideH.value) / tRowH.value)
+  return Math.min(tTotalRows.value, (Math.ceil(last / T_BLOCK) + 1) * T_BLOCK)
+})
 const tVisible = computed(() =>
   thumbs.value.slice(tStartRow.value * tCols.value, tEndRow.value * tCols.value),
 )
@@ -784,7 +795,13 @@ defineExpose({
               <input v-model="search" placeholder="Search…" spellcheck="false" />
             </div>
           </div>
-          <ZenScroll ref="sideScroll" class="zlb-tscroll" overlay @scroll="onSideScroll">
+          <ZenScroll
+            ref="sideScroll"
+            class="zlb-tscroll"
+            :class="{ scrolling: sideScrolling }"
+            overlay
+            @scroll="onSideScroll"
+          >
             <div class="zlb-tpad" :style="{ height: tTotalH + 'px' }">
               <div
                 class="zlb-grid"
@@ -1479,6 +1496,11 @@ defineExpose({
    (sideW subtracts this padding: change both together) */
 .zlb-tscroll :deep(.zen-scroll-viewport) {
   padding: 10px 14px;
+  /* thumbnails come and go as it scrolls; anchoring would answer each change by moving it */
+  overflow-anchor: none;
+}
+.zlb-tscroll.scrolling .zlb-tpad {
+  pointer-events: none;
 }
 .zlb-tscroll :deep(.zen-scroll-thumb) {
   width: 4px;

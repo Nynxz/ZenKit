@@ -167,6 +167,9 @@ defineExpose({
 }
 .zen-scroll-viewport {
   scrollbar-width: none;
+  /* its own compositor layer: without it, Chrome repainted the content and re-layered the whole
+     page at every scroll step, which on a page as big as ComfyUI's took longer than a frame */
+  will-change: scroll-position;
 }
 .zen-scroll-viewport::-webkit-scrollbar {
   display: none;
