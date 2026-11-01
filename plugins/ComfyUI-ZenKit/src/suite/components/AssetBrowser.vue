@@ -18,14 +18,11 @@
         <i class="mdi mdi-magnify"></i>
         <input
           v-model="filter"
-          :placeholder="
-            byMeaning
-              ? 'describe it, or sampler:euler seed:42'
-              : 'search prompts, names · sampler:euler seed:42'
-          "
+          :placeholder="byMeaning ? 'Describe it' : 'Search'"
           title="Words match the prompt, file name, model and loras. Filters: sampler: scheduler: model: lora: seed: steps: cfg: neg: kind: ext: workflow:yes|no — a leading - excludes."
           spellcheck="false"
         />
+        <span class="count" :title="countTitle">{{ countText }}</span>
         <button
           v-if="visual?.model"
           type="button"
@@ -76,7 +73,6 @@
       >
         {{ showWeaker ? 'close matches only' : `+${weaker.toLocaleString()} more` }}
       </button>
-      <span class="count">{{ filtered.length }}</span>
     </div>
 
     <div v-if="error" class="err">{{ error }}</div>
@@ -492,6 +488,18 @@ const filtered = computed(() => {
     return (a.mtime - b.mtime) * dir
   })
   return list
+})
+// How many show, at the search field's end: "of" the folder's total while the search narrows it.
+const countText = computed(() => {
+  const n = filtered.value.length.toLocaleString()
+  const total = typedInFolder.value.length
+  return filtered.value.length < total ? `${n} of ${total.toLocaleString()}` : n
+})
+const countTitle = computed(() => {
+  const where = folder.value === null ? 'in all folders' : 'in this folder'
+  return filtered.value.length < typedInFolder.value.length
+    ? `Showing ${countText.value} ${where}`
+    : `${countText.value} ${where}`
 })
 // The grid lays out INSIDE .ob-scroll's padding, so the usable width is clientWidth minus
 // that padding. Measuring clientWidth directly made the derived tile HEIGHT larger than the
@@ -1027,8 +1035,14 @@ function openSelectedThenClose() {
   border-color: var(--zen-accent);
 }
 .count {
-  flex: 0 0 auto;
+  flex: 0 1 auto;
+  /* never more than half the field: what you typed keeps the room (the title has it all) */
+  max-width: 50%;
+  overflow: hidden;
+  text-overflow: ellipsis;
   font-size: 11px;
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
   color: var(--zen-muted, #9aa0aa);
 }
 .rootsel {

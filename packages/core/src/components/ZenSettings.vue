@@ -415,7 +415,10 @@ onBeforeUnmount(() => offLog?.())
 .zse-tabs {
   flex: 0 0 auto;
   display: flex;
+  align-items: center;
   gap: 2px;
+  box-sizing: border-box;
+  min-height: 45px; /* the toolbar row height of the other panels */
   padding: 6px 8px;
   border-bottom: 1px solid var(--zen-border, #34343c);
 }

@@ -325,6 +325,11 @@ function menuAct(fn: () => void) {
   user-select: none;
   pointer-events: auto;
 }
+/* the docked panel's own edge lights up (ZenPanel's lit edge); the handle's centre pill is for
+   splits, and on a dock it's a second marker over that line */
+.dockresize::after {
+  display: none;
+}
 .tabmenu {
   position: fixed;
   z-index: 100001;

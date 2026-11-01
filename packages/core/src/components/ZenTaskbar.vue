@@ -1254,6 +1254,8 @@ function openTaskFromOverflow(p: Parameters<typeof taskClick>[0]) {
   left: 0;
   right: 0;
   z-index: 99999;
+  /* controls, not text: a drag across the bar doesn't select its labels (the rename field can) */
+  user-select: none;
   display: flex;
   align-items: stretch;
   gap: 6px;
@@ -1362,6 +1364,10 @@ img.tb-logo {
   gap: 4px;
   overflow: hidden;
   user-select: none;
+}
+.tb input,
+.tb-menu input {
+  user-select: text;
 }
 .tb-task.dragging {
   opacity: 0.5;
@@ -1487,6 +1493,11 @@ img.tb-logo {
 .tb-widgets:not(:empty) {
   border-left: 1px solid var(--zen-border, #3a3a44);
 }
+/* none of its widgets has anything to show right now (each hides itself while empty) and none is
+   in the overflow tray: no strip, so no divider or padding around nothing */
+.tb-widgets:not(:has(> .tb-widget:not(:empty), > .tb-wovf)) {
+  display: none;
+}
 /* The widget tray's toggle: its width is CHEVRON in the script. */
 .tb-wovf {
   flex: none;
@@ -1582,6 +1593,7 @@ img.tb-logo {
 
 /* start menu */
 .tb-menu {
+  user-select: none; /* the same for the Start menu; its search field can */
   position: fixed;
   z-index: 100000;
   width: 360px;

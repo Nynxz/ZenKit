@@ -14,7 +14,13 @@
     :data-zen-status="panel.status"
     :data-zen-docked="docked"
     :data-zen-dock-side="panel.dockSide ?? undefined"
-    :data-zen-edge-lit="(docked && store.state.dockEdgeLit === panel.dockSide) || undefined"
+    :data-zen-edge-lit="
+      docked && store.state.dockEdgeLit === panel.dockSide
+        ? store.state.interacting
+          ? 'drag'
+          : 'hover'
+        : undefined
+    "
     :data-zen-frame="panel.frame"
     :data-zen-tiled="tiled || undefined"
     :data-zen-active="isActive"
@@ -214,25 +220,18 @@
             <i class="mdi mdi-chevron-right caret" />
           </button>
           <div class="submenu" :class="{ open: subOpen, left: subLeft }">
-            <button @click="act(() => ops.setDock(panel.id, 'left'))">
-              <i class="mdi mdi-dock-left" />
-              Left
+            <button
+              v-for="d in dockChoices"
+              :key="d.to"
+              @click="
+                act(() =>
+                  d.to === 'sidebar' ? ops.pinSidebar(panel.id) : ops.setDock(panel.id, d.to),
+                )
+              "
+            >
+              <i :class="d.icon" />
+              {{ d.label }}
             </button>
-            <button @click="act(() => ops.setDock(panel.id, 'right'))">
-              <i class="mdi mdi-dock-right" />
-              Right
-            </button>
-            <button @click="act(() => ops.setDock(panel.id, 'bottom'))">
-              <i class="mdi mdi-dock-bottom" />
-              Bottom
-            </button>
-            <template v-if="store.state.sidebarAvailable">
-              <div class="sep" />
-              <button @click="act(() => ops.pinSidebar(panel.id))">
-                <i class="mdi mdi-page-layout-sidebar-left" />
-                ComfyUI sidebar
-              </button>
-            </template>
           </div>
         </div>
         <button
@@ -293,6 +292,21 @@ const bare = computed(() => props.panel.frame === 'none') // chromeless / transp
 const isFloatFold = computed(() => folded.value && !docked.value)
 // detach a floating panel into its own OS window (desktop native window / browser popup)
 const canDetach = computed(() => !docked.value && !props.panel.inSidebar)
+// The Dock submenu. In ComfyUI the left side is its sidebar (a left dock pins there anyway), so it
+// offers that instead of Left.
+const dockChoices = computed(() =>
+  store.state.sidebarAvailable
+    ? ([
+        { to: 'bottom', icon: 'mdi mdi-dock-bottom', label: 'Bottom' },
+        { to: 'sidebar', icon: 'mdi mdi-page-layout-sidebar-left', label: 'ComfyUI sidebar' },
+        { to: 'right', icon: 'mdi mdi-dock-right', label: 'Right' },
+      ] as const)
+    : ([
+        { to: 'left', icon: 'mdi mdi-dock-left', label: 'Left' },
+        { to: 'right', icon: 'mdi mdi-dock-right', label: 'Right' },
+        { to: 'bottom', icon: 'mdi mdi-dock-bottom', label: 'Bottom' },
+      ] as const),
+)
 // A docked panel only shows when it's the active tab of an expanded zone.
 // Lives where the user is (the graph or the workspace on screen), or shows everywhere.
 const here = computed(() => ops.isHere(props.panel))
@@ -758,7 +772,10 @@ function startResize(e: PointerEvent, h: (typeof HANDLES)[number]) {
   position: fixed;
   display: flex;
   flex-direction: column;
-  overflow: hidden;
+  /* clip, not hidden: the resize grips reach past the edge, and a hidden overflow can still be
+     scrolled. Flipping the header back to the top left it scrolled to their end, the header
+     tucked a few px under the border until the next drag. */
+  overflow: clip;
   background: var(--zen-glass, color-mix(in srgb, var(--zen-bg, #1a1a1f) 86%, transparent));
   border: 1px solid
     color-mix(in srgb, var(--zen-surface-border, var(--zen-border, #3a3a44)) 86%, transparent);
@@ -829,6 +846,10 @@ function startResize(e: PointerEvent, h: (typeof HANDLES)[number]) {
   opacity: 1;
   transition-delay: 300ms;
 }
+/* dragging the edge: at once, not after the hover's delay */
+.zp.docked[data-zen-edge-lit='drag']::after {
+  transition-delay: 0s;
+}
 .zp.docked {
   background: var(--zen-chrome-bg, var(--zen-bg, #1a1a1f));
   box-shadow: var(--interface-floating-panel-shadow, 0 6px 18px rgba(0, 0, 0, 0.28));
@@ -897,6 +918,8 @@ function startResize(e: PointerEvent, h: (typeof HANDLES)[number]) {
   color: #fff;
 }
 .b .mdi {
+  /* a box of its own, not a line of text: inline, the glyph sat on a baseline 1.5px high */
+  display: flex;
   font-size: 16px;
 }
 

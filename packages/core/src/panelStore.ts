@@ -1168,12 +1168,16 @@ export function createPanelStore(bus: ZenBus) {
   }
 
   // Only while it is the inactive segment: in app mode the App segment holds the workflow menu.
+  // The segment's wrapper goes, not just the button, or the row keeps its gap before Graph; and
+  // Graph, alone, gives back a px of right padding the chevron's own margin already supplies.
   function applyAppModeHide(on: boolean) {
     const id = 'zenkit-hide-appmode'
+    const appSegment = 'button:not([aria-haspopup]) > i[class*="lucide--panels-top-left"]'
     if (on)
       ensureStyle(
         id,
-        '[data-testid="view-mode-toggle"] button:not([aria-haspopup]):has(> i[class*="lucide--panels-top-left"]){display:none!important}',
+        `[data-testid="view-mode-toggle"] div:has(> ${appSegment}){display:none!important}` +
+          `[data-testid="view-mode-toggle"]:has(${appSegment}) button[aria-haspopup]{padding-right:7px!important}`,
       )
     else removeStyle(id)
   }
@@ -1224,9 +1228,11 @@ export function createPanelStore(bus: ZenBus) {
 
         /* the opened panel → a glassy rounded card, inset on all sides by ComfyUI's own
            --spacing unit (pt-1 / 4px) so the gap matches the rest of the UI and the card
-           floats free of every edge. height:100% minus top+bottom inset so the bottom
-           rounding doesn't overflow. overflow-y-auto kept (clips to the corners). */
+           floats free of every edge. Its size is ComfyUI's 100% minus the inset on both sides,
+           so neither the bottom nor the far side overflows the wrapper (which clips it: the
+           border and rounding would be cut off). overflow-y-auto kept (clips to the corners). */
         body.zen-inset-sb [data-panel]:not(.separated-panel) .sidebar-content-container {
+          width: calc(100% - (var(--spacing, 0.25rem) * 2)) !important;
           height: calc(100% - (var(--spacing, 0.25rem) * 2)) !important;
           margin: var(--spacing, 0.25rem) !important;
           border-radius: var(--zen-radius, 12px);
@@ -1262,9 +1268,56 @@ export function createPanelStore(bus: ZenBus) {
            Mirror for left/right-docked. */
         body.zen-inset-sb .side-bar-panel:not(.separated-panel):has(+ [data-resize-handle]) .sidebar-content-container {
           margin-right: 0 !important;
+          width: calc(100% - var(--spacing, 0.25rem)) !important;
         }
         body.zen-inset-sb [data-resize-handle] + .side-bar-panel:not(.separated-panel) .sidebar-content-container {
           margin-left: 0 !important;
+          width: calc(100% - var(--spacing, 0.25rem)) !important;
+        }
+
+        /* The blended gutter shows nothing, so hovering or dragging it lights the card's edge
+           instead, as a ZenKit dock lights its panel's (ZenPanel's lit edge): a 3px accent line
+           over the card's edge, its border and contents included, following its corners. Drawn
+           by a frame the card's size on the card's wrapper, which doesn't scroll (the card
+           does), with only the gutter's side wide. Its box mirrors the card's margins above. */
+        body.zen-inset-sb [data-panel]:not(.separated-panel):has(> .sidebar-content-container) {
+          position: relative;
+        }
+        body.zen-inset-sb [data-panel]:not(.separated-panel):has(> .sidebar-content-container)::after {
+          content: '';
+          position: absolute;
+          inset: var(--spacing, 0.25rem);
+          z-index: 10;
+          border: 0 solid var(--p-primary-color, var(--zen-accent, #3b82f6));
+          border-radius: var(--zen-radius, 12px);
+          opacity: 0;
+          pointer-events: none;
+          transition: opacity 0.2s ease;
+        }
+        body.zen-inset-sb .side-bar-panel:not(.separated-panel):has(+ [data-resize-handle])::after {
+          right: 0;
+        }
+        body.zen-inset-sb [data-resize-handle] + .side-bar-panel:not(.separated-panel)::after {
+          left: 0;
+        }
+        body.zen-inset-sb [data-panel]:not(.separated-panel):has(> .sidebar-content-container):has(+ [data-resize-handle])::after {
+          border-right-width: 3px;
+        }
+        body.zen-inset-sb [data-resize-handle] + [data-panel]:not(.separated-panel):has(> .sidebar-content-container)::after {
+          border-left-width: 3px;
+        }
+        /* the splitter's own state, not :hover: it takes a drag from a few px either side of its
+           1px gutter, where the pointer isn't over the gutter itself */
+        body.zen-inset-sb [data-panel]:not(.separated-panel):has(> .sidebar-content-container):has(+ [data-resize-handle]:is(:hover, [data-resize-handle-state='hover']))::after,
+        body.zen-inset-sb [data-resize-handle]:is(:hover, [data-resize-handle-state='hover']) + [data-panel]:not(.separated-panel):has(> .sidebar-content-container)::after {
+          opacity: 1;
+          transition-delay: 300ms;
+        }
+        /* dragging: at once, not after the hover's delay */
+        body.zen-inset-sb [data-panel]:not(.separated-panel):has(> .sidebar-content-container):has(+ [data-resize-handle]:is([data-resize-handle-state='drag'], [data-state='drag']))::after,
+        body.zen-inset-sb [data-resize-handle]:is([data-resize-handle-state='drag'], [data-state='drag']) + [data-panel]:not(.separated-panel):has(> .sidebar-content-container)::after {
+          opacity: 1;
+          transition-delay: 0s;
         }
 
         /* Leave ComfyUI's icon rail / toolbar buttons ALONE — the restyle is only the

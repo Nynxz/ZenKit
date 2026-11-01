@@ -72,6 +72,7 @@ const STYLE = `
 .zk-sb-body { flex: 1 1 0; min-height: 0; }
 /* The panel header's own button (ZenPanel's .b), so the pop-out reads as part of the header. */
 .zk-sb-pop { flex: 0 0 auto; display: inline-flex; align-items: center; justify-content: center; width: 24px; height: 24px; padding: 0; border: none; border-radius: var(--zen-radius, 6px); background: none; color: var(--zen-muted, #9aa0aa); font-size: 15px; cursor: pointer; }
+.zk-sb-pop > i { display: flex; } /* centred as a box, not on a text baseline */
 .zk-sb-pop:hover { background: color-mix(in srgb, var(--zen-text, #fff) 10%, transparent); color: var(--zen-text, #e5e5ea); }
 .zk-rail-drop { position: fixed; z-index: 100000; height: 2px; border-radius: 2px; pointer-events: none; background: var(--zen-accent, #3b82f6); }
 .zk-rail-drag { position: fixed; z-index: 100001; pointer-events: none; opacity: .85; }

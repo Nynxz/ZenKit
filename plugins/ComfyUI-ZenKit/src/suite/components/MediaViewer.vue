@@ -980,7 +980,8 @@ function startDrag(e: PointerEvent) {
   display: flex;
   align-items: center;
   gap: 2px;
-  padding: 5px 8px;
+  /* 8px around its 28px controls: the same 45px toolbar row as the other panels */
+  padding: 8px;
   font-size: 12px;
   border-bottom: 1px solid var(--zen-border, rgba(255, 255, 255, 0.08));
 }
