@@ -7,6 +7,7 @@
 //   Slots: `actions` (header buttons, before maximize/close) · default (body) · `footer`.
 import '../lib/scrollbar.css'
 import { computed, onBeforeUnmount, ref, watch } from 'vue'
+import { cssViewport, zoomOf } from '../lib/zoom'
 import ZenIconButton from '../primitives/ZenIconButton.vue'
 import { openLayer, Z, type Layer } from './layers'
 
@@ -55,30 +56,34 @@ const winStyle = computed(() =>
       },
 )
 
+// Sizes and places are the window's own px; the screen's differ from them when the page is zoomed.
+const view = () => cssViewport(zoomOf())
+
 function init() {
-  const dw = props.width || Math.round(window.innerWidth * 0.7)
-  const dh = props.height || Math.round(window.innerHeight * 0.82)
-  winW.value = Math.max(props.minWidth, Math.min(dw, window.innerWidth - 24))
-  winH.value = Math.max(props.minHeight, Math.min(dh, window.innerHeight - 24))
-  winX.value = Math.max(8, Math.round((window.innerWidth - winW.value) / 2))
-  winY.value = Math.max(8, Math.round((window.innerHeight - winH.value) / 2))
+  const dw = props.width || Math.round(view().width * 0.7)
+  const dh = props.height || Math.round(view().height * 0.82)
+  winW.value = Math.max(props.minWidth, Math.min(dw, view().width - 24))
+  winH.value = Math.max(props.minHeight, Math.min(dh, view().height - 24))
+  winX.value = Math.max(8, Math.round((view().width - winW.value) / 2))
+  winY.value = Math.max(8, Math.round((view().height - winH.value) / 2))
   maximized.value = false
 }
 function clampToViewport() {
   if (maximized.value) return
-  winW.value = Math.min(winW.value, window.innerWidth - 16)
-  winH.value = Math.min(winH.value, window.innerHeight - 16)
-  winX.value = Math.max(0, Math.min(winX.value, window.innerWidth - winW.value))
-  winY.value = Math.max(0, Math.min(winY.value, window.innerHeight - winH.value))
+  winW.value = Math.min(winW.value, view().width - 16)
+  winH.value = Math.min(winH.value, view().height - 16)
+  winX.value = Math.max(0, Math.min(winX.value, view().width - winW.value))
+  winY.value = Math.max(0, Math.min(winY.value, view().height - winH.value))
 }
 function startDrag(e: PointerEvent) {
   if (maximized.value || (e.target as HTMLElement).closest('.zw-no-drag')) return
   e.preventDefault()
-  const ox = e.clientX - winX.value
-  const oy = e.clientY - winY.value
+  const zoom = zoomOf()
+  const ox = e.clientX / zoom - winX.value
+  const oy = e.clientY / zoom - winY.value
   const move = (m: PointerEvent) => {
-    winX.value = Math.max(0, Math.min(window.innerWidth - winW.value, m.clientX - ox))
-    winY.value = Math.max(0, Math.min(window.innerHeight - winH.value, m.clientY - oy))
+    winX.value = Math.max(0, Math.min(view().width - winW.value, m.clientX / zoom - ox))
+    winY.value = Math.max(0, Math.min(view().height - winH.value, m.clientY / zoom - oy))
   }
   const up = () => {
     window.removeEventListener('pointermove', move)
@@ -89,6 +94,7 @@ function startDrag(e: PointerEvent) {
 }
 function startResize(e: PointerEvent) {
   e.preventDefault()
+  const zoom = zoomOf()
   const sx = e.clientX
   const sy = e.clientY
   const sw = winW.value
@@ -96,11 +102,11 @@ function startResize(e: PointerEvent) {
   const move = (m: PointerEvent) => {
     winW.value = Math.max(
       props.minWidth,
-      Math.min(window.innerWidth - winX.value, sw + (m.clientX - sx)),
+      Math.min(view().width - winX.value, sw + (m.clientX - sx) / zoom),
     )
     winH.value = Math.max(
       props.minHeight,
-      Math.min(window.innerHeight - winY.value, sh + (m.clientY - sy)),
+      Math.min(view().height - winY.value, sh + (m.clientY - sy) / zoom),
     )
   }
   const up = () => {

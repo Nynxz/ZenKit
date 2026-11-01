@@ -8,6 +8,7 @@
 // thumbnail puts it away. With `focus`, Shift over a focused element peeks too.
 import { computed, onBeforeUnmount, onMounted, reactive, ref, watch } from 'vue'
 import '../lib/surface.css'
+import { cssRect, cssViewport, zoomOf } from '../lib/zoom'
 import { openLayer, Z, type Layer } from '../overlays/layers'
 import {
   peekTarget,
@@ -84,11 +85,15 @@ function place() {
   const s = shown.value
   const el = box.value
   if (!s || !el) return
-  const viewport = { width: window.innerWidth, height: window.innerHeight }
+  // in the window's own px (it's teleported to <body>): they differ from the screen's when zoomed.
+  // The page's zoom, not measured on the window: its entrance animation scales it.
+  const z = zoomOf()
+  const r = cssRect(s.rect, z)
+  const viewport = cssViewport(z)
   const at =
     props.placement === 'above'
-      ? placePeekAbove(s.rect, el.offsetWidth, el.offsetHeight, viewport)
-      : placePeek(s.rect, el.offsetWidth, el.offsetHeight, viewport)
+      ? placePeekAbove(r, el.offsetWidth, el.offsetHeight, viewport)
+      : placePeek(r, el.offsetWidth, el.offsetHeight, viewport)
   pos.left = at.left
   pos.top = at.top
 }

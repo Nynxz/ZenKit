@@ -10,6 +10,7 @@ import '../lib/scrollbar.css'
 import '../lib/surface.css'
 import { computed, nextTick, onBeforeUnmount, ref, watch } from 'vue'
 import { followAnchor, liveRect } from '../lib/followAnchor'
+import { cssRect, cssViewport, zoomOf } from '../lib/zoom'
 import { inOtherLayer, openLayer, Z, type Layer } from './layers'
 
 type Placement =
@@ -69,12 +70,15 @@ function anchorElement(): HTMLElement | null {
 }
 
 function place() {
-  const r = rectOf()
+  const box = rectOf()
   const panel = panelEl.value
-  if (!r || !panel) return
+  if (!box || !panel) return
+  // measured on screen, placed in the panel's own px: they differ when the page is zoomed. The
+  // page's zoom (the panel is teleported to <body>), not measured on the panel, which animates in.
+  const z = zoomOf()
+  const r = cssRect(box, z)
   const off = props.offset
-  const vw = window.innerWidth
-  const vh = window.innerHeight
+  const { width: vw, height: vh } = cssViewport(z)
   const pw = panel.offsetWidth
   const ph = panel.offsetHeight
   const [p0, align] = props.placement.split('-')

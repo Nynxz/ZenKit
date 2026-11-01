@@ -97,6 +97,7 @@ import '../lib/scrollbar.css'
 import '../lib/surface.css'
 import { computed, nextTick, onBeforeUnmount, onMounted, reactive, ref, watch } from 'vue'
 import { iconClass } from '../lib/icon'
+import { cssRect, cssViewport, zoomOf } from '../lib/zoom'
 import { openLayer, zAbove, Z, type Layer } from '../overlays/layers'
 
 export interface MentionItem {
@@ -209,10 +210,13 @@ function placePopup() {
   mark.textContent = '@'
   probe.appendChild(mark)
   mir.parentElement!.appendChild(probe)
-  const rect = mark.getBoundingClientRect()
+  // in the popup's own px (it's teleported to <body>): they differ from the screen's when zoomed
+  const z = zoomOf()
+  const rect = cssRect(mark.getBoundingClientRect(), z)
+  const view = cssViewport(z)
   probe.remove()
-  popPos.x = Math.min(rect.left, window.innerWidth - 260)
-  popPos.y = Math.min(rect.bottom - el.scrollTop + 4, window.innerHeight - 220)
+  popPos.x = Math.min(rect.left, view.width - 260)
+  popPos.y = Math.min(rect.bottom - el.scrollTop + 4, view.height - 220)
 }
 
 function insert(item: MentionItem) {

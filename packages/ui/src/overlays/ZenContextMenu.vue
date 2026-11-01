@@ -41,6 +41,7 @@ import '../lib/surface.css'
 import { nextTick, onBeforeUnmount, reactive, ref } from 'vue'
 
 import { iconClass } from '../lib/icon'
+import { cssRect, cssViewport, zoomOf } from '../lib/zoom'
 import { inOtherLayer, openLayer, Z, type Layer } from './layers'
 
 export interface ContextMenuAction {
@@ -75,17 +76,20 @@ const EDGE = 6
 async function show(e: MouseEvent, opts?: { clear?: DOMRect | null }) {
   e.preventDefault()
   e.stopPropagation()
-  pos.x = e.clientX
-  pos.y = e.clientY
+  // the pointer is on screen, the menu (teleported to <body>) placed in its own px: they differ
+  // when the page is zoomed
+  const zoom = zoomOf()
+  pos.x = e.clientX / zoom
+  pos.y = e.clientY / zoom
   layer ??= openLayer(Z.popover)
   z.value = layer.z
   open.value = true
   await nextTick()
-  const r = menuEl.value?.getBoundingClientRect()
-  if (r) {
-    const vw = window.innerWidth
-    const vh = window.innerHeight
-    const clear = opts?.clear
+  const box = menuEl.value?.getBoundingClientRect()
+  if (box) {
+    const r = cssRect(box, zoom)
+    const { width: vw, height: vh } = cssViewport(zoom)
+    const clear = opts?.clear && cssRect(opts.clear, zoom)
     if (clear) {
       const above = clear.top - EDGE - r.height
       const below = clear.bottom + EDGE

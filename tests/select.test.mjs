@@ -19,6 +19,7 @@ async function select() {
   const { default: Select } = await import(
     await sourceUrl('packages/ui/src/inputs/ZenSelect.vue', {
       '../lib/icon': await sourceUrl('packages/ui/src/lib/icon.ts'),
+      '../lib/zoom': await sourceUrl('packages/ui/src/lib/zoom.ts'),
       '../overlays/layers': layerUrl,
     })
   )

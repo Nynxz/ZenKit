@@ -4,6 +4,7 @@ import '../lib/surface.css'
 // (saturation/brightness box + hue slider + hex field + presets). No native OS dialog, so it
 // stays consistent with the rest of the UI. v-model is a `#rrggbb` string.
 import { computed, nextTick, onBeforeUnmount, ref, watch } from 'vue'
+import { cssRect, cssViewport, zoomOf } from '../lib/zoom'
 import { inOtherLayer, openLayer, Z, type Layer } from '../overlays/layers'
 
 const props = withDefaults(
@@ -163,14 +164,18 @@ function pickPreset(c: string) {
 /** Under the trigger, or above it when there isn't room below and there's more above (by the
  *  bottom taskbar, say); kept inside the window sideways. */
 function place() {
-  const t = trigger.value?.getBoundingClientRect()
-  if (!t) return
+  const box = trigger.value?.getBoundingClientRect()
+  if (!box) return
+  // in the popup's own px (it's teleported to <body>): they differ from the screen's when zoomed
+  const z = zoomOf()
+  const t = cssRect(box, z)
+  const view = cssViewport(z)
   const w = 196
   const h = pop.value?.offsetHeight ?? 280
-  const below = window.innerHeight - t.bottom
+  const below = view.height - t.bottom
   const up = below < h + 14 && t.top > below
   popStyle.value = {
-    left: Math.max(8, Math.min(t.left, window.innerWidth - w - 8)) + 'px',
+    left: Math.max(8, Math.min(t.left, view.width - w - 8)) + 'px',
     top: (up ? Math.max(8, t.top - 6 - h) : t.bottom + 6) + 'px',
     width: w + 'px',
   }
