@@ -191,7 +191,10 @@ function openMenu() {
   layer ??= openLayer(Z.popover)
   z.value = layer.z
   open.value = true
+  const opened = ++generation
   nextTick(() => {
+    // closed (or closed and opened again) before this ran: that open's listeners aren't ours
+    if (opened !== generation || !open.value) return
     searchRef.value?.focus()
     if (listRef.value) listRef.value.scrollTop = 0
     measure()
@@ -208,8 +211,12 @@ function openMenu() {
   })
 }
 let stopFollow: (() => void) | null = null
+/** Bumped at every open and close: an open's listeners start a tick later, and only if it's
+ *  still the current open. */
+let generation = 0
 function close() {
   if (!open.value) return
+  generation++
   open.value = false
   stopFollow?.()
   stopFollow = null
@@ -331,6 +338,7 @@ onBeforeUnmount(close)
         <div
           ref="listRef"
           class="zc-list zen-scroll"
+          :class="{ virt: virtual }"
           :style="{ maxHeight: listMaxH + 'px' }"
           @scroll="onScroll"
         >
@@ -526,11 +534,14 @@ onBeforeUnmount(close)
   overflow-y: auto;
   padding: 4px;
   min-height: 0;
-  /* rows come and go as it scrolls; anchoring would answer each change by moving the scroll */
-  overflow-anchor: none;
   /* its own compositor layer: without it, Chrome repainted the list and re-layered the whole page
      at every scroll step, which on ComfyUI's page took longer than a frame */
   will-change: scroll-position;
+}
+/* a virtual list's rows come and go as it scrolls; anchoring would answer each change by moving
+   the scroll. Plain lists keep it, so content loading above holds their place. */
+.zen-combo-menu .zc-list.virt {
+  overflow-anchor: none;
 }
 .zen-combo-menu .zc-virt {
   position: relative;
