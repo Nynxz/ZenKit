@@ -766,7 +766,10 @@ function startResize(e: PointerEvent, h: (typeof HANDLES)[number]) {
   position: fixed;
   display: flex;
   flex-direction: column;
-  overflow: hidden;
+  /* clip, not hidden: the resize grips reach past the edge, and a hidden overflow can still be
+     scrolled. Flipping the header back to the top left it scrolled to their end, the header
+     tucked a few px under the border until the next drag. */
+  overflow: clip;
   background: var(--zen-glass, color-mix(in srgb, var(--zen-bg, #1a1a1f) 86%, transparent));
   border: 1px solid
     color-mix(in srgb, var(--zen-surface-border, var(--zen-border, #3a3a44)) 86%, transparent);
