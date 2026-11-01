@@ -20,6 +20,7 @@
 import { app } from '@comfy/app'
 import {
   backgroundActivity,
+  backgroundDotColour,
   backgroundEffectIntensity,
   backgroundEffectList,
   backgroundEffects,
@@ -32,6 +33,7 @@ import {
   onBackgroundChange,
   setBackgroundActivity,
   setBackgroundBlobFlow,
+  setBackgroundDotColour,
   setBackgroundEffectIntensity,
   setBackgroundEffects,
   setBackgroundEnabled,
@@ -56,6 +58,8 @@ const EFFECT_STRENGTH_ID = 'zenkit.background.effectStrength'
 const FOLLOW_ID = 'zenkit.background.follow'
 const FOLLOW_SPEED_ID = 'zenkit.background.followSpeed'
 const BLOB_FLOW_ID = 'zenkit.background.blobFlow'
+const DOT_COLOUR_ID = 'zenkit.background.dotColour'
+const DOT_DRIFT_ID = 'zenkit.background.dotDrift'
 
 // ComfyUI builds its settings tree by the FULL category path and assigns `node.data = setting`
 // as it walks — so two settings sharing one category array collapse into a single node and only
@@ -349,6 +353,36 @@ export function registerBackgroundSettings(): void {
           setBackgroundBlobFlow(Number(value))
         },
       },
+      {
+        id: DOT_COLOUR_ID,
+        name: 'Dot colour',
+        category: ['ZenKit', 'Canvas', 'Dot colour'],
+        type: 'combo',
+        defaultValue: 'theme',
+        options: [
+          { text: 'From the theme', value: 'theme' },
+          { text: 'Rainbow', value: 'rainbow' },
+          { text: 'Accent', value: 'accent' },
+          { text: 'Mono', value: 'mono' },
+        ],
+        tooltip:
+          "The grid's dots: a drifting rainbow, the theme's accent colour, or its text colour. " +
+          'From the theme uses what the theme asks for, and the rainbow when it asks for nothing.',
+        onChange(value: string) {
+          setBackgroundDotColour(String(value))
+        },
+      },
+      {
+        id: DOT_DRIFT_ID,
+        name: 'Accent hue drift',
+        category: ['ZenKit', 'Canvas', 'Accent hue drift'],
+        type: 'boolean',
+        defaultValue: true,
+        tooltip: "Let accent dots wander a little either side of the theme's accent. Accent only.",
+        onChange(value: boolean) {
+          setBackgroundDotColour(backgroundDotColour().mode, value !== false)
+        },
+      },
     ],
     // Some ComfyUI builds don't fire `onChange` for stored values on load. The cursor settings
     // live only here, so they are applied again; the rest follow the same rule as a replay —
@@ -367,6 +401,9 @@ export function registerBackgroundSettings(): void {
         if (speed !== undefined) setBackgroundFollowSpeed(Number(speed))
         const flow = s.get(BLOB_FLOW_ID)
         if (flow !== undefined) setBackgroundBlobFlow(Number(flow))
+        const dots = s.get(DOT_COLOUR_ID)
+        const drift = s.get(DOT_DRIFT_ID)
+        setBackgroundDotColour(String(dots ?? 'theme'), drift !== false)
 
         seedFromSettings ??= !backgroundStored()
         if (seedFromSettings) {

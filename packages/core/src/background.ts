@@ -188,7 +188,6 @@ function hexToRgb(color: string): [number, number, number] | null {
 
 /* ── the interactive grid (WebGL2 shader; baked-in defaults) ────────────────── */
 const S = {
-  rainbow: 1, // drifting full-field spectrum (the original look)
   colorSpeed: 45, // °/sec
   dotSpacing: 32, // graph units
   dotRadius: 1.4,
@@ -206,6 +205,21 @@ const S = {
   trailMax: 20, // hard cap on stored points (must be ≤ MAX_TRAIL in the shader)
   headRadius: 200, // graph units — influence radius at the head (matches mouseRadius)
   tailFade: 0.55, // brightness multiplier at the tail tip (thinning/fading water)
+}
+
+/* ── dot colour ─────────────────────────────────────────────────────────────── */
+/** How the grid colours its dots, in the shader's order. */
+export const DOT_MODES = ['mono', 'rainbow', 'accent'] as const
+export type DotColour = (typeof DOT_MODES)[number]
+const isDotColour = (v: unknown): v is DotColour => DOT_MODES.includes(v as DotColour)
+/** 'theme' takes the active pack's `--bg-dots` token, rainbow without one. */
+let dotColour: DotColour | 'theme' = 'theme'
+let dotDrift = true
+
+function resolvedDotColour(): DotColour {
+  if (dotColour !== 'theme') return dotColour
+  const fromPack = theme.packToken('--bg-dots')
+  return isDotColour(fromPack) ? fromPack : 'rainbow'
 }
 
 /* ── cursor-follow ("zen flow") ─────────────────────────────────────────────── */
@@ -314,12 +328,19 @@ uniform float u_sat;
 uniform float u_lit;
 uniform float u_base;
 uniform float u_speed;
-uniform float u_rainbow;
+uniform int   u_dotMode;          // 0 mono, 1 rainbow, 2 accent
+uniform float u_drift;            // accent mode: how far the hue wanders, in degrees
 uniform float u_vignette;
 uniform float u_tailFade;         // brightness at the tail tip (< 1 ⇒ fades out)
 uniform int   u_trailN;           // number of active trail points (0/1 ⇒ plain circle at u_mouse)
 uniform vec2  u_trail[MAX_TRAIL];  // recent cursor path, head→tail, graph space
 uniform float u_trailR[MAX_TRAIL]; // per-point influence radius, tapering head→tail
+vec3 hueRotate(vec3 c, float deg){
+  float a = radians(deg);
+  vec3 k = vec3(0.57735);
+  float ca = cos(a);
+  return c * ca + cross(k, c) * sin(a) + k * dot(k, c) * (1.0 - ca);
+}
 vec3 hsl2rgb(float h, float s, float l){
   h = mod(h, 360.0) / 60.0;
   float c = (1.0 - abs(2.0*l - 1.0)) * s;
@@ -378,7 +399,8 @@ void main(){
       float baseAlpha = u_restAlpha + h * 0.08;
       float alpha = baseAlpha + prox * 0.75 + pulse * 0.06 + act * 0.7;
       vec3 dotc;
-      if (u_rainbow > 0.5) {
+      vec3 runc = u_accent;
+      if (u_dotMode == 1) {
         float flow = (dotPos.x + dotPos.y) * 0.12
                    + 30.0 * sin(dotPos.x * 0.008 + u_time * 0.4)
                    + 30.0 * sin(dotPos.y * 0.010 - u_time * 0.3)
@@ -387,10 +409,15 @@ void main(){
         float sat = u_base * 0.3 + prox * u_sat;
         float lit = u_base + prox * (u_lit - u_base);
         dotc = hsl2rgb(hue, sat, lit);
+      } else if (u_dotMode == 2) {
+        float wander = sin(dotPos.x * 0.004 + u_time * 0.25) * cos(dotPos.y * 0.005 - u_time * 0.2);
+        vec3 a = clamp(hueRotate(u_accent, wander * u_drift), 0.0, 1.0);
+        dotc = min(vec3(1.0), mix(a * 0.7, mix(a, vec3(1.0), 0.25), prox));
+        runc = mix(u_accent, vec3(1.0), 0.6);
       } else {
         dotc = min(vec3(1.0), u_text * (1.0 + prox * 0.7));
       }
-      dotc = mix(dotc, min(vec3(1.0), u_accent * (1.0 + act * 0.4)), act * 0.8);
+      dotc = mix(dotc, min(vec3(1.0), runc * (1.0 + act * 0.4)), act * 0.8);
       float lift = max(prox, act);
       float coreR = u_dotRadius + prox * u_dotRadius * 1.8 + act * u_dotRadius;
       float core = (1.0 - smoothstep(coreR - aa, coreR + aa, dist)) * alpha;
@@ -418,7 +445,8 @@ const GRID_UNIFORMS = [
   'u_lit',
   'u_base',
   'u_speed',
-  'u_rainbow',
+  'u_dotMode',
+  'u_drift',
   'u_vignette',
   'u_tailFade',
   'u_trailN',
@@ -520,7 +548,8 @@ function renderGL(host: BackgroundContext, st: GLState) {
   gl.uniform1f(u.u_lit!, S.lightness)
   gl.uniform1f(u.u_base!, S.baseBrightness)
   gl.uniform1f(u.u_speed!, S.colorSpeed)
-  gl.uniform1f(u.u_rainbow!, S.rainbow)
+  gl.uniform1i(u.u_dotMode!, DOT_MODES.indexOf(resolvedDotColour()))
+  gl.uniform1f(u.u_drift!, dotDrift ? 12 : 0)
   gl.uniform1f(u.u_vignette!, S.vignette)
   gl.uniform1f(u.u_tailFade!, S.tailFade)
   gl.uniform1i(u.u_trailN!, host.trail.n)
@@ -549,7 +578,9 @@ function render2D(host: BackgroundContext, st: GridState) {
     ah = H / k
   ctx.fillStyle = host.color('--zen-bg', '#121212')
   ctx.fillRect(ax, ay, aw, ah)
-  const dotCol = hexToRgb(host.color('--zen-text', '#cccccc')) ?? [200, 200, 200]
+  const dotCol = (resolvedDotColour() === 'accent'
+    ? hexToRgb(host.color('--zen-accent', '#6366f1'))
+    : hexToRgb(host.color('--zen-text', '#cccccc'))) ?? [200, 200, 200]
   const t = host.time * 0.001
   const i0 = Math.floor(ax / S.dotSpacing) - 1,
     i1 = Math.ceil((ax + aw) / S.dotSpacing) + 1
@@ -787,6 +818,9 @@ class Host {
   setActivity(pattern: ActivityPattern) {
     this.activity = pattern
     if (pattern !== 'off') watchActivity()
+  }
+  repaint() {
+    this.lastSig = ''
   }
   setBlobFlow(v: number) {
     const p = flowParams(v)
@@ -1485,4 +1519,16 @@ export function setBackgroundFollowSpeed(v: number): void {
 /** Blob flow, 0–100: tail length and pointiness of the droplet trail. Only used in 'blob' mode. */
 export function setBackgroundBlobFlow(v: number): void {
   host.setBlobFlow(v)
+}
+
+/** The grid's dot colour: 'rainbow', 'accent' (the theme's accent, its hue wandering a little
+ *  unless `drift` is off), 'mono' (the text colour), or 'theme' for the pack's `--bg-dots`. */
+export function setBackgroundDotColour(mode: string, drift = dotDrift): void {
+  dotColour = mode === 'theme' || isDotColour(mode) ? mode : 'theme'
+  dotDrift = drift
+  host.repaint()
+}
+
+export function backgroundDotColour(): { mode: DotColour | 'theme'; drift: boolean } {
+  return { mode: dotColour, drift: dotDrift }
 }

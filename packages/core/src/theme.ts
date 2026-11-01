@@ -732,6 +732,17 @@ export const theme = {
       {}
     return set['--radius'] || '50%'
   },
+  /** A token as the active pack sets it for the current mode, or null (none, or ComfyUI's own theme). */
+  packToken(name: string): string | null {
+    const p = currentPack === 'comfy' ? null : getPack(currentPack)
+    if (!p) return null
+    const set =
+      (currentMode === 'dark' ? p.tokens.dark : p.tokens.light) ||
+      p.tokens.light ||
+      p.tokens.dark ||
+      {}
+    return set[name]?.trim() || null
+  },
   current() {
     return currentPack
   },
