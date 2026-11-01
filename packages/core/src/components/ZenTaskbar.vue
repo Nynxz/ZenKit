@@ -1493,6 +1493,11 @@ img.tb-logo {
 .tb-widgets:not(:empty) {
   border-left: 1px solid var(--zen-border, #3a3a44);
 }
+/* none of its widgets has anything to show right now (each hides itself while empty) and none is
+   in the overflow tray: no strip, so no divider or padding around nothing */
+.tb-widgets:not(:has(> .tb-widget:not(:empty), > .tb-wovf)) {
+  display: none;
+}
 /* The widget tray's toggle: its width is CHEVRON in the script. */
 .tb-wovf {
   flex: none;
