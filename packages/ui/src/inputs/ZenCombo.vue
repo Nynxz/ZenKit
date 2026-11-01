@@ -540,6 +540,9 @@ onBeforeUnmount(() => {
   min-height: 0;
   /* rows come and go as it scrolls; anchoring would answer each change by moving the scroll */
   overflow-anchor: none;
+  /* its own compositor layer: without it, Chrome repainted the list and re-layered the whole page
+     at every scroll step, which on ComfyUI's page took longer than a frame */
+  will-change: scroll-position;
 }
 .zen-combo-menu .zc-list.scrolling > * {
   pointer-events: none;

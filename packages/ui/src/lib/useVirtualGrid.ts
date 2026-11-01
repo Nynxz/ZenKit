@@ -63,6 +63,9 @@ export function useVirtualGrid(
     // The spacers change height as you scroll; the browser's scroll anchoring would answer each
     // change by moving the scroll position, which re-renders the slice, and so on.
     overflowAnchor: 'none' as const,
+    // Scrolled on its own compositor layer: without it, every scroll step repainted the grid and
+    // re-layered the whole page, which on a page as big as ComfyUI's took longer than a frame.
+    willChange: 'scroll-position',
   }))
   /** Spacers standing in for the rows above and below the rendered slice. A spacer with no rows
    *  to stand in for is taken out of the grid: as a grid item it is still a row, and the grid's
