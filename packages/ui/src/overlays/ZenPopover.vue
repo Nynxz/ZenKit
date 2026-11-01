@@ -73,8 +73,9 @@ function place() {
   const box = rectOf()
   const panel = panelEl.value
   if (!box || !panel) return
-  // measured on screen, placed in the panel's own px: they differ when the page is zoomed
-  const z = zoomOf(panel)
+  // measured on screen, placed in the panel's own px: they differ when the page is zoomed. The
+  // page's zoom (the panel is teleported to <body>), not measured on the panel, which animates in.
+  const z = zoomOf()
   const r = cssRect(box, z)
   const off = props.offset
   const { width: vw, height: vh } = cssViewport(z)

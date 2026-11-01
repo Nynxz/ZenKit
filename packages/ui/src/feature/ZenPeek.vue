@@ -85,8 +85,9 @@ function place() {
   const s = shown.value
   const el = box.value
   if (!s || !el) return
-  // in the window's own px (it's teleported to <body>): they differ from the screen's when zoomed
-  const z = zoomOf(el)
+  // in the window's own px (it's teleported to <body>): they differ from the screen's when zoomed.
+  // The page's zoom, not measured on the window: its entrance animation scales it.
+  const z = zoomOf()
   const r = cssRect(s.rect, z)
   const viewport = cssViewport(z)
   const at =
