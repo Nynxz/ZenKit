@@ -181,6 +181,7 @@ function onScroll(e: Event) {
 function openMenu() {
   if (props.disabled) return
   emit('open') // lets consumers lazy-load list data on first open
+  keyNav = false
   query.value = ''
   scrollTop.value = 0
   active.value = Math.max(
@@ -234,17 +235,37 @@ function pick(v: Val) {
 function scrollToActive() {
   if (virtual.value) {
     const ih = props.itemHeight!
-    const top = active.value * ih
     const el = listRef.value
     if (!el) return
-    if (top < el.scrollTop) el.scrollTop = top
-    else if (top + ih > el.scrollTop + el.clientHeight) el.scrollTop = top + ih - el.clientHeight
+    // rows start below the list's padding, and the view ends above it: without it the row
+    // arrowed to sat that far past the bottom edge
+    const style = getComputedStyle(el)
+    const padTop = parseFloat(style.paddingTop) || 0
+    const padBottom = parseFloat(style.paddingBottom) || 0
+    const top = padTop + active.value * ih
+    if (top - padTop < el.scrollTop) el.scrollTop = top - padTop
+    else if (top + ih + padBottom > el.scrollTop + el.clientHeight)
+      el.scrollTop = top + ih + padBottom - el.clientHeight
   } else {
     nextTick(() => {
       const el = menuRef.value?.querySelector('.zc-opt.active') as HTMLElement | null
       el?.scrollIntoView({ block: 'nearest' })
     })
   }
+}
+/** The arrow keys have the highlight until the pointer next moves: scrolling to the row they
+ *  reach slides other rows under a resting pointer, and those mustn't take it (and Enter with it). */
+let keyNav = false
+function hover(index: number) {
+  if (!keyNav) active.value = index
+}
+/** A real pointer move hands the highlight back to the pointer, to the row it's over now: it may
+ *  move within that row and never enter another. */
+function onPointerMove(e: PointerEvent) {
+  if (!keyNav) return
+  keyNav = false
+  const row = (e.target as Element | null)?.closest?.('[data-index]') as HTMLElement | null
+  if (row) active.value = Number(row.dataset.index)
 }
 function onKey(e: KeyboardEvent) {
   emit('key', e)
@@ -256,10 +277,12 @@ function onKey(e: KeyboardEvent) {
   }
   if (e.key === 'ArrowDown') {
     e.preventDefault()
+    keyNav = true
     active.value = Math.min(active.value + 1, filtered.value.length - 1)
     scrollToActive()
   } else if (e.key === 'ArrowUp') {
     e.preventDefault()
+    keyNav = true
     active.value = Math.max(active.value - 1, 0)
     scrollToActive()
   } else if (e.key === 'Enter') {
@@ -309,6 +332,7 @@ onBeforeUnmount(close)
         data-zen-layer
         class="zen-combo-menu zen-surface"
         :class="{ grid }"
+        @pointermove="onPointerMove"
         :style="[
           menuStyle,
           { zIndex: z },
@@ -362,7 +386,8 @@ onBeforeUnmount(close)
                   sel: w.item.value === modelValue,
                   pinned: pinnedSet.has(w.item.value),
                 }"
-                @mouseenter="active = w.index"
+                :data-index="w.index"
+                @mouseenter="hover(w.index)"
                 @click="pick(w.item.value)"
               >
                 <slot
@@ -391,7 +416,8 @@ onBeforeUnmount(close)
                   sel: it.value === modelValue,
                   pinned: pinnedSet.has(it.value),
                 }"
-                @mouseenter="active = i"
+                :data-index="i"
+                @mouseenter="hover(i)"
                 @click="pick(it.value)"
               >
                 <slot
@@ -411,7 +437,7 @@ onBeforeUnmount(close)
 
         <!-- moving on to the footer clears the hovered option (Enter then picks nothing; an arrow
              key starts again from the top) -->
-        <div v-if="$slots.footer" class="zc-footer" @mouseenter="active = -1">
+        <div v-if="$slots.footer" class="zc-footer" @mouseenter="hover(-1)">
           <slot name="footer" :close="close" />
         </div>
         <ZenPeek />
