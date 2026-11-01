@@ -1271,6 +1271,22 @@ export function createPanelStore(bus: ZenBus) {
           width: calc(100% - var(--spacing, 0.25rem)) !important;
         }
 
+        /* The blended gutter shows nothing, so hovering or dragging it lights the card's edge
+           instead, as a ZenKit dock lights its panel's (ZenPanel's lit edge): a 3px accent line
+           inside the card, clipped to its corners. A shadow, not a pseudo-element, so it holds
+           still while the card's content scrolls. */
+        body.zen-inset-sb [data-panel]:not(.separated-panel) .sidebar-content-container {
+          transition: box-shadow 0.2s ease;
+        }
+        body.zen-inset-sb [data-panel]:not(.separated-panel):has(+ [data-resize-handle]:is(:hover, [data-state='drag'])) .sidebar-content-container {
+          box-shadow: inset -3px 0 0 var(--p-primary-color, var(--zen-accent, #3b82f6));
+          transition-delay: 300ms;
+        }
+        body.zen-inset-sb [data-resize-handle]:is(:hover, [data-state='drag']) + [data-panel]:not(.separated-panel) .sidebar-content-container {
+          box-shadow: inset 3px 0 0 var(--p-primary-color, var(--zen-accent, #3b82f6));
+          transition-delay: 300ms;
+        }
+
         /* Leave ComfyUI's icon rail / toolbar buttons ALONE — the restyle is only the
            popout card now. (It used to also compact the rail icons, but that fought
            ComfyUI's own sizing and didn't sit right.) */
