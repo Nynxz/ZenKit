@@ -4,9 +4,13 @@
 // pixels. Code that measures in one and writes in the other converts through these.
 
 /** The CSS zoom `el` is drawn at; by default the page's, which is what a panel teleported to
- *  <body> gets. 1 without zoom, or in a browser that can't tell. */
+ *  <body> gets. 1 without zoom. */
 export function zoomOf(el: Element | null | undefined = document.body): number {
-  return el?.currentCSSZoom || 1
+  if (!el) return 1
+  if (typeof el.currentCSSZoom === 'number') return el.currentCSSZoom || 1
+  // an engine that can't say: its box on screen against its own width
+  const w = el instanceof HTMLElement ? el.offsetWidth : 0
+  return (w && el.getBoundingClientRect().width / w) || 1
 }
 
 /** A box measured on screen, in the CSS px of something drawn at zoom `z`. */
