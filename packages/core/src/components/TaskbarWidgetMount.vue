@@ -39,4 +39,9 @@ onBeforeUnmount(clear)
   color: var(--zen-text, #e5e5ea);
   font-size: 12px;
 }
+/* a widget with nothing to show right now (Run, while the graph isn't covered) takes no slot,
+   so the strip's gap doesn't open beside it */
+.tb-widget:empty {
+  display: none;
+}
 </style>
