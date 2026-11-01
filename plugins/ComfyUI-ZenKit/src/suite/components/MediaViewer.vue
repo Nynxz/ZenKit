@@ -499,16 +499,25 @@ function onDragLeave(e: DragEvent) {
   if (to && (e.currentTarget as HTMLElement).contains(to)) return
   dragOver.value = false
 }
+// Which drop each compare side last went to. A gallery's items arrive after a fetch, so a later
+// drop can land first; the earlier one then leaves the sides that drop took alone.
+let dropSeq = 0
+const sideClaim: Record<Side, number> = { A: 0, B: 0 }
 async function onDrop(e: DragEvent) {
   dragOver.value = false
   const isList = e.dataTransfer?.types.includes(ZEN_MEDIA_LIST_MIME) ?? false
-  if (!isList && !readMediaDragData(e).length) return // nothing we understand — let ComfyUI have it
+  // Read once: reading local files mints their object urls, and a second read would mint more.
+  const single = isList ? [] : readMediaDragData(e)
+  if (!isList && !single.length) return // nothing we understand — let ComfyUI have it
   // Claiming the event is what stops the graph ALSO importing the file: ComfyUI's
   // document-level drop handler returns early on `defaultPrevented`.
   e.preventDefault()
   e.stopPropagation()
   const side = mode.value === 'compare' ? sideAt(e) : null
-  const dropped = readMediaListDragData(e) // reads the drop now; a gallery's items are fetched after
+  const seq = ++dropSeq
+  if (side) sideClaim[side] = seq
+  // reads the drop now; a gallery's items are fetched after
+  const dropped = isList ? readMediaListDragData(e) : Promise.resolve({ items: single })
   loadingDrop.value = isList
   const { items } = await dropped
   loadingDrop.value = false
@@ -524,11 +533,19 @@ async function onDrop(e: DragEvent) {
       kind: it.kind,
       ts: Date.now(),
     })
+    // The side it was dropped on is its own until a later drop takes it; the other side (its
+    // second item's) it takes only if no later drop has.
+    const place = (s: Side, it: (typeof items)[number]) => {
+      if (s === side ? sideClaim[s] === seq : sideClaim[s] < seq) {
+        sideClaim[s] = seq
+        pin(s, asImage(it))
+      } else forget(it) // a later drop took that side
+    }
     if (items.length >= 2) {
-      pin('A', asImage(items[0]!))
-      pin('B', asImage(items[1]!))
+      place('A', items[0]!)
+      place('B', items[1]!)
       for (const extra of items.slice(2)) forget(extra)
-    } else if (items[0]) pin(side, asImage(items[0]))
+    } else if (items[0]) place(side, items[0])
     return
   }
   if (hasAudio) mode.value = 'view'
