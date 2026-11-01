@@ -513,7 +513,9 @@ async function onDrop(e: DragEvent) {
   const { items } = await dropped
   loadingDrop.value = false
   for (const it of items) if (it.objectUrl) objectUrls.add(it.url)
-  if (side) {
+  // compare draws pictures and video; audio plays in the view's history
+  const hasAudio = items.some((it) => it.kind === 'audio')
+  if (side && !hasAudio) {
     // one item goes on the side it was dropped on; two or more fill A and B in order
     const asImage = (it: (typeof items)[number]): ChannelImage => ({
       channel: it.filename || 'dropped',
@@ -529,6 +531,7 @@ async function onDrop(e: DragEvent) {
     } else if (items[0]) pin(side, asImage(items[0]))
     return
   }
+  if (hasAudio) mode.value = 'view'
   pushAll(
     items.map((it) => ({
       channel: it.filename || 'dropped',
