@@ -170,7 +170,13 @@ watch(isOpen, (v) => {
     window.addEventListener('resize', onReflow)
     window.addEventListener('scroll', onReflow, true)
     const el = anchorElement()
-    if (el) stopFollow = followAnchor(() => liveRect(el), place, close)
+    if (el)
+      stopFollow = followAnchor(
+        () => liveRect(el),
+        place,
+        close,
+        () => panelEl.value,
+      )
     else window.addEventListener('wheel', onWheel, { capture: true, passive: true })
   })
 })

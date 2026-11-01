@@ -57,12 +57,20 @@ const emit = defineEmits<{
   key: [KeyboardEvent]
 }>()
 
-const OVERSCAN = 4
+/** A virtual list renders whole blocks of this many rows, one spare block either side, and moves
+ *  a block at a time: rows change every few rows scrolled, not at every row. Each change makes
+ *  the page restyle, which on a page as big as ComfyUI's is what made scrolling stutter. */
+const BLOCK = 8
+/** Rows stop answering the pointer while the list scrolls, until it's been still this long, ms:
+ *  each row sliding under a still pointer otherwise moved the highlight, another restyle. */
+const SCROLL_SETTLE = 150
 const slots = useSlots()
 const open = ref(false)
 const query = ref('')
 const active = ref(0)
 const scrollTop = ref(0)
+const scrolling = ref(false)
+let settleTimer: ReturnType<typeof setTimeout> | undefined
 const viewportH = ref(240)
 const listMaxH = ref(240)
 const root = ref<HTMLElement | null>(null)
@@ -105,14 +113,20 @@ const firstUnpinnedIndex = computed(() =>
 // virtual window
 const startIndex = computed(() => {
   if (!virtual.value) return 0
-  return Math.max(0, Math.floor(scrollTop.value / props.itemHeight!) - OVERSCAN)
+  const first = Math.floor(scrollTop.value / props.itemHeight!)
+  return Math.max(0, (Math.floor(first / BLOCK) - 1) * BLOCK)
+})
+// a number of its own, so the rows re-render only when it moves, not at every scroll event
+const endIndex = computed(() => {
+  if (!virtual.value) return 0
+  const last = Math.ceil((scrollTop.value + viewportH.value) / props.itemHeight!)
+  return Math.min(filtered.value.length, (Math.ceil(last / BLOCK) + 1) * BLOCK)
 })
 const windowItems = computed(() => {
   if (!virtual.value) return []
-  const count = Math.ceil(viewportH.value / props.itemHeight!) + OVERSCAN * 2
-  const end = Math.min(filtered.value.length, startIndex.value + count)
   const out: { item: ComboItem; index: number }[] = []
-  for (let i = startIndex.value; i < end; i++) out.push({ item: filtered.value[i]!, index: i })
+  for (let i = startIndex.value; i < endIndex.value; i++)
+    out.push({ item: filtered.value[i]!, index: i })
   return out
 })
 
@@ -168,6 +182,9 @@ function onOutsideScroll(e: Event) {
 }
 function onScroll(e: Event) {
   scrollTop.value = (e.target as HTMLElement).scrollTop
+  scrolling.value = true
+  clearTimeout(settleTimer)
+  settleTimer = setTimeout(() => (scrolling.value = false), SCROLL_SETTLE)
 }
 function openMenu() {
   if (props.disabled) return
@@ -194,6 +211,7 @@ function openMenu() {
       () => liveRect(root.value?.querySelector('.zc-trigger')),
       place,
       close,
+      () => menuRef.value,
     )
   })
 }
@@ -267,7 +285,10 @@ watch(
     if (open.value) resetScroll()
   },
 )
-onBeforeUnmount(close)
+onBeforeUnmount(() => {
+  clearTimeout(settleTimer)
+  close()
+})
 </script>
 
 <template>
@@ -321,6 +342,7 @@ onBeforeUnmount(close)
         <div
           ref="listRef"
           class="zc-list zen-scroll"
+          :class="{ scrolling }"
           :style="{ maxHeight: listMaxH + 'px' }"
           @scroll="onScroll"
         >
@@ -516,6 +538,11 @@ onBeforeUnmount(close)
   overflow-y: auto;
   padding: 4px;
   min-height: 0;
+  /* rows come and go as it scrolls; anchoring would answer each change by moving the scroll */
+  overflow-anchor: none;
+}
+.zen-combo-menu .zc-list.scrolling > * {
+  pointer-events: none;
 }
 .zen-combo-menu .zc-virt {
   position: relative;
