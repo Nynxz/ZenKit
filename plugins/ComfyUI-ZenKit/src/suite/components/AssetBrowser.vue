@@ -497,8 +497,8 @@ const countText = computed(() => {
 })
 const countTitle = computed(() =>
   filtered.value.length < typedInFolder.value.length
-    ? 'Showing / in this folder'
-    : 'In this folder',
+    ? `Showing ${countText.value} in this folder`
+    : `${countText.value} in this folder`,
 )
 // The grid lays out INSIDE .ob-scroll's padding, so the usable width is clientWidth minus
 // that padding. Measuring clientWidth directly made the derived tile HEIGHT larger than the
@@ -1034,7 +1034,11 @@ function openSelectedThenClose() {
   border-color: var(--zen-accent);
 }
 .count {
-  flex: 0 0 auto;
+  flex: 0 1 auto;
+  /* never more than half the field: what you typed keeps the room (the title has it all) */
+  max-width: 50%;
+  overflow: hidden;
+  text-overflow: ellipsis;
   font-size: 11px;
   font-variant-numeric: tabular-nums;
   white-space: nowrap;
