@@ -84,13 +84,20 @@ const vars = computed<Record<string, string> | undefined>(() =>
 
 /* The fill. Absolutely positioned, so `inset` measures from inside the border and the gap
    holds at any --zen-dot-size without recomputing anything. At the 13px default that leaves
-   a 7px fill inside a 2px ring of background. `border-radius: inherit` keeps a round theme
-   round and a square theme square. */
+   a 7px fill inside a 2px ring of background. Its corners are concentric with the frame's: the
+   frame's radius (at most half its size, all a box can round) less the border and the gap. The
+   frame's own radius made the smaller fill a dot in anything but a square frame. */
 .mark::after {
   content: '';
   position: absolute;
   inset: var(--zen-dot-gap, 2px);
-  border-radius: inherit;
+  border-radius: max(
+    0px,
+    calc(
+      min(var(--zen-dot-radius, var(--zen-radius, 7px)), var(--zen-dot-size, 13px) / 2) - 1px -
+        var(--zen-dot-gap, 2px)
+    )
+  );
   background: var(--zen-dot-on, var(--zen-accent, #6366f1));
   transform: scale(0);
   opacity: 0;

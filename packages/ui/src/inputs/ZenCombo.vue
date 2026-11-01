@@ -412,6 +412,8 @@ onBeforeUnmount(close)
 }
 .zc-trigger {
   display: flex;
+  /* a control, not text: a drag across the page doesn't paint its label with the selection */
+  user-select: none;
   align-items: center;
   gap: 6px;
   width: 100%;
@@ -469,6 +471,8 @@ onBeforeUnmount(close)
 /* Teleported menu — NOT scoped (lives at <body>); reads the same --zen-* tokens. */
 .zen-combo-menu {
   position: fixed;
+  /* its options are controls too; the search field below stays selectable */
+  user-select: none;
   z-index: 100000;
   display: flex;
   flex-direction: column;
@@ -488,6 +492,7 @@ onBeforeUnmount(close)
 }
 .zen-combo-menu .zc-search input {
   flex: 1;
+  user-select: text;
   min-width: 0;
   background: none;
   border: none;

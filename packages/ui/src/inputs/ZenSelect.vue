@@ -224,6 +224,8 @@ onBeforeUnmount(close)
    and the trigger stays at content width, leaving the control visibly narrower than its slot. */
 .zs-trigger {
   display: inline-flex;
+  /* a control, not text: a drag across the page doesn't paint its label with the selection */
+  user-select: none;
   flex: 1 1 auto;
   align-items: center;
   gap: 6px;
@@ -277,6 +279,8 @@ onBeforeUnmount(close)
 }
 .zs-menu {
   position: fixed;
+  /* its options are controls too */
+  user-select: none;
   z-index: 100000;
   max-height: 260px;
   overflow-y: auto;

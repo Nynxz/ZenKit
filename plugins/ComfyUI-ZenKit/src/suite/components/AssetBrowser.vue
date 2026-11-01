@@ -968,6 +968,8 @@ function openSelectedThenClose() {
   padding: 8px;
   border-bottom: 1px solid var(--zen-border, #3a3a44);
   flex-wrap: wrap;
+  /* controls, not text: a drag across the toolbar doesn't select them (the search field still can) */
+  user-select: none;
 }
 .search {
   flex: 1;
@@ -975,10 +977,13 @@ function openSelectedThenClose() {
   display: flex;
   align-items: center;
   gap: 5px;
+  /* the shared control height, so it lines up with the folder select and the buttons beside it */
+  box-sizing: border-box;
+  height: var(--zen-control-h, 28px);
   background: var(--zen-input, #15151a);
   border: 1px solid var(--zen-border, #3a3a44);
   border-radius: var(--zen-radius, 6px);
-  padding: 4px 8px;
+  padding: 0 8px;
 }
 .search .mdi {
   color: var(--zen-muted, #9aa0aa);
@@ -986,6 +991,7 @@ function openSelectedThenClose() {
 .search input {
   flex: 1;
   min-width: 0;
+  user-select: text;
   background: none;
   border: none;
   color: var(--zen-text, #e5e5ea);
