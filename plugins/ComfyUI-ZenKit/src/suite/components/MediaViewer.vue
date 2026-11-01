@@ -503,6 +503,11 @@ function onDragLeave(e: DragEvent) {
 // drop can land first; the earlier one then leaves the sides that drop took alone.
 let dropSeq = 0
 const sideClaim: Record<Side, number> = { A: 0, B: 0 }
+/** Sides changed by hand: newer than any drop still on its way. */
+function claimSides(...sides: Side[]) {
+  const seq = ++dropSeq
+  for (const s of sides) sideClaim[s] = seq
+}
 async function onDrop(e: DragEvent) {
   dragOver.value = false
   const isList = e.dataTransfer?.types.includes(ZEN_MEDIA_LIST_MIME) ?? false
@@ -621,6 +626,12 @@ function swap() {
   chanA.value = chanB.value
   chanB.value = t
   pinned.value = { A: pinned.value.B, B: pinned.value.A }
+  claimSides('A', 'B') // a gallery still loading doesn't undo the swap
+}
+/** Picked by hand: a dropped gallery still loading leaves this side alone. */
+function pickSide(side: Side, v: string) {
+  chanOf(side).value = v
+  claimSides(side)
 }
 
 let ro: ResizeObserver | null = null
@@ -708,7 +719,7 @@ function startDrag(e: PointerEvent) {
               :model-value="chanA"
               :options="sideOptions('A')"
               placeholder="✦ Most recent"
-              @update:model-value="(v) => (chanA = String(v))"
+              @update:model-value="(v) => pickSide('A', String(v))"
             />
           </label>
           <button class="tb cmp-swap" title="Swap the two sides" @click="swap">
@@ -719,7 +730,7 @@ function startDrag(e: PointerEvent) {
               :model-value="chanB"
               :options="sideOptions('B')"
               placeholder="✦ Most recent"
-              @update:model-value="(v) => (chanB = String(v))"
+              @update:model-value="(v) => pickSide('B', String(v))"
             />
           </label>
         </template>
