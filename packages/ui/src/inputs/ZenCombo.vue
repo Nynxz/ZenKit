@@ -10,6 +10,7 @@ import type { ComboItem } from '../types'
 import { inOtherLayer, openLayer, Z, type Layer } from '../overlays/layers'
 import ZenPeek from '../feature/ZenPeek.vue'
 import { followAnchor, liveRect } from '../lib/followAnchor'
+import { cssRect, cssViewport, zoomOf } from '../lib/zoom'
 import '../lib/scrollbar.css'
 import '../lib/surface.css'
 
@@ -138,9 +139,10 @@ function onDoc(e: PointerEvent) {
 function place() {
   const trig = root.value?.querySelector('.zc-trigger') as HTMLElement | null
   if (!trig) return
-  const r = trig.getBoundingClientRect()
-  const vw = window.innerWidth
-  const vh = window.innerHeight
+  // in the menu's own px (it's teleported to <body>): they differ from the screen's when zoomed
+  const z = zoomOf()
+  const r = cssRect(trig.getBoundingClientRect(), z)
+  const { width: vw, height: vh } = cssViewport(z)
   const want = props.menuWidth ?? Math.max(r.width, props.menuMinWidth ?? 240)
   const width = Math.round(Math.min(want, vw - 16))
   let left = r.left

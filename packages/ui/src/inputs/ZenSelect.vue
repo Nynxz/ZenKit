@@ -9,6 +9,7 @@ import '../lib/scrollbar.css'
 import '../lib/surface.css'
 import { computed, nextTick, onBeforeUnmount, ref, useId, watch } from 'vue'
 import { iconClass } from '../lib/icon'
+import { cssRect, cssViewport, zoomOf } from '../lib/zoom'
 import { inOtherLayer, openLayer, Z, type Layer } from '../overlays/layers'
 type Val = string
 type Opt = Val | { value: Val; label?: string; icon?: string }
@@ -113,14 +114,17 @@ function onScroll(e: Event) {
 function openMenu() {
   const trig = root.value?.querySelector('.zs-trigger') as HTMLElement | null
   if (trig) {
-    const r = trig.getBoundingClientRect()
+    // in the menu's own px (it's teleported to <body>): they differ from the screen's when zoomed
+    const z = zoomOf()
+    const r = cssRect(trig.getBoundingClientRect(), z)
+    const vh = cssViewport(z).height
     const estH = Math.min(260, props.options.length * 30 + 10)
-    const below = window.innerHeight - r.bottom
+    const below = vh - r.bottom
     // open upward when there isn't room below and there's more room above (e.g. the bottom taskbar)
     const flipUp = below < estH + 8 && r.top > below
     menuStyle.value = flipUp
       ? {
-          bottom: window.innerHeight - r.top + 4 + 'px',
+          bottom: vh - r.top + 4 + 'px',
           left: r.left + 'px',
           minWidth: r.width + 'px',
         }

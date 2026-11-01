@@ -8,6 +8,7 @@
 // The scrolling element is then an inner one: `viewport` (exposed) and the `scroll` event follow it.
 import '../lib/scrollbar.css'
 import { nextTick, onBeforeUnmount, onMounted, ref } from 'vue'
+import { zoomOf } from '../lib/zoom'
 
 const props = withDefaults(defineProps<{ horizontal?: boolean; overlay?: boolean }>(), {
   horizontal: false,
@@ -68,7 +69,8 @@ function onThumbMove(e: PointerEvent) {
   const el = inner.value
   if (!dragging || !el) return
   const ratio = (full(el) - span(el)) / Math.max(1, span(el) - 8 - thumbSize.value)
-  const to = fromPos + ((X ? e.clientX : e.clientY) - from) * ratio
+  // the pointer moves in screen px, the thumb in the scroller's: they differ when the page is zoomed
+  const to = fromPos + (((X ? e.clientX : e.clientY) - from) / zoomOf(el)) * ratio
   if (X) el.scrollLeft = to
   else el.scrollTop = to
 }
@@ -80,7 +82,7 @@ function onTrackDown(e: PointerEvent) {
   const el = inner.value
   if (!el || e.target !== e.currentTarget) return
   const r = (e.currentTarget as HTMLElement).getBoundingClientRect()
-  const dir = (X ? e.clientX - r.left : e.clientY - r.top) < thumbAt.value ? -1 : 1
+  const dir = (X ? e.clientX - r.left : e.clientY - r.top) / zoomOf(el) < thumbAt.value ? -1 : 1
   el.scrollBy({ [X ? 'left' : 'top']: dir * span(el) * 0.9, behavior: 'smooth' })
 }
 

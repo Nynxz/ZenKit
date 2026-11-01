@@ -56,8 +56,10 @@ const title = computed(() =>
 )
 
 function stepAt(clientX: number): number {
-  const r = canvas.value!.getBoundingClientRect()
-  const f = (clientX - r.left - PAD_X) / Math.max(1, r.width - 2 * PAD_X)
+  const el = canvas.value!
+  const r = el.getBoundingClientRect()
+  const pad = PAD_X * (r.width / Math.max(1, el.offsetWidth)) // on screen: the page may be zoomed
+  const f = (clientX - r.left - pad) / Math.max(1, r.width - 2 * pad)
   const i = Math.round(f * (axis.value - 1))
   return Math.max(0, Math.min(Math.max(0, props.current), i))
 }

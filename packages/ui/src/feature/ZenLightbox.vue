@@ -16,6 +16,7 @@ import ZenSwitch from '../inputs/ZenSwitch.vue'
 import ZenSlider from '../inputs/ZenSlider.vue'
 import ZenMediaControls from './ZenMediaControls.vue'
 import { safeMediaUrl } from '../lib/safeUrl'
+import { cssRect, zoomOf } from '../lib/zoom'
 import type { LightboxItem } from '../types'
 import { openLayer, Z } from '../overlays/layers'
 
@@ -146,7 +147,11 @@ function startResize(e: PointerEvent) {
   e.preventDefault()
 }
 function onResize(e: PointerEvent) {
-  if (resizing) sideWidth.value = Math.max(190, Math.min(560, rStartW + (e.clientX - rStartX)))
+  if (resizing)
+    sideWidth.value = Math.max(
+      190,
+      Math.min(560, rStartW + (e.clientX - rStartX) / zoomOf(e.currentTarget as Element)),
+    )
 }
 function endResize(e: PointerEvent) {
   if (!resizing) return
@@ -239,8 +244,9 @@ const MIN_Z = 1
 const MAX_Z = 8
 
 let viewEl: HTMLElement | null = null
-/** The media's untransformed centre on screen, read once per gesture (see onWheel). */
+/** The media's untransformed centre in the stage's px, read once per gesture (see onWheel). */
 let centre: { x: number; y: number } | null = null
+let pageZoom = 1 // the zoom `centre` was read at
 let frame = 0
 function draw() {
   frame = 0
@@ -429,8 +435,10 @@ let introTimer: ReturnType<typeof setTimeout> | undefined = setTimeout(() => {
 function onMainMove(e: PointerEvent) {
   wake()
   if (introTimer) return
-  const r = (e.currentTarget as HTMLElement).getBoundingClientRect()
-  const y = e.clientY - r.top
+  const el = e.currentTarget as HTMLElement
+  const z = zoomOf(el)
+  const r = cssRect(el.getBoundingClientRect(), z)
+  const y = e.clientY / z - r.top
   nearTop.value = y < NEAR
   nearBottom.value = y > r.height - Math.max(NEAR, (footEl.value?.offsetHeight ?? 0) + 40)
 }
@@ -517,15 +525,17 @@ function onWheel(e: WheelEvent) {
   if (after === 1) tx = ty = 0
   else if (viewEl && stageEl.value) {
     if (!centre) {
-      const stage = stageEl.value.getBoundingClientRect()
+      // in the stage's own px, which the pan is: the screen's differ when the page is zoomed
+      pageZoom = zoomOf(stageEl.value)
+      const stage = cssRect(stageEl.value.getBoundingClientRect(), pageZoom)
       centre = {
         x: stage.left + viewEl.offsetLeft + viewEl.offsetWidth / 2,
         y: stage.top + viewEl.offsetTop + viewEl.offsetHeight / 2,
       }
     }
     const f = after / before
-    const dx = e.clientX - centre.x
-    const dy = e.clientY - centre.y
+    const dx = e.clientX / pageZoom - centre.x
+    const dy = e.clientY / pageZoom - centre.y
     tx = dx - f * (dx - tx)
     ty = dy - f * (dy - ty)
   }
@@ -558,14 +568,15 @@ function startPan(e: PointerEvent) {
   if (z <= 1 || e.button !== 0) return
   e.preventDefault()
   steer()
-  const ox = e.clientX - tx
-  const oy = e.clientY - ty
+  const zoom = zoomOf(stageEl.value)
+  const ox = e.clientX / zoom - tx
+  const oy = e.clientY / zoom - ty
   const sx = e.clientX
   const sy = e.clientY
   const move = (m: PointerEvent) => {
     if (Math.hypot(m.clientX - sx, m.clientY - sy) > 3) panned = true
-    tx = m.clientX - ox
-    ty = m.clientY - oy
+    tx = m.clientX / zoom - ox
+    ty = m.clientY / zoom - oy
     redraw()
   }
   const up = () => {

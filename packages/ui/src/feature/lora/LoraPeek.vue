@@ -31,6 +31,7 @@
 <script setup lang="ts">
 import { computed, ref, watch } from 'vue'
 
+import { cssRect, cssViewport, zoomOf } from '../../lib/zoom'
 import { zAbove, Z } from '../../overlays/layers'
 import * as lib from './loraLibrary'
 import { peekTarget as target, shiftHeld } from './loraState'
@@ -60,10 +61,13 @@ const strength = computed(() => info.value?.usage?.strength ?? null)
 const box = computed(() => {
   const el = target.value?.el
   if (!el) return {}
-  const r = el.getBoundingClientRect()
+  // in the preview's own px (it's mounted into <body>): they differ from the screen's when zoomed
+  const z = zoomOf()
+  const r = cssRect(el.getBoundingClientRect(), z)
+  const view = cssViewport(z)
   let left = r.right + GAP
-  if (left + WIDTH > window.innerWidth - 8) left = Math.max(8, r.left - GAP - WIDTH)
-  const top = Math.max(8, Math.min(r.top, window.innerHeight - 8 - MAX_HEIGHT))
+  if (left + WIDTH > view.width - 8) left = Math.max(8, r.left - GAP - WIDTH)
+  const top = Math.max(8, Math.min(r.top, view.height - 8 - MAX_HEIGHT))
   // above every open layer, including the browser/lightbox it may be peeking from
   return { left: `${left}px`, top: `${top}px`, width: `${WIDTH}px`, zIndex: zAbove(Z.peek) }
 })
