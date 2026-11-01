@@ -82,23 +82,21 @@ const vars = computed<Record<string, string> | undefined>(() =>
   transition: border-color var(--zen-dur-fast, 0.12s) ease;
 }
 
-/* The fill. Absolutely positioned, so `inset` measures from inside the border and the gap
-   holds at any --zen-dot-size without recomputing anything. At the 13px default that leaves
-   a 7px fill inside a 2px ring of background. Its corners are concentric with the frame's: the
-   frame's radius (at most half its size, all a box can round) less the border and the gap. The
-   frame's own radius made the smaller fill a dot in anything but a square frame. */
+/* The fill. It covers the frame exactly (the frame's border included) and takes the frame's radius
+   as-is, so a percentage resolves against the same box; a transparent border of the frame's
+   border plus the gap then insets it, and with the background clipped to inside that border the
+   browser draws the fill's corners concentric with the frame's. At the 13px default that leaves a
+   7px fill inside a 2px ring of background. (The frame's radius on a fill the fill's own size
+   made it a dot in anything but a square frame.) */
 .mark::after {
   content: '';
   position: absolute;
-  inset: var(--zen-dot-gap, 2px);
-  border-radius: max(
-    0px,
-    calc(
-      min(var(--zen-dot-radius, var(--zen-radius, 7px)), var(--zen-dot-size, 13px) / 2) - 1px -
-        var(--zen-dot-gap, 2px)
-    )
-  );
-  background: var(--zen-dot-on, var(--zen-accent, #6366f1));
+  inset: -1px;
+  box-sizing: border-box;
+  border: calc(1px + var(--zen-dot-gap, 2px)) solid transparent;
+  border-radius: inherit;
+  background-color: var(--zen-dot-on, var(--zen-accent, #6366f1));
+  background-clip: padding-box;
   transform: scale(0);
   opacity: 0;
   transition:
