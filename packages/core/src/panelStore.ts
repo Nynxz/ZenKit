@@ -1302,10 +1302,18 @@ export function createPanelStore(bus: ZenBus) {
         body.zen-inset-sb [data-resize-handle] + [data-panel]:not(.separated-panel):has(> .sidebar-content-container)::after {
           border-left-width: 3px;
         }
-        body.zen-inset-sb [data-panel]:not(.separated-panel):has(> .sidebar-content-container):has(+ [data-resize-handle]:is(:hover, [data-state='drag']))::after,
-        body.zen-inset-sb [data-resize-handle]:is(:hover, [data-state='drag']) + [data-panel]:not(.separated-panel):has(> .sidebar-content-container)::after {
+        /* the splitter's own state, not :hover: it takes a drag from a few px either side of its
+           1px gutter, where the pointer isn't over the gutter itself */
+        body.zen-inset-sb [data-panel]:not(.separated-panel):has(> .sidebar-content-container):has(+ [data-resize-handle]:is(:hover, [data-resize-handle-state='hover']))::after,
+        body.zen-inset-sb [data-resize-handle]:is(:hover, [data-resize-handle-state='hover']) + [data-panel]:not(.separated-panel):has(> .sidebar-content-container)::after {
           opacity: 1;
           transition-delay: 300ms;
+        }
+        /* dragging: at once, not after the hover's delay */
+        body.zen-inset-sb [data-panel]:not(.separated-panel):has(> .sidebar-content-container):has(+ [data-resize-handle]:is([data-resize-handle-state='drag'], [data-state='drag']))::after,
+        body.zen-inset-sb [data-resize-handle]:is([data-resize-handle-state='drag'], [data-state='drag']) + [data-panel]:not(.separated-panel):has(> .sidebar-content-container)::after {
+          opacity: 1;
+          transition-delay: 0s;
         }
 
         /* Leave ComfyUI's icon rail / toolbar buttons ALONE — the restyle is only the

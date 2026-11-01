@@ -14,7 +14,13 @@
     :data-zen-status="panel.status"
     :data-zen-docked="docked"
     :data-zen-dock-side="panel.dockSide ?? undefined"
-    :data-zen-edge-lit="(docked && store.state.dockEdgeLit === panel.dockSide) || undefined"
+    :data-zen-edge-lit="
+      docked && store.state.dockEdgeLit === panel.dockSide
+        ? store.state.interacting
+          ? 'drag'
+          : 'hover'
+        : undefined
+    "
     :data-zen-frame="panel.frame"
     :data-zen-tiled="tiled || undefined"
     :data-zen-active="isActive"
@@ -839,6 +845,10 @@ function startResize(e: PointerEvent, h: (typeof HANDLES)[number]) {
 .zp.docked[data-zen-edge-lit]::after {
   opacity: 1;
   transition-delay: 300ms;
+}
+/* dragging the edge: at once, not after the hover's delay */
+.zp.docked[data-zen-edge-lit='drag']::after {
+  transition-delay: 0s;
 }
 .zp.docked {
   background: var(--zen-chrome-bg, var(--zen-bg, #1a1a1f));
