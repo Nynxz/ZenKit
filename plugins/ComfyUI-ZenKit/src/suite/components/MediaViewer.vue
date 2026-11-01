@@ -74,6 +74,13 @@ const chanOptions = computed(() => {
   ]
 })
 
+// A compare side's picker: the channels, and what was dropped on that side while it's there.
+function sideOptions(side: Side) {
+  const it = pinned.value[side]
+  const opts = chanOptions.value.filter((o) => o.value !== NO_FEED)
+  return it ? [{ value: DROPPED, label: '⬇ ' + (it.filename || 'Dropped') }, ...opts] : opts
+}
+
 interface HItem extends ChannelImage {
   n: number // stable key (survives reorder/removal)
   /** Dropped in by hand rather than arriving on the bus — survives a channel switch. */
@@ -100,24 +107,38 @@ const selectedN = ref<number | null>(
   history.value[typeof saved.selected === 'number' ? saved.selected : 0]?.n ?? null,
 )
 
-watch([mode, chan, chanA, chanB, showThumbs, slideMs, slideToEnd, full, history, selectedN], () => {
-  const kept = history.value.filter((it) => !it.url.startsWith('blob:'))
-  props.ctx?.setState({
-    mode: mode.value,
-    chan: chan.value,
-    chanA: chanA.value,
-    chanB: chanB.value,
-    showThumbs: showThumbs.value,
-    slideMs: slideMs.value,
-    slideToEnd: slideToEnd.value,
-    full: full.value,
-    history: kept.map(({ n: _n, ...it }) => it),
-    selected: Math.max(
-      0,
-      kept.findIndex((it) => it.n === selectedN.value),
-    ),
-  })
+// Compare: a side shows a channel, or what was dropped on it (its picker then reads DROPPED).
+type Side = 'A' | 'B'
+const DROPPED = '\u0000dropped'
+const pinned = ref<Record<Side, ChannelImage | null>>({
+  A: isSavedItem(saved.pinA) ? saved.pinA : null,
+  B: isSavedItem(saved.pinB) ? saved.pinB : null,
 })
+
+watch(
+  [mode, chan, chanA, chanB, pinned, showThumbs, slideMs, slideToEnd, full, history, selectedN],
+  () => {
+    const kept = history.value.filter((it) => !it.url.startsWith('blob:'))
+    const keep = (it: ChannelImage | null) => (it && !it.url.startsWith('blob:') ? it : null)
+    props.ctx?.setState({
+      mode: mode.value,
+      chan: chan.value,
+      chanA: chanA.value,
+      chanB: chanB.value,
+      showThumbs: showThumbs.value,
+      slideMs: slideMs.value,
+      slideToEnd: slideToEnd.value,
+      full: full.value,
+      history: kept.map(({ n: _n, ...it }) => it),
+      pinA: keep(pinned.value.A),
+      pinB: keep(pinned.value.B),
+      selected: Math.max(
+        0,
+        kept.findIndex((it) => it.n === selectedN.value),
+      ),
+    })
+  },
+)
 
 // The cap bounds what the channels stream in; things you dropped here stay until you remove them
 // (a dropped gallery can be hundreds of images).
@@ -432,11 +453,35 @@ function onThumbDrag(e: DragEvent, it: HItem) {
   )
 }
 
+// In compare mode a drop lands on a side: left of the split is A, right of it B. The highlight
+// covers that side of the stage.
+const dropSide = ref<Side>('A')
+const dropBox = ref<Record<string, string>>({})
+function sideAt(e: DragEvent): Side {
+  const r = stage.value?.getBoundingClientRect()
+  if (!r || !r.width) return 'A'
+  return e.clientX < r.left + (r.width * pos.value) / 100 ? 'A' : 'B'
+}
 function onDragOver(e: DragEvent) {
   if (draggingOwn || !hasMediaDragData(e)) return
   e.preventDefault() // required, or the browser never fires `drop` here
   if (e.dataTransfer) e.dataTransfer.dropEffect = 'copy'
   dragOver.value = true
+  const root = e.currentTarget as HTMLElement
+  const r = stage.value?.getBoundingClientRect()
+  if (mode.value !== 'compare' || !r) return
+  dropSide.value = sideAt(e)
+  // in the root's own px (the page may be zoomed): its box on screen against its width
+  const o = root.getBoundingClientRect()
+  const k = root.offsetWidth ? o.width / root.offsetWidth : 1
+  const split = r.left + (r.width * pos.value) / 100
+  const [x0, x1] = dropSide.value === 'A' ? [r.left, split] : [split, r.right]
+  dropBox.value = {
+    left: (x0 - o.left) / k + 'px',
+    width: Math.max(0, x1 - x0) / k + 'px',
+    top: (r.top - o.top) / k + 'px',
+    height: r.height / k + 'px',
+  }
 }
 function onDragLeave(e: DragEvent) {
   // dragleave also fires crossing between children; only drop the highlight on a real exit.
@@ -452,12 +497,28 @@ async function onDrop(e: DragEvent) {
   // document-level drop handler returns early on `defaultPrevented`.
   e.preventDefault()
   e.stopPropagation()
-  mode.value = 'view' // compare mode has no history strip; show what they just dropped
+  const side = mode.value === 'compare' ? sideAt(e) : null
   const dropped = readMediaListDragData(e) // reads the drop now; a gallery's items are fetched after
   loadingDrop.value = isList
   const { items } = await dropped
   loadingDrop.value = false
   for (const it of items) if (it.objectUrl) objectUrls.add(it.url)
+  if (side) {
+    // one item goes on the side it was dropped on; two or more fill A and B in order
+    const asImage = (it: (typeof items)[number]): ChannelImage => ({
+      channel: it.filename || 'dropped',
+      url: it.url,
+      filename: it.filename,
+      kind: it.kind,
+      ts: Date.now(),
+    })
+    if (items.length >= 2) {
+      pin('A', asImage(items[0]!))
+      pin('B', asImage(items[1]!))
+      for (const extra of items.slice(2)) forget(extra)
+    } else if (items[0]) pin(side, asImage(items[0]))
+    return
+  }
   pushAll(
     items.map((it) => ({
       channel: it.filename || 'dropped',
@@ -479,8 +540,18 @@ function resolve(name: string): ChannelImage | null {
   const n = (name || '').trim()
   return !n ? last.value : (byName.value[n] ?? null)
 }
-const itemA = computed(() => resolve(chanA.value))
-const itemB = computed(() => resolve(chanB.value))
+const chanOf = (side: Side) => (side === 'A' ? chanA : chanB)
+/** Show `img` on `side`, releasing the file a previous drop there held. */
+function pin(side: Side, img: ChannelImage) {
+  const old = pinned.value[side]
+  if (old && old.url !== img.url && !history.value.some((h) => h.url === old.url)) forget(old)
+  pinned.value = { ...pinned.value, [side]: img }
+  chanOf(side).value = DROPPED
+}
+const itemOf = (side: Side) =>
+  chanOf(side).value === DROPPED ? pinned.value[side] : resolve(chanOf(side).value)
+const itemA = computed(() => itemOf('A'))
+const itemB = computed(() => itemOf('B'))
 // Two videos compared play as one: A leads (B when only B is a video), with the shared control bar
 // driving it, and the other follows its clock — muted, so there is one soundtrack.
 const vidA = ref<HTMLVideoElement | null>(null)
@@ -515,6 +586,7 @@ function swap() {
   const t = chanA.value
   chanA.value = chanB.value
   chanB.value = t
+  pinned.value = { A: pinned.value.B, B: pinned.value.A }
 }
 
 let ro: ResizeObserver | null = null
@@ -600,18 +672,18 @@ function startDrag(e: PointerEvent) {
           <label class="pick">
             <ZenSelect
               :model-value="chanA"
-              :options="chanOptions"
+              :options="sideOptions('A')"
               placeholder="✦ Most recent"
               @update:model-value="(v) => (chanA = String(v))"
             />
           </label>
-          <button class="tb cmp-swap" title="Swap the two channels" @click="swap">
+          <button class="tb cmp-swap" title="Swap the two sides" @click="swap">
             <i class="mdi mdi-swap-horizontal" />
           </button>
           <label class="pick">
             <ZenSelect
               :model-value="chanB"
-              :options="chanOptions"
+              :options="sideOptions('B')"
               placeholder="✦ Most recent"
               @update:model-value="(v) => (chanB = String(v))"
             />
@@ -721,8 +793,8 @@ function startDrag(e: PointerEvent) {
             {{ names.length ? 'Pick a channel per side' : 'No images published yet' }}
           </p>
           <p class="mv-empty-sub">
-            Type a channel name into A and B (blank = most recent). Drive each side with a separate
-            Zen Sync Image node.
+            Pick a channel for A and B, or drop an image on each side. Drive each side with a
+            separate Zen Sync Image node.
           </p>
         </div>
       </div>
@@ -832,6 +904,11 @@ function startDrag(e: PointerEvent) {
     <div v-if="loadingDrop" class="mv-drop">
       <i class="mdi mdi-loading mdi-spin mv-drop-icon" />
       <p class="mv-drop-title">Loading the collection…</p>
+    </div>
+    <div v-else-if="dragOver && mode === 'compare'" class="mv-drop side" :style="dropBox">
+      <i class="mdi mdi-compare mv-drop-icon" />
+      <p class="mv-drop-title">Drop to compare as {{ dropSide }}</p>
+      <p class="mv-drop-sub">two or more at once fill A and B</p>
     </div>
     <div v-else-if="dragOver" class="mv-drop">
       <i class="mdi mdi-image-plus mv-drop-icon" />
@@ -1267,6 +1344,10 @@ function startDrag(e: PointerEvent) {
   backdrop-filter: blur(2px);
   border: 2px dashed var(--zen-accent, #6366f1);
   border-radius: var(--zen-radius, 8px);
+}
+/* compare: just the side the drop lands on (its box comes from onDragOver) */
+.mv-drop.side {
+  inset: auto;
 }
 .mv-drop-icon {
   font-size: 32px;
