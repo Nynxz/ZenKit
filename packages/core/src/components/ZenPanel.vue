@@ -897,6 +897,8 @@ function startResize(e: PointerEvent, h: (typeof HANDLES)[number]) {
   color: #fff;
 }
 .b .mdi {
+  /* a box of its own, not a line of text: inline, the glyph sat on a baseline 1.5px high */
+  display: flex;
   font-size: 16px;
 }
 
