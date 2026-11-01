@@ -1273,17 +1273,38 @@ export function createPanelStore(bus: ZenBus) {
 
         /* The blended gutter shows nothing, so hovering or dragging it lights the card's edge
            instead, as a ZenKit dock lights its panel's (ZenPanel's lit edge): a 3px accent line
-           inside the card, clipped to its corners. A shadow, not a pseudo-element, so it holds
-           still while the card's content scrolls. */
-        body.zen-inset-sb [data-panel]:not(.separated-panel) .sidebar-content-container {
-          transition: box-shadow 0.2s ease;
+           over the card's edge, its border and contents included, following its corners. Drawn
+           by a frame the card's size on the card's wrapper, which doesn't scroll (the card
+           does), with only the gutter's side wide. Its box mirrors the card's margins above. */
+        body.zen-inset-sb [data-panel]:not(.separated-panel):has(> .sidebar-content-container) {
+          position: relative;
         }
-        body.zen-inset-sb [data-panel]:not(.separated-panel):has(+ [data-resize-handle]:is(:hover, [data-state='drag'])) .sidebar-content-container {
-          box-shadow: inset -3px 0 0 var(--p-primary-color, var(--zen-accent, #3b82f6));
-          transition-delay: 300ms;
+        body.zen-inset-sb [data-panel]:not(.separated-panel):has(> .sidebar-content-container)::after {
+          content: '';
+          position: absolute;
+          inset: var(--spacing, 0.25rem);
+          z-index: 10;
+          border: 0 solid var(--p-primary-color, var(--zen-accent, #3b82f6));
+          border-radius: var(--zen-radius, 12px);
+          opacity: 0;
+          pointer-events: none;
+          transition: opacity 0.2s ease;
         }
-        body.zen-inset-sb [data-resize-handle]:is(:hover, [data-state='drag']) + [data-panel]:not(.separated-panel) .sidebar-content-container {
-          box-shadow: inset 3px 0 0 var(--p-primary-color, var(--zen-accent, #3b82f6));
+        body.zen-inset-sb .side-bar-panel:not(.separated-panel):has(+ [data-resize-handle])::after {
+          right: 0;
+        }
+        body.zen-inset-sb [data-resize-handle] + .side-bar-panel:not(.separated-panel)::after {
+          left: 0;
+        }
+        body.zen-inset-sb [data-panel]:not(.separated-panel):has(> .sidebar-content-container):has(+ [data-resize-handle])::after {
+          border-right-width: 3px;
+        }
+        body.zen-inset-sb [data-resize-handle] + [data-panel]:not(.separated-panel):has(> .sidebar-content-container)::after {
+          border-left-width: 3px;
+        }
+        body.zen-inset-sb [data-panel]:not(.separated-panel):has(> .sidebar-content-container):has(+ [data-resize-handle]:is(:hover, [data-state='drag']))::after,
+        body.zen-inset-sb [data-resize-handle]:is(:hover, [data-state='drag']) + [data-panel]:not(.separated-panel):has(> .sidebar-content-container)::after {
+          opacity: 1;
           transition-delay: 300ms;
         }
 
