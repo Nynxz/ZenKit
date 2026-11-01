@@ -1545,7 +1545,16 @@ defineExpose({
 }
 .zlb-cell.on {
   border-color: var(--zen-accent, #6366f1);
-  box-shadow: 0 0 0 2px var(--zen-accent, #6366f1) inset;
+}
+/* the selected ring drawn over the picture: an inset shadow is painted beneath the content, so the
+   image covered it */
+.zlb-cell.on::after {
+  content: '';
+  position: absolute;
+  inset: 0;
+  border: 2px solid var(--zen-accent, #6366f1);
+  border-radius: calc(var(--zen-radius, 7px) - 1px);
+  pointer-events: none;
 }
 .zlb-cell-wf {
   position: absolute;
