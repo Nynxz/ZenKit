@@ -352,8 +352,8 @@ const CHROME = 0 // image fills the tile edge-to-edge → tile height == width (
  *  at a time: tiles change every few rows scrolled rather than at every row, and each change
  *  restyles the page, which on ComfyUI's page is what made scrolling stutter. */
 const BLOCK = 3
-/** Tiles stop answering the pointer while the grid scrolls, until it's been still this long, ms:
- *  each tile sliding under a still pointer otherwise lit its hover border, another restyle. */
+/** Tiles don't light up under the pointer while the grid scrolls, until it's been still this
+ *  long, ms: each tile sliding under a still pointer otherwise lit its hover border, a restyle. */
 const SCROLL_SETTLE = 150
 const scrolling = ref(false)
 let settleTimer: ReturnType<typeof setTimeout> | undefined
@@ -1189,9 +1189,6 @@ function openSelectedThenClose() {
      page at every scroll step, which on ComfyUI's page took longer than a frame */
   will-change: scroll-position;
 }
-.ob-scroll.scrolling .ob-pad {
-  pointer-events: none;
-}
 .ob-pad {
   position: relative;
   width: 100%;
@@ -1217,7 +1214,7 @@ function openSelectedThenClose() {
   border-radius: var(--zen-radius, 8px);
   font-family: inherit;
 }
-.tile:hover {
+.ob-scroll:not(.scrolling) .tile:hover {
   border-color: var(--zen-accent, #3b82f6);
 }
 .tile.sel {

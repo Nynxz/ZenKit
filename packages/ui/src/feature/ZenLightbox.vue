@@ -105,8 +105,8 @@ const T_GAP = 7
  *  moves a block at a time: thumbnails change every few rows scrolled rather than at every row,
  *  and each change restyles the page, which inside ComfyUI is what made scrolling stutter. */
 const T_BLOCK = 3
-/** Thumbnails stop answering the pointer while the sidebar scrolls, until it's been still this
- *  long, ms: each one sliding under a still pointer otherwise lit its hover style. */
+/** Thumbnails don't light up under the pointer while the sidebar scrolls, until it's been still
+ *  this long, ms: each one sliding under a still pointer otherwise lit its hover style. */
 const SIDE_SETTLE = 150
 const sideScrolling = ref(false)
 let sideSettle: ReturnType<typeof setTimeout> | undefined
@@ -1499,9 +1499,6 @@ defineExpose({
   /* thumbnails come and go as it scrolls; anchoring would answer each change by moving it */
   overflow-anchor: none;
 }
-.zlb-tscroll.scrolling .zlb-tpad {
-  pointer-events: none;
-}
 .zlb-tscroll :deep(.zen-scroll-thumb) {
   width: 4px;
   right: 4px;
@@ -1562,7 +1559,7 @@ defineExpose({
   text-shadow: 0 1px 3px rgba(0, 0, 0, 0.8);
   pointer-events: none;
 }
-.zlb-cell:hover {
+.zlb-tscroll:not(.scrolling) .zlb-cell:hover {
   border-color: var(--zen-accent, #6366f1);
 }
 .zlb-cell.on {

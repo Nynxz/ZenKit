@@ -130,7 +130,10 @@ const z = ref<number>(Z.popover)
 function onKey(e: KeyboardEvent) {
   if (layer?.escape(e)) close()
 }
-function onReflow() {
+/** The page scrolled or resized: keep the panel on its anchor. Scrolling inside the panel moves
+ *  neither, and placing reads layout, which mid-scroll stalls the page. */
+function onReflow(e: Event) {
+  if (e.target instanceof Node && panelEl.value?.contains(e.target)) return
   if (isOpen.value) place()
 }
 

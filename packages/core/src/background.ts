@@ -794,6 +794,7 @@ class Host {
    *  on ComfyUI's page. Read again when the surface resizes, the window does, or a second on. */
   private box: { el: Element; rect: DOMRect; at: number } | null = null
   private boxWatch: ResizeObserver | null = null
+  private boxWatched: Element | null = null
   private readonly dropBox = () => (this.box = null)
   private last = 0
   private active: ZenBackground | null = null
@@ -933,16 +934,20 @@ class Host {
     this.finishEl = null
     this.boxWatch?.disconnect()
     this.boxWatch = null
+    this.boxWatched = null
     this.box = null
     window.removeEventListener('resize', this.dropBox)
   }
 
   private surfaceBox(el: Element, now: number): DOMRect {
     if (this.box?.el === el && now - this.box.at < 1000) return this.box.rect
-    if (this.box?.el !== el) {
+    // watched apart from the cached box: the observer's first report (as it starts watching)
+    // drops the box, which mustn't make the same element look new and start another observer
+    if (this.boxWatched !== el) {
       this.boxWatch?.disconnect()
       this.boxWatch = new ResizeObserver(this.dropBox)
       this.boxWatch.observe(el)
+      this.boxWatched = el
       window.addEventListener('resize', this.dropBox)
     }
     this.box = { el, rect: el.getBoundingClientRect(), at: now }

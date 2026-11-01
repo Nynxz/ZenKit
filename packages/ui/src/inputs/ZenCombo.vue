@@ -61,8 +61,8 @@ const emit = defineEmits<{
  *  a block at a time: rows change every few rows scrolled, not at every row. Each change makes
  *  the page restyle, which on a page as big as ComfyUI's is what made scrolling stutter. */
 const BLOCK = 8
-/** Rows stop answering the pointer while the list scrolls, until it's been still this long, ms:
- *  each row sliding under a still pointer otherwise moved the highlight, another restyle. */
+/** The highlight stays put while the list scrolls, until it's been still this long, ms: each row
+ *  sliding under a still pointer otherwise moved it, another restyle. */
 const SCROLL_SETTLE = 150
 const slots = useSlots()
 const open = ref(false)
@@ -366,7 +366,7 @@ onBeforeUnmount(() => {
                   sel: w.item.value === modelValue,
                   pinned: pinnedSet.has(w.item.value),
                 }"
-                @mouseenter="active = w.index"
+                @mouseenter="scrolling || (active = w.index)"
                 @click="pick(w.item.value)"
               >
                 <slot
@@ -543,9 +543,6 @@ onBeforeUnmount(() => {
   /* its own compositor layer: without it, Chrome repainted the list and re-layered the whole page
      at every scroll step, which on ComfyUI's page took longer than a frame */
   will-change: scroll-position;
-}
-.zen-combo-menu .zc-list.scrolling > * {
-  pointer-events: none;
 }
 .zen-combo-menu .zc-virt {
   position: relative;
