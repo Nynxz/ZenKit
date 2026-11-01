@@ -1,6 +1,6 @@
 {
   "name": "@nynxz/zenkit-nodekit",
-  "version": "0.4.0",
+  "version": "0.5.0",
   "type": "module",
   "description": "Everything a ComfyUI node pack needs from ZenKit: node declaration, widget mounting, the Vite build preset, the ambient @comfy/* types, and the vendored Python helpers (zenkit-nodekit sync).",
   "exports": {
