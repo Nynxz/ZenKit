@@ -18,11 +18,7 @@
         <i class="mdi mdi-magnify"></i>
         <input
           v-model="filter"
-          :placeholder="
-            byMeaning
-              ? 'describe it, or sampler:euler seed:42'
-              : 'search prompts, names · sampler:euler seed:42'
-          "
+          :placeholder="byMeaning ? 'Describe it' : 'Search'"
           title="Words match the prompt, file name, model and loras. Filters: sampler: scheduler: model: lora: seed: steps: cfg: neg: kind: ext: workflow:yes|no — a leading - excludes."
           spellcheck="false"
         />
