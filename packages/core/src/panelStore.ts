@@ -1168,12 +1168,16 @@ export function createPanelStore(bus: ZenBus) {
   }
 
   // Only while it is the inactive segment: in app mode the App segment holds the workflow menu.
+  // The segment's wrapper goes, not just the button, or the row keeps its gap before Graph; and
+  // Graph, alone, gives back a px of right padding the chevron's own margin already supplies.
   function applyAppModeHide(on: boolean) {
     const id = 'zenkit-hide-appmode'
+    const appSegment = 'button:not([aria-haspopup]) > i[class*="lucide--panels-top-left"]'
     if (on)
       ensureStyle(
         id,
-        '[data-testid="view-mode-toggle"] button:not([aria-haspopup]):has(> i[class*="lucide--panels-top-left"]){display:none!important}',
+        `[data-testid="view-mode-toggle"] div:has(> ${appSegment}){display:none!important}` +
+          `[data-testid="view-mode-toggle"]:has(${appSegment}) button[aria-haspopup]{padding-right:7px!important}`,
       )
     else removeStyle(id)
   }
