@@ -495,11 +495,12 @@ const countText = computed(() => {
   const total = typedInFolder.value.length
   return filtered.value.length < total ? `${n} of ${total.toLocaleString()}` : n
 })
-const countTitle = computed(() =>
-  filtered.value.length < typedInFolder.value.length
-    ? `Showing ${countText.value} in this folder`
-    : `${countText.value} in this folder`,
-)
+const countTitle = computed(() => {
+  const where = folder.value === null ? 'in all folders' : 'in this folder'
+  return filtered.value.length < typedInFolder.value.length
+    ? `Showing ${countText.value} ${where}`
+    : `${countText.value} ${where}`
+})
 // The grid lays out INSIDE .ob-scroll's padding, so the usable width is clientWidth minus
 // that padding. Measuring clientWidth directly made the derived tile HEIGHT larger than the
 // real 1fr column WIDTH (by ~16/cols px) → a gap under square images.
